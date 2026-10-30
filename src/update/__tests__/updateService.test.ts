@@ -131,3 +131,103 @@ describe('UpdateService restartToApply (the only reload path)', () => {
     expect(result).toEqual({ applied: false, reason: 'unavailable' });
   });
 });
+
+describe('UpdateService single authoritative flow (OTA audit hardening)', () => {
+  it('concurrent checkAndDownload calls share ONE native check + fetch', async () => {
+    let releaseCheck!: (v: { isUpdateAvailable: boolean; manifest?: { id?: string } }) => void;
+    const check = jest.fn(
+      () =>
+        new Promise<{ isUpdateAvailable: boolean; manifest?: { id?: string } }>((resolve) => {
+          releaseCheck = resolve;
+        }),
+    );
+    const fetch = jest.fn(async () => ({ isNew: true, manifest: { id: 'upd-7' } }));
+    const svc = new UpdateService(
+      fakeNative({ checkForUpdateAsync: check, fetchUpdateAsync: fetch }),
+      () => false,
+    );
+    const p1 = svc.checkAndDownload();
+    const p2 = svc.checkAndDownload();
+    const p3 = svc.checkAndDownload();
+    expect(svc.isCheckInFlight).toBe(true);
+    releaseCheck({ isUpdateAvailable: true, manifest: { id: 'upd-7' } });
+    const [s1, s2, s3] = await Promise.all([p1, p2, p3]);
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(s1.phase).toBe('ready');
+    expect(s2).toEqual(s1);
+    expect(s3).toEqual(s1);
+    expect(svc.isCheckInFlight).toBe(false);
+  });
+
+  it('a call during the downloading phase joins the in-flight run (fetch never runs twice)', async () => {
+    let releaseFetch!: (v: { isNew: boolean; manifest?: { id?: string } }) => void;
+    const fetch = jest.fn(
+      () =>
+        new Promise<{ isNew: boolean; manifest?: { id?: string } }>((resolve) => {
+          releaseFetch = resolve;
+        }),
+    );
+    const svc = new UpdateService(
+      fakeNative({
+        checkForUpdateAsync: async () => ({ isUpdateAvailable: true, manifest: { id: 'upd-9' } }),
+        fetchUpdateAsync: fetch,
+      }),
+      () => false,
+    );
+    const p1 = svc.checkAndDownload();
+    // Let the run reach the downloading phase before the second call.
+    await new Promise((r) => setImmediate(r));
+    expect(svc.getStatus().phase).toBe('downloading');
+    const p2 = svc.checkAndDownload();
+    releaseFetch({ isNew: true, manifest: { id: 'upd-9' } });
+    const [s1, s2] = await Promise.all([p1, p2]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(s1.phase).toBe('ready');
+    // After a successful download the status reports the staged update id.
+    expect(s1.pendingUpdateId).toBe('upd-9');
+    expect(s2.pendingUpdateId).toBe('upd-9');
+    expect(svc.getStatus().pendingUpdateId).toBe('upd-9');
+  });
+
+  it('restartToApply refuses while a check/download is in flight', async () => {
+    const reload = jest.fn(async () => undefined);
+    let releaseFetch!: (v: { isNew: boolean; manifest?: { id?: string } }) => void;
+    const svc = new UpdateService(
+      fakeNative({
+        checkForUpdateAsync: async () => ({ isUpdateAvailable: true }),
+        fetchUpdateAsync: () =>
+          new Promise<{ isNew: boolean; manifest?: { id?: string } }>((resolve) => {
+            releaseFetch = resolve;
+          }),
+        reloadAsync: reload,
+      }),
+      () => false,
+    );
+    const run = svc.checkAndDownload();
+    await new Promise((r) => setImmediate(r));
+    expect(svc.getStatus().phase).toBe('downloading');
+    const refused = await svc.restartToApply();
+    expect(refused).toEqual({ applied: false, reason: 'in-progress' });
+    expect(reload).not.toHaveBeenCalled();
+    releaseFetch({ isNew: true, manifest: { id: 'upd-11' } });
+    await run;
+    // Once the download settled, the safe restart path works again.
+    const applied = await svc.restartToApply();
+    expect(applied).toEqual({ applied: true });
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('OTA native auto-check configuration (audit)', () => {
+  it('app.json checkAutomatically is ON_ERROR_RECOVERY (native layer never competes on normal launches)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { readFileSync } = require('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { join } = require('path') as typeof import('path');
+    const appJson = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'app.json'), 'utf8')) as {
+      expo: { updates?: { checkAutomatically?: string } };
+    };
+    expect(appJson.expo.updates?.checkAutomatically).toBe('ON_ERROR_RECOVERY');
+  });
+});

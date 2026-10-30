@@ -100,7 +100,7 @@
     "runtimeVersion": "1.1.0",
     "updates": {
       "url": "https://u.expo.dev/f402737d-1b54-441d-8738-99ce8e9009e9",
-      "checkAutomatically": "ON_LOAD",
+      "checkAutomatically": "ON_ERROR_RECOVERY",
       "fallbackToCacheTimeout": 0
     }
   }

@@ -1,11 +1,21 @@
 /**
  * OTA update service (V1.1 Phase 0) — wraps expo-updates.
  *
+ * SINGLE authoritative flow (OTA lifecycle audit, docs/OTA_AUDIT.md):
+ * this service owns every normal check / download / apply decision.
+ * The native layer's own auto-check is set to ON_ERROR_RECOVERY
+ * (app.json updates.checkAutomatically), which never checks on a normal
+ * launch — it can only fetch a recovery update after repeated crashes,
+ * so it cannot race or duplicate this flow.
+ *
  * Safety contract (owner-approved):
  * - Checks and downloads NEVER reload the app.
  * - A downloaded update applies only on a natural cold start, or when the
  *   user explicitly presses "Restart to apply" AND no accessibility
- *   operation is busy (speech, recognition, processing, hazard handling).
+ *   operation is busy (speech, recognition, processing, hazard handling)
+ *   AND no check/download is in flight.
+ * - Overlapping checkAndDownload() calls share ONE in-flight promise:
+ *   the native check/fetch pair runs at most once at a time.
  * - In Expo Go / the dev client / the 1.0.0 MVP build (no expo-updates
  *   native module), the service reports `unavailable` honestly instead of
  *   pretending updates work.
@@ -48,7 +58,7 @@ export interface UpdateStatus {
 
 export type RestartResult =
   | { applied: true }
-  | { applied: false; reason: 'unavailable' | 'no-update' | 'busy' };
+  | { applied: false; reason: 'unavailable' | 'no-update' | 'busy' | 'in-progress' };
 
 function loadNativeModule(): UpdatesNativeModule | null {
   try {
@@ -65,6 +75,8 @@ export class UpdateService {
   private native: UpdatesNativeModule | null;
   private busyGuard: () => boolean;
   private phase: UpdatePhase;
+  /** The single in-flight check/download, shared by overlapping callers. */
+  private inFlight: Promise<UpdateStatus> | null = null;
   private lastCheckAt: string | null = null;
   private pendingUpdateId: string | null = null;
   private error: string | null = null;
@@ -105,13 +117,33 @@ export class UpdateService {
     for (const l of this.listeners) l();
   }
 
+  /** True while a check/download run is in flight. */
+  get isCheckInFlight(): boolean {
+    return this.inFlight !== null;
+  }
+
   /**
    * Check for a compatible update and, if one exists, download it.
    * NEVER reloads. The downloaded bundle becomes active on the next cold
    * start automatically (expo-updates semantics), or immediately only via
    * restartToApply().
+   *
+   * Concurrency: overlapping calls return the SAME in-flight promise, so
+   * the native checkForUpdateAsync/fetchUpdateAsync pair is never invoked
+   * twice concurrently and no duplicate requests are issued.
    */
   async checkAndDownload(): Promise<UpdateStatus> {
+    if (this.inFlight) return this.inFlight;
+    const run = this.runCheckAndDownload();
+    this.inFlight = run;
+    try {
+      return await run;
+    } finally {
+      if (this.inFlight === run) this.inFlight = null;
+    }
+  }
+
+  private async runCheckAndDownload(): Promise<UpdateStatus> {
     if (!this.native || !this.native.isEnabled) {
       this.setPhase('unavailable');
       return this.getStatus();
@@ -143,10 +175,12 @@ export class UpdateService {
 
   /**
    * The ONLY reload path in the app. Refuses while an accessibility
-   * operation is busy, and when nothing was downloaded.
+   * operation is busy, while a check/download is in flight, and when
+   * nothing was downloaded.
    */
   async restartToApply(): Promise<RestartResult> {
     if (!this.native || !this.native.isEnabled) return { applied: false, reason: 'unavailable' };
+    if (this.inFlight) return { applied: false, reason: 'in-progress' };
     if (!this.pendingUpdateId) return { applied: false, reason: 'no-update' };
     if (this.busyGuard()) return { applied: false, reason: 'busy' };
     await this.native.reloadAsync();

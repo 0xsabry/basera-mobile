@@ -45,6 +45,7 @@ export default function UpdatesScreen() {
       setBusyNow(true);
       if (settings.announcements) void speechService.speakAnnouncement(t(lang, 'updateBusyBlocked'), lang);
     }
+    if (!result.applied) setStatus(updateService.getStatus());
     // On success the app reloads; nothing else to do here.
   };
 
