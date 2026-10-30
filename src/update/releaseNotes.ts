@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-10-30',
     runtimeVersion: '1.1.0',
+    titleEn: 'BASERA 1.1.0 — New design, Places memory, danger alerts, background sharing',
+    titleAr: 'بصيرة 1.1.0 — تصميم جديد، ذاكرة أماكن، تنبيهات خطر، مشاركة في الخلفية',
+    bodyEn:
+      'A major over-the-air update: new bottom navigation (Home, Assistance, History, Family, Settings), a redesigned home and settings, Smart Place Memory with voice commands, scan-based danger alerts with SOS, and background location sharing with an offline queue. No reinstall was needed. Everything marked unavailable in the app still needs its external setup (for example the guardian service).',
+    bodyAr:
+      'تحديث هوائي كبير: تنقل سفلي جديد (الرئيسية، المساعدة، السجل، العائلة، الإعدادات)، إعادة تصميم للرئيسية والإعدادات، ذاكرة أماكن ذكية بأوامر صوتية، تنبيهات خطر على اللقطات مع استغاثة SOS، ومشاركة موقع في الخلفية مع قائمة انتظار دون اتصال. من غير إعادة تثبيت. أي حاجة مكتوب عليها غير متاحة في التطبيق لسه محتاجة إعدادها الخارجي (زي خدمة الوصي).',
+  },
+  {
+    date: '2026-10-30',
+    runtimeVersion: '1.1.0',
     titleEn: 'OTA smoke test — delivery channel verified',
     titleAr: 'اختبار التحديث الهوائي — تم التحقق من قناة التوصيل',
     bodyEn:
