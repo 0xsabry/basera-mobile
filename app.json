@@ -8,8 +8,12 @@
       "package": "me.auramarketing.basera",
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
-      ]
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "versionCode": 2
     },
     "experiments": {
       "typedRoutes": false
@@ -31,7 +35,9 @@
         "NSCameraUsageDescription": "BASERA uses the phone camera only as a temporary test input until the smart glasses are ready.",
         "NSMicrophoneUsageDescription": "BASERA uses the microphone for voice commands.",
         "NSPhotoLibraryUsageDescription": "BASERA uses your photo library so you can pick images to describe or read.",
-        "NSSpeechRecognitionUsageDescription": "BASERA uses speech recognition for voice commands."
+        "NSSpeechRecognitionUsageDescription": "BASERA uses speech recognition for voice commands.",
+        "NSLocationWhenInUseUsageDescription": "BASERA uses your location only while guardian location sharing is turned on, so the guardians you approved can see where you are.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "BASERA uses your location in the background only while guardian location sharing is turned on, so approved guardians can find you even when the app is closed. You can stop sharing at any time."
       },
       "supportsTablet": true
     },
@@ -63,16 +69,41 @@
             "com.google.android.googlequicksearchbox"
           ]
         }
+      ],
+      "expo-secure-store",
+      "expo-updates",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "BASERA uses your location only while guardian location sharing is turned on, so the guardians you approved can see where you are.",
+          "locationAlwaysAndWhenInUsePermission": "BASERA uses your location in the background only while guardian location sharing is turned on, so approved guardians can find you even when the app is closed. You can stop sharing at any time.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0B3D2E"
+        }
       ]
     ],
     "scheme": "basera",
     "slug": "basera",
     "userInterfaceStyle": "automatic",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "web": {
       "bundler": "metro",
       "favicon": "./assets/icon.png"
     },
-    "owner": "0xsabry"
+    "owner": "0xsabry",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/f402737d-1b54-441d-8738-99ce8e9009e9",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    }
   }
 }

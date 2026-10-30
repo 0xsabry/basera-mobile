@@ -1,15 +1,29 @@
 {
   "build": {
     "development": {
-      "android": { "buildType": "apk" },
+      "android": {
+        "buildType": "apk"
+      },
       "developmentClient": true,
       "distribution": "internal"
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": {
+        "buildType": "apk"
+      },
+      "channel": "preview"
+    },
+    "production": {
+      "distribution": "internal",
+      "channel": "production",
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
-  "cli": { "version": ">= 13.0.0" },
+  "cli": {
+    "version": ">= 13.0.0"
+  },
   "submit": {}
 }
