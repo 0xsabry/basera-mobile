@@ -3,9 +3,11 @@
  *
  * Scope honesty:
  * - This is the PHONE's location, not the glasses'.
- * - Sharing runs ONLY while the app is in the foreground and sharing is
- *   enabled in settings. Background tracking is Phase 2 and is NOT
- *   implemented here (no background permission is ever requested).
+ * - THIS service is the foreground watcher: it collects only while
+ *   the app is in the foreground and sharing is enabled in settings.
+ *   Background updates live in the companion modules
+ *   (BackgroundLocationService + backgroundTask) behind their own
+ *   separate, explained opt-in; disabling sharing stops both.
  * - Battery-conscious: Balanced accuracy, ~30 s / ~25 m between fixes.
  * - Toggling sharing off stops the watcher immediately (local truth) and
  *   records a PERSISTED server-deletion obligation (PendingDeletion):
@@ -19,11 +21,14 @@ import {
   type GuardianService,
   type LocationPointInput,
 } from './GuardianService';
+import { getBackgroundLocationService } from './BackgroundLocationService';
+import { offlineLocationQueue } from './OfflineLocationQueue';
 import {
   PendingDeletionManager,
   type DeletionStatus,
   type PendingDeletionReason,
 } from './PendingDeletion';
+import { recordSuccessfulUpload } from './uploadMeta';
 
 export type { LocationPointInput };
 export type { DeletionStatus, PendingDeletionReason };
@@ -216,7 +221,28 @@ export class LocationSharingService {
     await this.subscribeWatch();
     this.running = true;
     this.watchAppState();
+    // Flush anything the background task queued while offline.
+    await this.flushOfflineQueue().catch(() => undefined);
     return 'started';
+  }
+
+  /**
+   * Upload points the background task stored offline. On failure the
+   * points go back to the queue (FIFO preserved) — never dropped,
+   * never claimed sent.
+   */
+  async flushOfflineQueue(): Promise<number> {
+    const points = await offlineLocationQueue.drain(100);
+    if (points.length === 0) return 0;
+    try {
+      await this.guardian.uploadLocationPoints(points);
+      await recordSuccessfulUpload();
+      return points.length;
+    } catch (e) {
+      this.lastError = e instanceof Error ? e.message : 'offline flush failed';
+      await offlineLocationQueue.enqueue(points);
+      return 0;
+    }
   }
 
   private async subscribeWatch(): Promise<void> {
@@ -255,6 +281,7 @@ export class LocationSharingService {
     const points = this.batcher.flush();
     try {
       await this.guardian.uploadLocationPoints(points);
+      await recordSuccessfulUpload();
     } catch (e) {
       // Keep the failure visible to diagnostics; points are dropped rather
       // than queued forever (24 h retention makes stale queues pointless).
@@ -280,6 +307,8 @@ export class LocationSharingService {
    */
   async disableSharing(): Promise<void> {
     await this.stopWatching();
+    // Background updates stop too — consent off means NO collection.
+    await getBackgroundLocationService().stopBackgroundUpdates();
     this.batcher.flush(); // discard anything unsent
     await this.deletion.requestDeletion('sharing-disabled');
   }

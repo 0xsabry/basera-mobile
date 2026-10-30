@@ -1,6 +1,6 @@
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { speechService } from '../../ai/SpeechService';
 import { AccessibleButton } from '../../components/AccessibleButton';
 import { QrCodeView } from '../../components/QrCodeView';
@@ -14,11 +14,27 @@ import {
   getLocationSharingService,
   type DeletionStatus,
 } from '../../guardian/LocationSharingService';
+import { getBackgroundLocationService } from '../../guardian/BackgroundLocationService';
+import { offlineLocationQueue } from '../../guardian/OfflineLocationQueue';
 import { deletionServerMessageKey } from '../../guardian/PendingDeletion';
 import { formatPairingCode } from '../../guardian/pairing';
-import { t } from '../../i18n/strings';
+import { deriveSharingState, type SharingState } from '../../guardian/sharingState';
+import { getSupabaseClient } from '../../guardian/supabaseClient';
+import { getLastSuccessfulUploadAt } from '../../guardian/uploadMeta';
+import { triggerSos } from '../../hazards/HazardService';
+import { t, type StringKey } from '../../i18n/strings';
 import { useSettings } from '../../state/SettingsContext';
 import { MIN_TOUCH, spacing, typeScale } from '../../theme/tokens';
+
+const SHARING_STATE_KEY: Record<SharingState, StringKey> = {
+  off: 'sharingStateOff',
+  'foreground-only': 'sharingStateForegroundOnly',
+  'background-active': 'sharingStateBackgroundActive',
+  'permission-denied': 'sharingStatePermissionDenied',
+  'gps-unavailable': 'sharingStateGpsUnavailable',
+  'offline-queueing': 'sharingStateOfflineQueueing',
+  'sync-pending': 'sharingStateSyncPending',
+};
 
 export default function GuardianScreen() {
   const { settings, colors, update } = useSettings();
@@ -35,6 +51,75 @@ export default function GuardianScreen() {
   const [guardians, setGuardians] = useState<GuardianLink[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Background tracking + derived sharing state (real signal reads).
+  const [bgStarted, setBgStarted] = useState(false);
+  const [bgDenied, setBgDenied] = useState(false);
+  const [bgMessage, setBgMessage] = useState('');
+  const [lastUploadAt, setLastUploadAt] = useState<number | null>(null);
+  const [queueLen, setQueueLen] = useState(0);
+  const [sharingState, setSharingState] = useState<SharingState>('off');
+
+  const refreshBg = useCallback(async () => {
+    const bg = getBackgroundLocationService();
+    const [started, servicesOn, fgGranted, queued, lastUp] = await Promise.all([
+      bg.hasStarted(),
+      bg.servicesEnabled(),
+      bg.foregroundGranted(),
+      offlineLocationQueue.count(),
+      getLastSuccessfulUploadAt(),
+    ]);
+    setBgStarted(started);
+    setQueueLen(queued);
+    setLastUploadAt(lastUp);
+    setSharingState(
+      deriveSharingState({
+        sharingOn: settings.guardianSharingEnabled,
+        servicesEnabled: servicesOn,
+        foregroundGranted: fgGranted,
+        backgroundStarted: started,
+        offlineQueueLength: queued,
+        configured: getSupabaseClient() !== null,
+        lastUploadAt: lastUp,
+      }),
+    );
+  }, [settings.guardianSharingEnabled]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshBg();
+    }, [refreshBg]),
+  );
+
+  const enableBackground = async () => {
+    setBgMessage('');
+    setBgDenied(false);
+    if (!settings.guardianSharingEnabled) {
+      setBgMessage(t(lang, 'bgTrackingNeedsSharing'));
+      return;
+    }
+    const bg = getBackgroundLocationService();
+    const granted = await bg.requestBackgroundPermission();
+    if (!granted) {
+      setBgDenied(true);
+      setBgMessage(t(lang, 'bgTrackingDenied'));
+      return;
+    }
+    const result = await bg.startBackgroundUpdates(lang);
+    if (result === 'permission-denied') {
+      setBgDenied(true);
+      setBgMessage(t(lang, 'bgTrackingDenied'));
+      return;
+    }
+    await update({ backgroundSharingEnabled: true });
+    await refreshBg();
+  };
+
+  const disableBackground = async () => {
+    await getBackgroundLocationService().stopBackgroundUpdates();
+    await update({ backgroundSharingEnabled: false });
+    await refreshBg();
+  };
 
   const refresh = useCallback(async () => {
     const u = await service.getCurrentUser();
@@ -97,7 +182,8 @@ export default function GuardianScreen() {
         }
       } else {
         await sharingRef.current?.disableSharing();
-        await update({ guardianSharingEnabled: false });
+        await update({ guardianSharingEnabled: false, backgroundSharingEnabled: false });
+        void refreshBg();
         if (sharingRef.current?.deletionStatus.state === 'pending') {
           // Local off is done, but the server has NOT confirmed deletion.
           setMessage(t(lang, 'guardianDeletionPending'));
@@ -268,6 +354,72 @@ export default function GuardianScreen() {
               onPress={() => void sharingRef.current?.retryPendingDeletion()}
             />
           )}
+
+          {/* Sharing status — derived from REAL signals only. */}
+          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
+            {t(lang, 'sharingStateLabel')}
+          </Text>
+          <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
+            {t(lang, SHARING_STATE_KEY[sharingState])}
+          </Text>
+          <Text style={[styles.body, { color: colors.text }]}>
+            {t(lang, 'lastUpdateLabel')}:{' '}
+            {lastUploadAt
+              ? new Date(lastUploadAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')
+              : t(lang, 'lastUpdateNever')}
+          </Text>
+          {queueLen > 0 && (
+            <Text style={[styles.body, { color: colors.text }]}>
+              {t(lang, 'queuedPointsLabel')}: {queueLen}
+            </Text>
+          )}
+
+          {/* Background tracking — separate, explained opt-in. */}
+          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
+            {t(lang, 'bgTrackingTitle')}
+          </Text>
+          <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'bgTrackingExpl')}</Text>
+          <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
+            {bgStarted ? t(lang, 'bgTrackingActive') : t(lang, 'bgTrackingInactive')}
+          </Text>
+          {!!bgMessage && (
+            <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
+              {bgMessage}
+            </Text>
+          )}
+          {bgStarted ? (
+            <AccessibleButton
+              label={t(lang, 'bgTrackingDisable')}
+              variant="danger"
+              onPress={() => void disableBackground()}
+            />
+          ) : (
+            <AccessibleButton label={t(lang, 'bgTrackingEnable')} onPress={() => void enableBackground()} />
+          )}
+          {bgDenied && (
+            <AccessibleButton
+              label={t(lang, 'openSystemSettings')}
+              variant="secondary"
+              onPress={() => void Linking.openSettings()}
+            />
+          )}
+
+          {/* SOS — stored locally; guardian notification attempted only
+              when configured, and the outcome is stated honestly. */}
+          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
+            {t(lang, 'sosTitle')}
+          </Text>
+          <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'sosExpl')}</Text>
+          <AccessibleButton
+            label={t(lang, 'sosButton')}
+            variant="danger"
+            onPress={() => {
+              void (async () => {
+                const outcome = await triggerSos(lang);
+                setBgMessage(outcome.message);
+              })();
+            }}
+          />
 
           <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
             {t(lang, 'guardianPairingTitle')}

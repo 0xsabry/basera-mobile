@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { SettingsProvider, useSettings } from '../state/SettingsContext';
 import { getLocationSharingService } from '../guardian/LocationSharingService';
+import '../guardian/backgroundTask';
 import { configureHazardRuntime } from '../hazards/HazardService';
 import { t } from '../i18n/strings';
 
