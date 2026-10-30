@@ -4,17 +4,17 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import {
   COMMAND_REGISTRY,
-  NativeVoiceCommandService,
   parseVoiceCommand,
   voiceErrorMessageKey,
 } from '../ai/VoiceCommandService';
+import { voiceCommandService } from '../ai/voiceSingleton';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { t } from '../i18n/strings';
 import { setAccessibilityBusy } from '../state/accessibilityBusy';
 import { useSettings } from '../state/SettingsContext';
 import { spacing, typeScale } from '../theme/tokens';
 
-const voiceService = new NativeVoiceCommandService();
+const voiceService = voiceCommandService;
 
 export default function VoiceScreen() {
   const { settings, colors, update } = useSettings();

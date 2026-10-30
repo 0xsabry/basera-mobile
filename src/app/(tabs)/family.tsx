@@ -1,24 +1,24 @@
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { speechService } from '../ai/SpeechService';
-import { AccessibleButton } from '../components/AccessibleButton';
-import { QrCodeView } from '../components/QrCodeView';
+import { speechService } from '../../ai/SpeechService';
+import { AccessibleButton } from '../../components/AccessibleButton';
+import { QrCodeView } from '../../components/QrCodeView';
 import {
   getGuardianService,
   type GuardianLink,
   type GuardianUser,
   type PairingCode,
-} from '../guardian/GuardianService';
+} from '../../guardian/GuardianService';
 import {
   getLocationSharingService,
   type DeletionStatus,
-} from '../guardian/LocationSharingService';
-import { deletionServerMessageKey } from '../guardian/PendingDeletion';
-import { formatPairingCode } from '../guardian/pairing';
-import { t } from '../i18n/strings';
-import { useSettings } from '../state/SettingsContext';
-import { MIN_TOUCH, spacing, typeScale } from '../theme/tokens';
+} from '../../guardian/LocationSharingService';
+import { deletionServerMessageKey } from '../../guardian/PendingDeletion';
+import { formatPairingCode } from '../../guardian/pairing';
+import { t } from '../../i18n/strings';
+import { useSettings } from '../../state/SettingsContext';
+import { MIN_TOUCH, spacing, typeScale } from '../../theme/tokens';
 
 export default function GuardianScreen() {
   const { settings, colors, update } = useSettings();

@@ -2,12 +2,12 @@ import Slider from '@react-native-community/slider';
 import { router } from 'expo-router';
 import React from 'react';
 import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { speechService } from '../ai/SpeechService';
-import { AccessibleButton } from '../components/AccessibleButton';
-import { historyStore } from '../data/HistoryStore';
-import { t } from '../i18n/strings';
-import { useSettings } from '../state/SettingsContext';
-import { MIN_TOUCH, spacing, typeScale } from '../theme/tokens';
+import { speechService } from '../../ai/SpeechService';
+import { AccessibleButton } from '../../components/AccessibleButton';
+import { historyStore } from '../../data/HistoryStore';
+import { t } from '../../i18n/strings';
+import { useSettings } from '../../state/SettingsContext';
+import { MIN_TOUCH, spacing, typeScale } from '../../theme/tokens';
 
 export default function SettingsScreen() {
   const { settings, colors, update } = useSettings();

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { speechService } from '../ai/SpeechService';
-import { AccessibleButton } from '../components/AccessibleButton';
-import { historyStore, type HistoryItem } from '../data/HistoryStore';
-import { t } from '../i18n/strings';
-import { useSettings } from '../state/SettingsContext';
-import { spacing, typeScale } from '../theme/tokens';
+import { speechService } from '../../ai/SpeechService';
+import { AccessibleButton } from '../../components/AccessibleButton';
+import { historyStore, type HistoryItem } from '../../data/HistoryStore';
+import { t } from '../../i18n/strings';
+import { useSettings } from '../../state/SettingsContext';
+import { spacing, typeScale } from '../../theme/tokens';
 
 export default function HistoryScreen() {
   const { settings, colors } = useSettings();
