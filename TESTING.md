@@ -339,3 +339,8 @@ Release-gate closure items 1 and 2 (see docs/OTA_AUDIT.md):
 - Live Supabase (migrations, live RLS denial matrix, two-device
   pairing/GPS/PWA/push): **NOT TESTED** — the owner's Supabase project
   does not exist yet; procedure in docs/GUARDIAN_SETUP.md.
+- Gates for this section: npm ci OK; tsc clean; lint clean; jest
+  16 suites / 165 tests, all passing (baseline 15/150; +4 update
+  tests, +11 pending-deletion tests, +1 suite); expo export OK with
+  all 3 models hash-identical to source (yolo11n 19bfdc3c…,
+  ppocr_arabic_rec 1fc31af5…, ppocr_det 04e8e0b6…).

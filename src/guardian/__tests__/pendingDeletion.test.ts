@@ -87,7 +87,7 @@ function fakeAdapter() {
   };
   return {
     adapter,
-    emit: (p: LocationPointInput) =>
+    emit: (p: Partial<LocationPointInput> = {}) =>
       onPoint?.({ lat: 30, lng: 31, accuracyM: 5, recordedAt: '2026-10-30T10:00:00Z', ...p }),
     watching: () => onPoint !== null,
   };
@@ -244,8 +244,8 @@ describe('LocationSharingService offline revocation', () => {
     const storage = fakeStorage();
     const { svc, a } = buildSharing(g, storage);
     await expect(svc.start()).resolves.toBe('started');
-    a.emit({} as LocationPointInput);
-    a.emit({} as LocationPointInput); // 2 buffered points, not yet flushed
+    a.emit();
+    a.emit(); // 2 buffered points, not yet flushed
     g.setOffline(true);
     await svc.disableSharing();
     expect(svc.isRunning).toBe(false);
@@ -254,7 +254,7 @@ describe('LocationSharingService offline revocation', () => {
     expect(storage.map.has(PENDING_DELETION_KEY)).toBe(true);
     // No further uploads are attempted after the local stop:
     const uploadsAtStop = g.uploads.length;
-    a.emit({} as LocationPointInput);
+    a.emit();
     await svc.flushBatch();
     expect(g.uploads.length).toBe(uploadsAtStop);
   });
