@@ -17,6 +17,9 @@ Supabase Dashboard → SQL Editor → run each file fully, in this order:
 1. `supabase/migrations/0001_schema.sql`
 2. `supabase/migrations/0002_rls_and_functions.sql`
 3. `supabase/migrations/0003_comments_and_cron.sql` (contains the pg_cron
+4. `supabase/migrations/0004_saved_places.sql` — Smart Place Memory sync
+   table. Owner-only RLS: guardians get NO access to saved places, by
+   design. Skip it only if place sync will never be enabled.
    snippet for the 24-hour purge — enable the `pg_cron` extension under
    Database → Extensions and uncomment the schedule, **or** use the
    `cleanup-locations` Edge Function on an hourly schedule instead;

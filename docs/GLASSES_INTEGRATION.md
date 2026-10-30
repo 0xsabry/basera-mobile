@@ -61,6 +61,24 @@ Field names and the transport for this handshake are deliberately NOT
 specified yet. They will be designed against the real hardware spec, not
 guessed in advance.
 
+## Hazard event source contract (v1, code: src/hazards/HazardEventSource.ts)
+
+Future glasses firmware (or any external detector) reports hazard
+candidates through a versioned interface — transport (BLE/Wi-Fi) is
+defined WITH the hardware team later; only the data contract is fixed
+now:
+
+- `HazardEventSource` — `contractVersion: 1`, `connect()` /
+  `disconnect()`, a single `onEvent(listener)` subscription.
+- `ExternalHazardEvent` — `{ contractVersion: 1, className (COCO),
+  confidence 0..1, direction?, proximityCategory?, sourceDeviceId?,
+  occurredAt }`. External events feed the SAME RiskEngine as phone
+  detections, so thresholds/persistence/cooldown apply uniformly.
+- `NotAvailableHazardEventSource` — the only implementation today:
+  `available === false` and `connect()` throws the typed
+  `HazardSourceUnavailableError`. No protocol is invented, no fake
+  events are ever emitted.
+
 ## Explicitly not implemented
 
 - No Bluetooth or Wi-Fi protocol, pairing flow, or driver exists in the app.

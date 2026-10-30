@@ -344,3 +344,37 @@ Release-gate closure items 1 and 2 (see docs/OTA_AUDIT.md):
   tests, +11 pending-deletion tests, +1 suite); expo export OK with
   all 3 models hash-identical to source (yolo11n 19bfdc3c…,
   ppocr_arabic_rec 1fc31af5…, ppocr_det 04e8e0b6…).
+
+## 2026-10-30 (evening) — Premium UX transformation + V1.1 completion (branch v1.1)
+
+Full re-verification after the mission (navigation restructure, Home +
+Assistance, Settings rebuild, Smart Place Memory, scan-based hazard
+alerts + SOS, background location):
+
+| Gate | Result |
+|---|---|
+| `npm ci` | ✅ succeeds from package-lock (foreground install, verified on disk) |
+| `npx tsc --noEmit` | ✅ clean, 0 errors |
+| `npm run lint` (expo lint) | ✅ 0 errors, 0 warnings |
+| `npx jest --runInBand` | ✅ **21 suites, 233 tests, all pass** (baseline at mission start: 16 suites / 165 tests) |
+| `npx expo export --platform android` | ✅ succeeds; all 3 bundled models hash-identical to source (YOLO11n `19bfdc3c…`, PP-OCR det `04e8e0b6…`, PP-OCR Arabic rec `1fc31af5…`) |
+
+New suites in this pass: theme/haptics gates + speech gate (speech off
+suppresses ALL TTS incl. alerts; separate alert repeat target), risk
+engine (14 tests: thresholds, 2-of-3 persistence, 20 s cooldown,
+escalation, person-never-high), hazard service (alert delivery +
+honest SOS outcomes), voice parser (new intents + argument extraction;
+ALL pre-existing regression cases unchanged), places (normalization,
+haversine, honest distance phrasing, store CRUD, proximity cooldown —
+incl. a real epoch-0 cooldown bug the tests caught), background
+location (offline queue FIFO/cap, sharing-state derivation, option
+building + permission gating, batch handler upload-or-queue honesty),
+static RLS assertions for migration 0004 (owner-only saved_places;
+guardians NO access).
+
+NOT TESTED (unchanged, owner/team-gated): on-device OTA receipt,
+live Supabase migrations + RLS matrix execution, two-device
+pairing/GPS/PWA/push flows, background tracking on a real device,
+push delivery. Background location is implemented in code and
+manifest-verified JS-only on runtime 1.1.0 (see FEATURE_STATUS.md) —
+device execution still pending.

@@ -91,6 +91,19 @@ export default function GuardianScreen() {
     }, [refreshBg]),
   );
 
+  // If the user opted into background sharing, make sure the OS task
+  // is actually running when this screen opens (it survives reboots
+  // natively, but permission can be revoked in system settings — the
+  // service refuses then, and the status above shows the truth).
+  useEffect(() => {
+    if (settings.backgroundSharingEnabled && settings.guardianSharingEnabled) {
+      void getBackgroundLocationService()
+        .startBackgroundUpdates(lang)
+        .then(() => refreshBg())
+        .catch(() => undefined);
+    }
+  }, [settings.backgroundSharingEnabled, settings.guardianSharingEnabled, lang, refreshBg]);
+
   const enableBackground = async () => {
     setBgMessage('');
     setBgDenied(false);
