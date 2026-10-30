@@ -183,3 +183,10 @@ welcome); navigating all screens without freezing; Arabic/English
 switch incl. RTL/LTR layout; microphone-permission denial + recovery;
 offline/API-unavailable behavior showing an honest understandable
 error.
+
+## Standalone MVP build (2026-10-30)
+- EAS preview profile (internal, apk, standalone) build 9b80e739-576f-4b33-8d86-9e223e01d275: FINISHED.
+- APK artifact verified after download: 203,247,112 bytes, SHA256 c344142c31b2e375e2ef8973260cc8e8dac61d6fc2c991542ea8cbe904d60e63; package me.auramarketing.basera, versionName 1.0.0, versionCode 1.
+- ALL THREE models embedded and hash-identical to source: res/bs.tflite = YOLO11n (19bfdc3c…), res/Y0.tflite = PP-OCR arabic rec (1fc31af5…), res/iZ.tflite = PP-OCR det (04e8e0b6…). libNitroTflite.so present for all ABIs. No Metro/dev server needed — opens the app directly.
+- Submission required repeated retries: sandbox egress resets Expo API/upload connections intermittently on both proxy and direct routes (same behavior as the dev build); build creation succeeded on grind attempt 11 (direct route).
+- Device verification by the team is still pending for: app launch, mic + AR/EN voice commands, camera capture, scene description, Latin OCR, Arabic OCR, Repeat behavior, navigation fluidity, language/RTL switch, permission-denial recovery, offline behavior.
