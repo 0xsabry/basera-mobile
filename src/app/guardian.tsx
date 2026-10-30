@@ -20,8 +20,8 @@ export default function GuardianScreen() {
   const { settings, colors, update } = useSettings();
   const lang = settings.language;
   const service = getGuardianService();
-  const sharingRef = useRef<LocationSharingService | null>(null);
-  if (!sharingRef.current) sharingRef.current = new LocationSharingService(service);
+  const [sharing] = useState(() => new LocationSharingService(service));
+  const sharingRef = useRef(sharing);
 
   const [user, setUser] = useState<GuardianUser | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -59,10 +59,11 @@ export default function GuardianScreen() {
   }, [user, settings.guardianSharingEnabled]);
 
   useEffect(() => {
+    const svc = sharing;
     return () => {
-      void sharingRef.current?.stopWatching();
+      void svc.stopWatching();
     };
-  }, []);
+  }, [sharing]);
 
   const toggleSharing = async (on: boolean) => {
     if (busy) return;

@@ -262,10 +262,10 @@ export class NotConfiguredGuardianService implements GuardianService {
   async getCurrentUser(): Promise<GuardianUser | null> {
     return null;
   }
-  async signIn(): Promise<GuardianUser> {
+  async signIn(_email: string, _password: string): Promise<GuardianUser> {
     throw new GuardianNotConfiguredError();
   }
-  async signUp(): Promise<GuardianUser | null> {
+  async signUp(_email: string, _password: string): Promise<GuardianUser | null> {
     throw new GuardianNotConfiguredError();
   }
   async signOut(): Promise<void> {
@@ -274,7 +274,7 @@ export class NotConfiguredGuardianService implements GuardianService {
   async createPairingCode(): Promise<PairingCode> {
     throw new GuardianNotConfiguredError();
   }
-  async redeemPairingCode(): Promise<{ ownerId: string; status: GuardianLinkStatus }> {
+  async redeemPairingCode(_code: string): Promise<{ ownerId: string; status: GuardianLinkStatus }> {
     throw new GuardianNotConfiguredError();
   }
   async listPendingRequests(): Promise<GuardianLink[]> {
@@ -283,22 +283,22 @@ export class NotConfiguredGuardianService implements GuardianService {
   async listMyGuardians(): Promise<GuardianLink[]> {
     return [];
   }
-  async approveLink(): Promise<void> {
+  async approveLink(_linkId: string): Promise<void> {
     throw new GuardianNotConfiguredError();
   }
-  async denyLink(): Promise<void> {
+  async denyLink(_linkId: string): Promise<void> {
     throw new GuardianNotConfiguredError();
   }
-  async revokeLink(): Promise<void> {
+  async revokeLink(_linkId: string): Promise<void> {
     throw new GuardianNotConfiguredError();
   }
-  async setSharingEnabled(): Promise<void> {
+  async setSharingEnabled(_enabled: boolean): Promise<void> {
     throw new GuardianNotConfiguredError();
   }
-  async uploadLocationPoints(): Promise<void> {
+  async uploadLocationPoints(_points: LocationPointInput[]): Promise<void> {
     throw new GuardianNotConfiguredError();
   }
-  async getLatestLocation(): Promise<LatestLocation | null> {
+  async getLatestLocation(_userId: string): Promise<LatestLocation | null> {
     return null;
   }
 }

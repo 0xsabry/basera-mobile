@@ -190,3 +190,99 @@ error.
 - ALL THREE models embedded and hash-identical to source: res/bs.tflite = YOLO11n (19bfdc3c…), res/Y0.tflite = PP-OCR arabic rec (1fc31af5…), res/iZ.tflite = PP-OCR det (04e8e0b6…). libNitroTflite.so present for all ABIs. No Metro/dev server needed — opens the app directly.
 - Submission required repeated retries: sandbox egress resets Expo API/upload connections intermittently on both proxy and direct routes (same behavior as the dev build); build creation succeeded on grind attempt 11 (direct route).
 - Device verification by the team is still pending for: app launch, mic + AR/EN voice commands, camera capture, scene description, Latin OCR, Arabic OCR, Repeat behavior, navigation fluidity, language/RTL switch, permission-denial recovery, offline behavior.
+
+## V1.1 Phase 0 + Phase 1 (2026-10-30, branch v1.1 only — master/MVP untouched)
+
+Implemented per the owner's approved decisions + corrections (see
+docs/V1.1_PLAN.md amendments and docs/GUARDIAN_SETUP.md).
+
+**Phase 0 — OTA foundation**
+- `expo-updates` ~58.0.19 installed; app.json: version 1.1.0,
+  `android.versionCode` 2, `runtimeVersion {policy: appVersion}`,
+  `updates {url: https://u.expo.dev/f402737d-…, checkAutomatically: ON_LOAD,
+  fallbackToCacheTimeout: 0}`; eas.json: preview → channel "preview", new
+  production profile → channel "production" (not built), development untouched.
+- `UpdateService`: check + download NEVER reload; the only reload path is
+  `restartToApply()`, refused while the accessibility-busy guard is active
+  (speech via SpeechService callbacks, processing in detect/read,
+  recognition in voice) or when nothing was downloaded. Release notes come
+  from in-bundle `src/update/releaseNotes.ts` (owner correction — the
+  `eas update --message` text is NOT app-visible). Promotion/rollback
+  commands corrected in docs: `eas update:republish --destination-channel
+  production`, `eas update:rollback`. Code signing NOT configured (not a
+  default; eligibility unverified — documented, not claimed).
+- Prebuild ran WITHOUT --clean; native diff reviewed file-by-file and is
+  fully attributable: build.gradle versionCode 2 / versionName 1.1.0;
+  AndroidManifest +location/background-location/foreground-service/
+  POST_NOTIFICATIONS/RECEIVE_BOOT_COMPLETED permissions, updates ENABLED
+  +URL+runtime string, secure-store backup-rule attributes (the referenced
+  XML ships inside the expo-secure-store library), notification color;
+  colors.xml + strings.xml additions. Nothing else changed; android/ not
+  deleted.
+
+**Native modules added to the single 1.1.0 APK — why each (all SDK 58
+builds, selected by `expo install`, versions verified in node_modules):**
+- expo-updates ~58.0.19 — the OTA foundation itself (Phase 0).
+- expo-location ~58.0.20 — Phase 1 foreground GPS + Phase 2 background
+  (plugin pre-adds background/foreground-service manifest entries so
+  Phase 2 needs no new APK; the Phase 1 app NEVER requests background
+  permission).
+- expo-task-manager ~58.0.12 — required by expo-location background tasks
+  in Phase 2; no Phase 1 code registers tasks.
+- expo-notifications ~58.1.7 — Phase 3 guardian alerts + local alerts;
+  Phase 1 adds only the permission/manifest foundation.
+- expo-secure-store ~58.0.2 — Supabase session storage (chunked adapter).
+- JS-only: @supabase/supabase-js 2.118.0, qrcode 1.5.4 (QR rendered as a
+  View grid — deliberately no native SVG module).
+
+**Phase 1 — Supabase guardian (foreground only)**
+- Migrations `supabase/migrations/0001..0003`: profiles, device_settings,
+  guardian_links, pairing_codes (SHA-256 hash only, 15-min, single-use),
+  pairing_attempts throttle, location_points, latest_locations (trigger-
+  maintained), hazard_events (Phase 3 table), push_endpoints (platform
+  'android-expo' vs 'web-fcm' — separate registrations per owner
+  correction). RLS on every table; anon gets NO grants; guardian reads
+  require an ACTIVE link inside the policy; links change only via
+  security-definer RPCs (create_pairing_code / redeem → PENDING only /
+  approve_link owner-only / revoke_link either party / set_sharing_enabled
+  with server-side purge on false; owner revoking the LAST active guardian
+  also purges). cleanup_locations() (service-role only) deletes points
+  older than **24 hours**.
+- App: guardian hub + auth screens (honest not-configured state until the
+  owner creates the project), foreground LocationSharingService (Balanced,
+  ~30 s/~25 m, batch ≥3 points or 60 s, stops on background, toggle-off =
+  stop + server purge), pairing code + QR, approve/deny, revoke.
+- PWA `guardian-pwa/`: installable, AR/EN + RTL, Supabase sign-in, code
+  redeem, Leaflet/OSM map + freshness + 24 h history, revoke-my-access,
+  FCM Web Push registration into push_endpoints (web-fcm); works fully
+  minus push when Firebase is unconfigured.
+- Edge Functions `supabase/functions/`: notify-guardian (caller must be
+  the owner; FCM HTTP v1 via service-account JWT + Expo Push; payloads
+  carry NO location; only 'test' wired in Phase 1) and cleanup-locations
+  (CRON_SECRET-gated). All privileged keys are Edge secrets only.
+
+Gates — actual results (2026-10-30, branch v1.1):
+
+| Gate | Result |
+|---|---|
+| `npm ci` | ✅ succeeds |
+| `npx tsc --noEmit` | ✅ clean, 0 errors |
+| `npm run lint` | ✅ 0 errors, 0 warnings |
+| `npm test -- --runInBand` | ✅ **15 suites, 150 tests, all pass** (79 pre-existing + 71 new: UpdateService 10, pairing 3, GuardianService 8, location sharing 6, static RLS contract 44) |
+| `npx expo export --platform android` | ✅ succeeds — all 3 models in dist, SHA256-identical (YOLO 19bfdc3c…, det 04e8e0b6…, rec 1fc31af5…) |
+| PWA static checks | ✅ `node --check` passes for app.js/config.js/both service workers; manifest parses as JSON |
+| `sha256sum assets/models/yolo11n.tflite` | ✅ 19bfdc3c… — unchanged |
+
+**NOT done / NOT verified (honest list):**
+- Live RLS execution: no Docker/Postgres exists in this environment and
+  the owner has not created the Supabase project. `supabase/tests/
+  rls_tests.sql` covers the full denial matrix and must be run by the
+  owner (docs/GUARDIAN_SETUP.md §3) — until then RLS is verified
+  statically (44-assertion jest contract) + by client-contract tests only.
+- No 1.1.0 APK built yet (parent runs EAS next); no OTA smoke publish yet;
+  the 1.0.0-cannot-receive-OTA confirmation is by artifact inspection
+  (no expo-updates in the 1.0.0 APK) until the smoke test runs.
+- No device tests of Phase 0/1 (location permission flow, sharing,
+  updates screen) — pending the 1.1.0 build and the owner's Supabase setup.
+- Background tracking (Phase 2) and live hazard alerts (Phase 3) are NOT
+  implemented and must not be claimed.

@@ -16,7 +16,6 @@ import { join } from 'path';
 const MIGRATIONS_DIR = join(__dirname, '..', '..', '..', 'supabase', 'migrations');
 const schema = readFileSync(join(MIGRATIONS_DIR, '0001_schema.sql'), 'utf8');
 const rls = readFileSync(join(MIGRATIONS_DIR, '0002_rls_and_functions.sql'), 'utf8');
-const all = `${schema}\n${rls}`;
 
 const TABLES = [
   'profiles',
