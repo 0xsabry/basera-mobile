@@ -12,10 +12,12 @@ interface Props {
 }
 
 export function AccessibleButton({ label, hint, onPress, variant = 'primary', disabled }: Props) {
-  const { colors } = useSettings();
+  const { colors, type, settings } = useSettings();
   const bg =
     variant === 'primary' ? colors.primary : variant === 'danger' ? colors.danger : colors.surfaceAlt;
   const fg = variant === 'secondary' ? colors.text : variant === 'danger' ? '#FFFFFF' : colors.primaryText;
+  // Reduced-motion preference removes the press fade effect entirely.
+  const pressOpacity = settings.reducedMotion ? 1 : 0.85;
   return (
     <Pressable
       accessibilityRole="button"
@@ -26,10 +28,10 @@ export function AccessibleButton({ label, hint, onPress, variant = 'primary', di
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: bg, borderColor: colors.border, opacity: disabled ? 0.5 : pressed ? 0.85 : 1 },
+        { backgroundColor: bg, borderColor: colors.border, opacity: disabled ? 0.5 : pressed ? pressOpacity : 1 },
       ]}
     >
-      <Text style={[styles.label, { color: fg }]}>{label}</Text>
+      <Text style={[styles.label, { color: fg, fontSize: type.button }]}>{label}</Text>
     </Pressable>
   );
 }

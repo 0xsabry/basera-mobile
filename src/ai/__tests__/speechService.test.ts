@@ -67,4 +67,41 @@ describe('SpeechService repeat semantics', () => {
     expect(mockSpeak).toHaveBeenCalledTimes(1);
     expect(svc.lastText).toBe(DESCRIPTION_AR);
   });
+
+  it('alert target is separate: speakAlert does not clobber the response repeat target', async () => {
+    const svc = new ExpoSpeechService();
+    await svc.speak(DESCRIPTION_AR, 'ar');
+    await svc.speakAlert('احذر! عربية قريبة منك في المنتصف.', 'ar');
+    expect(svc.lastAlertText).toBe('احذر! عربية قريبة منك في المنتصف.');
+    expect(svc.lastText).toBe(DESCRIPTION_AR);
+    mockSpeak.mockClear();
+    await svc.repeatAlert();
+    expect(mockSpeak.mock.calls[0][0]).toBe('احذر! عربية قريبة منك في المنتصف.');
+    mockSpeak.mockClear();
+    await svc.repeatLast();
+    expect(mockSpeak.mock.calls[0][0]).toBe(DESCRIPTION_AR);
+  });
+
+  it('speechEnabled=false suppresses ALL output (speak, announcement, alert)', async () => {
+    const svc = new ExpoSpeechService();
+    svc.setSpeechEnabled(false);
+    await svc.speak('hello', 'en');
+    await svc.speakAnnouncement('hello', 'en');
+    await svc.speakAlert('warning', 'en');
+    expect(mockSpeak).not.toHaveBeenCalled();
+    svc.setSpeechEnabled(true);
+    await svc.speak('hello again', 'en');
+    expect(mockSpeak).toHaveBeenCalledTimes(1);
+  });
+
+  it('chosen voice identifier is passed through to the TTS call', async () => {
+    const svc = new ExpoSpeechService();
+    svc.setVoiceIdentifier('ar-voice-1');
+    await svc.speak('مرحبا', 'ar');
+    expect(mockSpeak.mock.calls[0][1].voice).toBe('ar-voice-1');
+    svc.setVoiceIdentifier(null);
+    mockSpeak.mockClear();
+    await svc.speak('مرحبا', 'ar');
+    expect(mockSpeak.mock.calls[0][1].voice).toBeUndefined();
+  });
 });

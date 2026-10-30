@@ -1,14 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { I18nManager } from 'react-native';
+import { speechService } from '../ai/SpeechService';
 import type { AppLanguage } from '../ai/types';
 import {
   darkColors,
   darkHighContrast,
   lightColors,
   lightHighContrast,
+  scaledType,
+  type TextScaleOption,
   type ThemeColors,
+  type TypeScale,
 } from '../theme/tokens';
+import { setHapticsEnabled } from './haptics';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -23,6 +28,25 @@ export interface Settings {
    *  server record (device_settings) mirrors this; the phone is the source
    *  of truth and turning it off purges stored locations server-side. */
   guardianSharingEnabled: boolean;
+  /** V1.1 Phase 2: background tracking consent (default OFF). Separate
+   *  from foreground consent: requires its own explanation + the Android
+   *  background-location permission before anything starts. */
+  backgroundSharingEnabled: boolean;
+  /** Larger-text scale multiplier applied to the type scale. */
+  textScale: TextScaleOption;
+  /** Reduced motion: disables press/transition effects. */
+  reducedMotion: boolean;
+  /** Master speech-output gate (Settings → Voice). Off = no TTS at all. */
+  speechEnabled: boolean;
+  /** Chosen TTS voice identifier (null = OS default for the language). */
+  voiceIdentifier: string | null;
+  /** Vibration alerts gate (hazard alerts + key confirmations). */
+  hapticsEnabled: boolean;
+  /** Smart Place Memory proximity radius in meters. */
+  proximityRadiusM: number;
+  /** Saved-places cloud sync opt-in (only meaningful when Supabase is
+   *  configured; default OFF — places are local unless the user opts in). */
+  placesSyncEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -33,6 +57,14 @@ export const DEFAULT_SETTINGS: Settings = {
   announcements: true,
   onboardingDone: false,
   guardianSharingEnabled: false,
+  backgroundSharingEnabled: false,
+  textScale: 1,
+  reducedMotion: false,
+  speechEnabled: true,
+  voiceIdentifier: null,
+  hapticsEnabled: true,
+  proximityRadiusM: 150,
+  placesSyncEnabled: false,
 };
 
 const STORAGE_KEY = 'basera.settings.v1';
@@ -64,6 +96,8 @@ export function applyLayoutDirection(lang: AppLanguage): void {
 interface SettingsContextValue {
   settings: Settings;
   colors: ThemeColors;
+  /** Type scale with the user's larger-text preference applied. */
+  type: TypeScale;
   isDark: boolean;
   update: (patch: Partial<Settings>) => Promise<void>;
   loaded: boolean;
@@ -72,6 +106,7 @@ interface SettingsContextValue {
 const SettingsContext = createContext<SettingsContextValue>({
   settings: DEFAULT_SETTINGS,
   colors: lightColors,
+  type: scaledType(1),
   isDark: false,
   update: async () => undefined,
   loaded: false,
@@ -118,11 +153,21 @@ export function SettingsProvider({
     });
   };
 
+  // Keep the non-React services in sync with the persisted preferences:
+  // speech gate + chosen voice + rate, and the vibration gate.
+  useEffect(() => {
+    speechService.setSpeechEnabled(settings.speechEnabled);
+    speechService.setVoiceIdentifier(settings.voiceIdentifier);
+    speechService.setRate(settings.speechRate);
+    setHapticsEnabled(settings.hapticsEnabled);
+  }, [settings.speechEnabled, settings.voiceIdentifier, settings.speechRate, settings.hapticsEnabled]);
+
   const value = useMemo<SettingsContextValue>(() => {
     const isDark = resolveIsDark(settings.theme, systemDark);
     return {
       settings,
       colors: colorsFor(isDark, settings.highContrast),
+      type: scaledType(settings.textScale),
       isDark,
       update,
       loaded,

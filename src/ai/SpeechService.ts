@@ -19,27 +19,63 @@ export interface SpeechService {
   speak(text: string, lang: AppLanguage): Promise<void>;
   /** Speak a one-off announcement. Does NOT become the repeat target. */
   speakAnnouncement(text: string, lang: AppLanguage): Promise<void>;
+  /**
+   * Speak a hazard alert. Becomes the ALERT repeat target (repeatAlert),
+   * deliberately separate from the ordinary repeat target — after an
+   * alert, "repeat the warning" must replay the warning, while plain
+   * "repeat" keeps its established meaning (latest useful response).
+   */
+  speakAlert(text: string, lang: AppLanguage): Promise<void>;
   stop(): Promise<void>;
   /** Re-speak the last meaningful response, or say there is nothing yet. */
   repeatLast(): Promise<void>;
+  /** Re-speak the last hazard alert, or say there is nothing yet. */
+  repeatAlert(): Promise<void>;
   setRate(rate: number): void;
+  /** Settings gate: when false, ALL speech output is suppressed. */
+  setSpeechEnabled(enabled: boolean): void;
+  /** Settings: chosen TTS voice identifier (null = OS default voice). */
+  setVoiceIdentifier(identifier: string | null): void;
   readonly lastText: string | null;
+  readonly lastAlertText: string | null;
 }
 
 export class ExpoSpeechService implements SpeechService {
   private rate = 1.0;
   private _lastText: string | null = null;
+  private _lastAlertText: string | null = null;
   private _lastLang: AppLanguage = 'en';
+  private speechEnabled = true;
+  private voiceIdentifier: string | null = null;
 
   get lastText(): string | null {
     return this._lastText;
+  }
+
+  get lastAlertText(): string | null {
+    return this._lastAlertText;
   }
 
   setRate(rate: number): void {
     this.rate = Math.min(2, Math.max(0.5, rate));
   }
 
+  setSpeechEnabled(enabled: boolean): void {
+    this.speechEnabled = enabled;
+    if (!enabled) {
+      // Turning speech off must also silence anything currently playing.
+      void Speech.stop().catch(() => undefined);
+    }
+  }
+
+  setVoiceIdentifier(identifier: string | null): void {
+    this.voiceIdentifier = identifier;
+  }
+
   private async utter(text: string, lang: AppLanguage): Promise<void> {
+    // Settings gate: speech output disabled → complete no-op (visual and
+    // vibration feedback channels remain available to callers).
+    if (!this.speechEnabled) return;
     // Track the most recent speech language (NOT the repeat target) so the
     // "nothing to repeat" message is spoken in the user's current language.
     this._lastLang = lang;
@@ -56,6 +92,7 @@ export class ExpoSpeechService implements SpeechService {
     Speech.speak(text, {
       language: lang === 'ar' ? 'ar-EG' : 'en-US',
       rate: this.rate,
+      ...(this.voiceIdentifier ? { voice: this.voiceIdentifier } : {}),
       onDone: clearBusy,
       onStopped: clearBusy,
       onError: clearBusy,
@@ -70,6 +107,20 @@ export class ExpoSpeechService implements SpeechService {
 
   async speakAnnouncement(text: string, lang: AppLanguage): Promise<void> {
     await this.utter(text, lang);
+  }
+
+  async speakAlert(text: string, lang: AppLanguage): Promise<void> {
+    this._lastAlertText = text;
+    this._lastLang = lang;
+    await this.utter(text, lang);
+  }
+
+  async repeatAlert(): Promise<void> {
+    if (this._lastAlertText) {
+      await this.utter(this._lastAlertText, this._lastLang);
+    } else {
+      await this.utter(t(this._lastLang, 'nothingToRepeat'), this._lastLang);
+    }
   }
 
   async stop(): Promise<void> {
