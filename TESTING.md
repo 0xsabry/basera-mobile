@@ -309,3 +309,33 @@ Gates — actual results (2026-10-30, branch v1.1):
   native libraries — it cannot receive OTA updates at all.
 - On-device pickup of the update (install 1.1.0 → relaunch → note appears)
   remains a TEAM device check; server-side targeting is proven.
+
+## OTA audit + offline revocation (2026-10-30, branch v1.1)
+
+Release-gate closure items 1 and 2 (see docs/OTA_AUDIT.md):
+
+- OTA single authoritative flow: app.json checkAutomatically is now
+  ON_ERROR_RECOVERY; prebuild (no --clean) changed exactly one manifest
+  line (EXPO_UPDATES_CHECK_ON_LAUNCH ALWAYS -> ERROR_RECOVERY_ONLY).
+  UpdateService: overlapping checkAndDownload() calls share one in-flight
+  run (native check invoked exactly once — test-asserted);
+  restartToApply() additionally refuses with reason 'in-progress' while
+  a check/download runs, and still refuses while accessibility is busy.
+  NOTE: checkAutomatically lives in the native manifest, so the config
+  change takes effect only in the NEXT APK build; the JS hardening
+  ships via OTA. Device receipt/application of the published smoke
+  update (group 2f29ef5b, runtime 1.1.0) remains **NOT TESTED** — team
+  device steps are in docs/OTA_AUDIT.md §5.
+- Offline location revocation: PendingDeletion state machine
+  (none -> pending -> confirmed). The pending record is persisted in
+  SecureStore before any network attempt; 'confirmed' is assigned in
+  exactly one code location (the executor's success branch); retries
+  fire on app launch, AppState foreground, guardian-screen mount, and a
+  Retry button. Covered by 11 new tests (fake backend + fake storage):
+  offline disable stops uploads immediately and stays pending; restart
+  persistence; retry success confirms and clears; failures increment
+  attempts and never confirm; re-enabling sharing never drops the
+  obligation (purge runs before setSharingEnabled(true)).
+- Live Supabase (migrations, live RLS denial matrix, two-device
+  pairing/GPS/PWA/push): **NOT TESTED** — the owner's Supabase project
+  does not exist yet; procedure in docs/GUARDIAN_SETUP.md.

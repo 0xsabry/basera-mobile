@@ -98,6 +98,34 @@ as an optional hardening step, not a current guarantee.
 runtime): new native modules, permissions, SDK upgrades, config-plugin
 changes. JS/TS/assets-only changes ship via OTA to the matching runtime.
 
+## 8b. Privacy: offline revocation & server deletion (how it behaves)
+
+Turning sharing off — or revoking the last guardian — does two separate
+things, and the app reports them separately:
+
+1. **Local (immediate, offline-safe):** collection and uploads stop at
+   once; unsent points are discarded. The guardian screen states
+   *"Sharing is OFF on this device — no new locations are recorded or
+   sent."* This is always true the moment the toggle flips.
+2. **Server (until acknowledged, it is only "pending"):** a deletion
+   obligation is written to the device's secure storage **before** any
+   network call (`basera.guardian.pendingDeletion.v1`), then the purge
+   RPC (`set_sharing_enabled(false)`; for a last-guardian revoke, the
+   `revoke_link` call is re-driven first) is attempted. Only when that
+   RPC **succeeds** does the app say *"Server copies deleted —
+   confirmed <date/time>"*. Any failure keeps the state at
+   *"deletion pending"* and retries automatically on app launch, on
+   returning to the foreground, when the guardian screen opens, or via
+   the **Retry deletion now** button (retries are app-activity-driven —
+   no background job is claimed). Turning sharing back on never cancels
+   a pending deletion: it runs first on the next successful contact and
+   removes the locations stored up to that moment.
+
+Operators verifying privacy behavior on a live project: disable sharing
+with the phone in airplane mode → the Table Editor still shows the rows
+and the app shows *pending*; reconnect and reopen the app → the rows are
+deleted and the app shows *confirmed* with a timestamp.
+
 ## 9. Acceptance checklist before calling Phase 1 "live"
 - [ ] Migrations applied; live RLS script prints ALL RLS TESTS PASSED.
 - [ ] 24 h purge active (pg_cron schedule OR cleanup-locations cron).

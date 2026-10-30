@@ -156,6 +156,13 @@ const en = {
   guardianRevokeConfirm:
     'Remove this guardian? They immediately lose access to your location. If they were your last guardian, your stored locations are deleted from the server.',
   guardianStatusApproved: 'Approved',
+  guardianPrivacyTitle: 'Privacy — your stored locations',
+  guardianLocalOff: 'Sharing is OFF on this device — no new locations are recorded or sent.',
+  guardianDeletionPending: 'Server copies: deletion pending — it will retry automatically.',
+  guardianDeletionConfirmed: 'Server copies deleted — confirmed',
+  guardianDeletionRetry: 'Retry deletion now',
+  guardianDeletionPendingNote:
+    'You asked for a server deletion earlier and it is still pending. When the connection returns, it runs first and removes the locations stored up to that moment.',
   guardianLocationNote:
     'This is your PHONE location, not the glasses. Sharing works only while the app is open (foreground). Background tracking is not in this version.',
 };
@@ -314,6 +321,13 @@ const ar: Record<StringKey, string> = {
   guardianRevokeConfirm:
     'تشيل الوصي ده؟ هيفقد الوصول لموقعك فورًا. ولو كان آخر وصي عندك، مواقعك المحفوظة هتتمسح من الخادم.',
   guardianStatusApproved: 'معتمد',
+  guardianPrivacyTitle: 'الخصوصية — مواقعك المحفوظة',
+  guardianLocalOff: 'المشاركة مقفولة على الجهاز ده — مفيش مواقع جديدة بتتسجل أو بتتبعت.',
+  guardianDeletionPending: 'نسخ الخادم: الحذف لسه معلّق — المحاولة هتتكرر تلقائيًا.',
+  guardianDeletionConfirmed: 'نسخ الخادم اتحذفت — مؤكد',
+  guardianDeletionRetry: 'حاول الحذف تاني دلوقتي',
+  guardianDeletionPendingNote:
+    'انت طلبت حذف من الخادم قبل كده ولسه معلّق. أول ما الاتصال يرجع هيتنفذ الأول ويمسح المواقع المحفوظة لحد اللحظة دي.',
   guardianLocationNote:
     'ده موقع موبايلك، مش النظارة. المشاركة شغالة بس طول ما التطبيق مفتوح (الواجهة). التتبع في الخلفية مش موجود في النسخة دي.',
 };

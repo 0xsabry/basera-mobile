@@ -10,7 +10,11 @@ import {
   type GuardianUser,
   type PairingCode,
 } from '../guardian/GuardianService';
-import { LocationSharingService } from '../guardian/LocationSharingService';
+import {
+  getLocationSharingService,
+  type DeletionStatus,
+} from '../guardian/LocationSharingService';
+import { deletionServerMessageKey } from '../guardian/PendingDeletion';
 import { formatPairingCode } from '../guardian/pairing';
 import { t } from '../i18n/strings';
 import { useSettings } from '../state/SettingsContext';
@@ -20,8 +24,9 @@ export default function GuardianScreen() {
   const { settings, colors, update } = useSettings();
   const lang = settings.language;
   const service = getGuardianService();
-  const [sharing] = useState(() => new LocationSharingService(service));
+  const [sharing] = useState(() => getLocationSharingService());
   const sharingRef = useRef(sharing);
+  const [deletion, setDeletion] = useState<DeletionStatus>(() => sharing.deletionStatus);
 
   const [user, setUser] = useState<GuardianUser | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -48,6 +53,14 @@ export default function GuardianScreen() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Server-deletion state: subscribe for live updates and retry any
+  // persisted pending deletion whenever this screen mounts (one of the
+  // app-activity retry triggers; launch + foreground are wired too).
+  useEffect(() => sharing.subscribeDeletionStatus(() => setDeletion(sharing.deletionStatus)), [sharing]);
+  useEffect(() => {
+    void sharing.initDeletion();
+  }, [sharing]);
 
   // If consent is on and we are signed in, (re)start foreground sharing
   // when this screen opens; collection always pauses off-screen (the
@@ -85,6 +98,10 @@ export default function GuardianScreen() {
       } else {
         await sharingRef.current?.disableSharing();
         await update({ guardianSharingEnabled: false });
+        if (sharingRef.current?.deletionStatus.state === 'pending') {
+          // Local off is done, but the server has NOT confirmed deletion.
+          setMessage(t(lang, 'guardianDeletionPending'));
+        }
         if (settings.announcements) {
           void speechService.speakAnnouncement(t(lang, 'guardianSharingOff'), lang);
         }
@@ -132,7 +149,15 @@ export default function GuardianScreen() {
         onPress: () => {
           void (async () => {
             try {
-              await service.revokeLink(link.id);
+              if (guardians.length === 1) {
+                // Last guardian: record the persisted deletion obligation
+                // FIRST (works offline), which re-drives the revoke +
+                // purge and retries until the server confirms — never
+                // fire-and-forget.
+                await sharingRef.current?.requestServerDeletion('last-guardian-revoked', link.id);
+              } else {
+                await service.revokeLink(link.id);
+              }
               await refresh();
             } catch {
               setMessage(t(lang, 'errorGeneric'));
@@ -213,6 +238,36 @@ export default function GuardianScreen() {
               trackColor={{ true: colors.primary }}
             />
           </View>
+
+          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
+            {t(lang, 'guardianPrivacyTitle')}
+          </Text>
+          {/* Local truth — always exact, works offline. */}
+          <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
+            {settings.guardianSharingEnabled ? t(lang, 'guardianSharingOn') : t(lang, 'guardianLocalOff')}
+          </Text>
+          {/* Server truth — 'confirmed' renders only after the purge RPC
+              actually succeeded (see PendingDeletion success branch). */}
+          {deletionServerMessageKey(deletion) !== null && (
+            <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
+              {t(lang, deletionServerMessageKey(deletion)!)}
+              {deletion.state === 'confirmed' && deletion.confirmedAt
+                ? ` — ${new Date(deletion.confirmedAt).toLocaleString()}`
+                : ''}
+            </Text>
+          )}
+          {deletion.state === 'pending' && settings.guardianSharingEnabled && (
+            <Text style={[styles.body, { color: colors.textSecondary }]}>
+              {t(lang, 'guardianDeletionPendingNote')}
+            </Text>
+          )}
+          {deletion.state === 'pending' && (
+            <AccessibleButton
+              label={t(lang, 'guardianDeletionRetry')}
+              variant="secondary"
+              onPress={() => void sharingRef.current?.retryPendingDeletion()}
+            />
+          )}
 
           <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
             {t(lang, 'guardianPairingTitle')}

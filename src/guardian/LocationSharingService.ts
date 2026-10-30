@@ -7,12 +7,26 @@
  *   enabled in settings. Background tracking is Phase 2 and is NOT
  *   implemented here (no background permission is ever requested).
  * - Battery-conscious: Balanced accuracy, ~30 s / ~25 m between fixes.
- * - Toggling sharing off stops the watcher immediately and asks the server
- *   to purge stored locations (set_sharing_enabled(false)).
+ * - Toggling sharing off stops the watcher immediately (local truth) and
+ *   records a PERSISTED server-deletion obligation (PendingDeletion):
+ *   the purge RPC runs now if possible and retries on app launch /
+ *   foreground / screen mount until the server confirms. The UI always
+ *   distinguishes "off on this device" from "server copies deleted —
+ *   confirmed"; the latter is claimed only after RPC success.
  */
-import type { GuardianService, LocationPointInput } from './GuardianService';
+import {
+  getGuardianService,
+  type GuardianService,
+  type LocationPointInput,
+} from './GuardianService';
+import {
+  PendingDeletionManager,
+  type DeletionStatus,
+  type PendingDeletionReason,
+} from './PendingDeletion';
 
 export type { LocationPointInput };
+export type { DeletionStatus, PendingDeletionReason };
 
 /** Batches points: flush at >= maxPoints points or >= maxWaitMs elapsed. */
 export class LocationBatcher {
@@ -125,18 +139,65 @@ export type SharingStartResult = 'started' | 'permission-denied';
 export class LocationSharingService {
   private subscription: LocationSubscriptionLike | null = null;
   private appStateSub: { remove(): void } | null = null;
+  private deletionAppStateSub: { remove(): void } | null = null;
   private running = false;
   private batcher = new LocationBatcher();
+  private deletion: PendingDeletionManager;
   lastError: string | null = null;
 
   constructor(
     private guardian: GuardianService,
     private adapter: LocationAdapter = new ExpoLocationAdapter(),
     private appState: AppStateLike | null = loadAppState(),
-  ) {}
+    deletionManager?: PendingDeletionManager,
+  ) {
+    this.deletion = deletionManager ?? new PendingDeletionManager(guardian);
+  }
 
   get isRunning(): boolean {
     return this.running;
+  }
+
+  // ----- Server-deletion state (PendingDeletion state machine) -----
+
+  get deletionStatus(): DeletionStatus {
+    return this.deletion.getStatus();
+  }
+
+  subscribeDeletionStatus(listener: () => void): () => void {
+    return this.deletion.subscribe(listener);
+  }
+
+  /**
+   * Module-init / mount hook: reload any persisted deletion obligation,
+   * retry it, and (once) arm the AppState-foreground retry trigger.
+   * Retries are app-activity-driven by design — no netinfo, no
+   * background jobs, no new native dependencies.
+   */
+  async initDeletion(): Promise<void> {
+    await this.deletion.init().catch(() => undefined);
+    if (this.appState && !this.deletionAppStateSub) {
+      this.deletionAppStateSub = this.appState.addEventListener('change', (state) => {
+        if (state === 'active') void this.deletion.attemptDeletion();
+      });
+    }
+  }
+
+  /** Explicit retry (guardian screen "Retry now" button). */
+  async retryPendingDeletion(): Promise<DeletionStatus> {
+    return this.deletion.attemptDeletion();
+  }
+
+  /**
+   * Record a server-deletion obligation (persisted first, attempted
+   * immediately, retried until confirmed). Used when the last guardian
+   * is revoked; disableSharing uses the same path internally.
+   */
+  async requestServerDeletion(
+    reason: PendingDeletionReason,
+    linkId: string | null = null,
+  ): Promise<DeletionStatus> {
+    return this.deletion.requestDeletion(reason, linkId);
   }
 
   /**
@@ -147,6 +208,10 @@ export class LocationSharingService {
     if (this.running) return 'started';
     const granted = await this.adapter.requestForegroundPermission();
     if (!granted) return 'permission-denied';
+    // A pending deletion is NEVER dropped by re-enabling sharing: it is
+    // attempted first on this contact, and if it still fails it stays
+    // queued (its purge deletes points stored up to the moment it runs).
+    await this.deletion.init().catch(() => undefined);
     await this.guardian.setSharingEnabled(true);
     await this.subscribeWatch();
     this.running = true;
@@ -207,12 +272,28 @@ export class LocationSharingService {
   }
 
   /**
-   * Full stop: cease uploads immediately AND purge stored locations
-   * server-side via set_sharing_enabled(false).
+   * Full stop: cease collection/uploads immediately (local truth, works
+   * fully offline) AND record the persisted server-deletion obligation.
+   * The purge executes now when the network allows and retries until
+   * the server confirms — see PendingDeletion. Network failure no
+   * longer throws from here: it becomes deletionStatus 'pending'.
    */
   async disableSharing(): Promise<void> {
     await this.stopWatching();
     this.batcher.flush(); // discard anything unsent
-    await this.guardian.setSharingEnabled(false);
+    await this.deletion.requestDeletion('sharing-disabled');
   }
+}
+
+let sharedSharingService: LocationSharingService | undefined;
+
+/**
+ * App-wide singleton (used by the root layout's launch retry and the
+ * guardian screen, so both observe the same deletion state).
+ */
+export function getLocationSharingService(): LocationSharingService {
+  if (!sharedSharingService) {
+    sharedSharingService = new LocationSharingService(getGuardianService());
+  }
+  return sharedSharingService;
 }

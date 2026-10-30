@@ -1,12 +1,21 @@
 import { Stack } from 'expo-router';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { SettingsProvider, useSettings } from '../state/SettingsContext';
+import { getLocationSharingService } from '../guardian/LocationSharingService';
 import { t } from '../i18n/strings';
 
 function RootStack() {
   const { settings, colors } = useSettings();
   const lang = settings.language;
+
+  // App-launch retry trigger for a persisted server-deletion obligation
+  // (offline revocation): if the user turned sharing off / revoked the
+  // last guardian while offline, the purge is retried here until the
+  // server confirms. No-op when nothing is pending.
+  useEffect(() => {
+    void getLocationSharingService().initDeletion();
+  }, []);
   const header = {
     headerStyle: { backgroundColor: colors.surface },
     headerTintColor: colors.text,
