@@ -11,6 +11,7 @@
  */
 import * as Speech from 'expo-speech';
 import { t } from '../i18n/strings';
+import { setAccessibilityBusy } from '../state/accessibilityBusy';
 import type { AppLanguage } from './types';
 
 export interface SpeechService {
@@ -43,9 +44,21 @@ export class ExpoSpeechService implements SpeechService {
     // "nothing to repeat" message is spoken in the user's current language.
     this._lastLang = lang;
     await Speech.stop();
+    // OTA safety: while speech is playing, an update reload is forbidden
+    // (see state/accessibilityBusy + update/UpdateService).
+    setAccessibilityBusy('speech', true);
+    let cleared = false;
+    const clearBusy = () => {
+      if (cleared) return;
+      cleared = true;
+      setAccessibilityBusy('speech', false);
+    };
     Speech.speak(text, {
       language: lang === 'ar' ? 'ar-EG' : 'en-US',
       rate: this.rate,
+      onDone: clearBusy,
+      onStopped: clearBusy,
+      onError: clearBusy,
     });
   }
 

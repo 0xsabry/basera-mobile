@@ -20,6 +20,9 @@ function RootStack() {
       <Stack.Screen name="read" options={{ title: t(lang, 'readText'), ...header }} />
       <Stack.Screen name="voice" options={{ title: t(lang, 'voice'), ...header }} />
       <Stack.Screen name="history" options={{ title: t(lang, 'history'), ...header }} />
+      <Stack.Screen name="guardian" options={{ title: t(lang, 'guardian'), ...header }} />
+      <Stack.Screen name="guardian-auth" options={{ title: t(lang, 'guardianOpenSignIn'), ...header }} />
+      <Stack.Screen name="updates" options={{ title: t(lang, 'updates'), ...header }} />
       <Stack.Screen name="settings" options={{ title: t(lang, 'settings'), ...header }} />
     </Stack>
   );

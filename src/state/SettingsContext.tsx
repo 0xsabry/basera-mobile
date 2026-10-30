@@ -19,6 +19,10 @@ export interface Settings {
   highContrast: boolean;
   announcements: boolean;
   onboardingDone: boolean;
+  /** V1.1 Phase 1: guardian location sharing consent (default OFF). The
+   *  server record (device_settings) mirrors this; the phone is the source
+   *  of truth and turning it off purges stored locations server-side. */
+  guardianSharingEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -28,6 +32,7 @@ export const DEFAULT_SETTINGS: Settings = {
   highContrast: false,
   announcements: true,
   onboardingDone: false,
+  guardianSharingEnabled: false,
 };
 
 const STORAGE_KEY = 'basera.settings.v1';

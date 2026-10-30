@@ -8,6 +8,7 @@ import { ImageSourcePicker } from '../components/ImageSourcePicker';
 import { historyStore, persistImageCopy } from '../data/HistoryStore';
 import type { CapturedImage } from '../input/ImageSource';
 import { t } from '../i18n/strings';
+import { setAccessibilityBusy } from '../state/accessibilityBusy';
 import { useSettings } from '../state/SettingsContext';
 import { spacing, typeScale } from '../theme/tokens';
 
@@ -32,6 +33,7 @@ export default function ReadScreen() {
     setError('');
     setResult(null);
     setBusy(true);
+    setAccessibilityBusy('processing', true);
     try {
       const r = await new RoutingTextRecognizer(lang).recognize(img);
       if (runId.current !== id) return;
@@ -63,6 +65,7 @@ export default function ReadScreen() {
       );
     } finally {
       busyRef.current = false;
+      setAccessibilityBusy('processing', false);
       if (runId.current === id) setBusy(false);
     }
   };

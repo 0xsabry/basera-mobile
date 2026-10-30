@@ -10,6 +10,7 @@ import {
 } from '../ai/VoiceCommandService';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { t } from '../i18n/strings';
+import { setAccessibilityBusy } from '../state/accessibilityBusy';
 import { useSettings } from '../state/SettingsContext';
 import { spacing, typeScale } from '../theme/tokens';
 
@@ -22,6 +23,14 @@ export default function VoiceScreen() {
   const [transcript, setTranscript] = useState('');
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
+
+  // OTA safety: no update reload while recognition is live.
+  useEffect(() => {
+    setAccessibilityBusy('recognition', listening);
+  }, [listening]);
+  useEffect(() => {
+    return () => setAccessibilityBusy('recognition', false);
+  }, []);
 
   const handleTranscript = async (text: string) => {
     setTranscript(text);

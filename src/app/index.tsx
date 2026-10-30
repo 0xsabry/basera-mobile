@@ -47,6 +47,7 @@ export default function HomeScreen() {
       <AccessibleButton label={t(lang, 'detect')} hint={t(lang, 'detectHint')} onPress={() => router.push('/detect')} />
       <AccessibleButton label={t(lang, 'readText')} hint={t(lang, 'readTextHint')} onPress={() => router.push('/read')} />
       <AccessibleButton label={t(lang, 'voice')} hint={t(lang, 'voiceHint')} onPress={() => router.push('/voice')} />
+      <AccessibleButton label={t(lang, 'guardian')} hint={t(lang, 'guardianHint')} onPress={() => router.push('/guardian')} />
       <AccessibleButton label={t(lang, 'history')} onPress={() => router.push('/history')} variant="secondary" />
       <AccessibleButton label={t(lang, 'settings')} onPress={() => router.push('/settings')} variant="secondary" />
 

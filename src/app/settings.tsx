@@ -1,4 +1,5 @@
 import Slider from '@react-native-community/slider';
+import { router } from 'expo-router';
 import React from 'react';
 import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
@@ -85,6 +86,12 @@ export default function SettingsScreen() {
       )}
 
       <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
+        {t(lang, 'guardian')}
+      </Text>
+      <AccessibleButton label={t(lang, 'guardian')} hint={t(lang, 'guardianHint')} onPress={() => router.push('/guardian')} variant="secondary" />
+      <AccessibleButton label={t(lang, 'updates')} hint={t(lang, 'updatesHint')} onPress={() => router.push('/updates')} variant="secondary" />
+
+      <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
         {t(lang, 'privacy')}
       </Text>
       <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'privacyBody')}</Text>
@@ -99,7 +106,7 @@ export default function SettingsScreen() {
       <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
         {t(lang, 'about')}
       </Text>
-      <Text style={[styles.body, { color: colors.text }]}>BASERA 1.0.0 — me.auramarketing.basera</Text>
+      <Text style={[styles.body, { color: colors.text }]}>BASERA 1.1.0 — me.auramarketing.basera</Text>
       <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'hardwareStatus')}</Text>
       <Text style={[styles.body, { color: colors.textSecondary }]}>{t(lang, 'onboardingGlassesNote')}</Text>
     </ScrollView>
