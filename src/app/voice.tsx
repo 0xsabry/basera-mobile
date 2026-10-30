@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import {
@@ -45,16 +45,18 @@ export default function VoiceScreen() {
     | { kind: 'delete-place'; placeName: string };
   const pendingRef = useRef<PendingPlace | null>(null);
   const settingsRef = useRef(settings);
-  settingsRef.current = settings;
-  const assistantRef = useRef<PlacesAssistant | null>(null);
-  if (!assistantRef.current) {
-    assistantRef.current = new PlacesAssistant({
-      store: placesStore,
-      getFix: () => getCurrentFix(true),
-      proximityRadiusM: () => settingsRef.current.proximityRadiusM,
-    });
-  }
-  const assistant = assistantRef.current;
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+  const assistant = useMemo(
+    () =>
+      new PlacesAssistant({
+        store: placesStore,
+        getFix: () => getCurrentFix(true),
+        proximityRadiusM: () => settingsRef.current.proximityRadiusM,
+      }),
+    [],
+  );
   const say = (msg: string) => {
     setFeedback(msg);
     void speechService.speakAnnouncement(msg, lang);
