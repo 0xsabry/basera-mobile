@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B3D2E",
+        "foregroundImage": "./assets/icon.png"
+      },
+      "package": "me.auramarketing.basera",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "f402737d-1b54-441d-8738-99ce8e9009e"
+      }
+    },
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "me.auramarketing.basera",
+      "infoPlist": {
+        "NSCameraUsageDescription": "BASERA uses the phone camera only as a temporary test input until the smart glasses are ready.",
+        "NSMicrophoneUsageDescription": "BASERA uses the microphone for voice commands.",
+        "NSPhotoLibraryUsageDescription": "BASERA uses your photo library so you can pick images to describe or read.",
+        "NSSpeechRecognitionUsageDescription": "BASERA uses speech recognition for voice commands."
+      },
+      "supportsTablet": true
+    },
+    "name": "BASERA | بصيرة",
+    "orientation": "portrait",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "BASERA uses the camera only as a temporary test input.",
+          "photosPermission": "BASERA uses your photo library so you can pick images to describe or read."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "BASERA uses the phone camera only as a temporary test input until the smart glasses are ready.",
+          "microphonePermission": "BASERA uses the microphone for voice commands.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "BASERA uses the microphone for voice commands.",
+          "speechRecognitionPermission": "BASERA uses speech recognition so you can control the app by voice.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ]
+    ],
+    "scheme": "basera",
+    "slug": "basera",
+    "userInterfaceStyle": "automatic",
+    "version": "1.0.0",
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/icon.png"
+    },
+    "owner": "0xsabry"
+  }
+}

@@ -1,0 +1,169 @@
+import React, { useRef, useState } from 'react';
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { buildDescription, describeDetection } from '../ai/DescriptionBuilder';
+import { YoloDetector } from '../ai/ObjectDetector';
+import { analyzeObstacles } from '../ai/ObstacleAwareness';
+import { speechService } from '../ai/SpeechService';
+import type { Detection } from '../ai/types';
+import { AccessibleButton } from '../components/AccessibleButton';
+import { ImageSourcePicker } from '../components/ImageSourcePicker';
+import { historyStore, persistImageCopy } from '../data/HistoryStore';
+import type { CapturedImage } from '../input/ImageSource';
+import { t } from '../i18n/strings';
+import { useSettings } from '../state/SettingsContext';
+import { spacing, typeScale } from '../theme/tokens';
+
+const detector = new YoloDetector();
+
+export default function DetectScreen() {
+  const { settings, colors } = useSettings();
+  const lang = settings.language;
+  const [image, setImage] = useState<CapturedImage | null>(null);
+  const [detections, setDetections] = useState<Detection[]>([]);
+  const [description, setDescription] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [previewSize, setPreviewSize] = useState({ w: 0, h: 0 });
+  const runId = useRef(0);
+
+  const handleImage = async (img: CapturedImage) => {
+    const id = ++runId.current;
+    setImage(img);
+    setError('');
+    setDetections([]);
+    setDescription('');
+    setBusy(true);
+    try {
+      const results = await detector.detect(img);
+      if (runId.current !== id) return;
+      const desc = buildDescription(results, lang);
+      setDetections(results);
+      setDescription(desc);
+      speechService.setRate(settings.speechRate);
+      if (settings.announcements) void speechService.speak(desc, lang);
+      const storedUri = await persistImageCopy(img.uri);
+      await historyStore.add({
+        kind: 'detection',
+        imageUri: storedUri,
+        sourceKind: img.sourceKind,
+        detections: results,
+        description: desc,
+      });
+    } catch (e) {
+      if (runId.current !== id) return;
+      setError(e instanceof Error ? e.message : t(lang, 'errorGeneric'));
+    } finally {
+      if (runId.current === id) setBusy(false);
+    }
+  };
+
+  const obstacles = analyzeObstacles(detections);
+  const proxLabel = (p: string) =>
+    p === 'near' ? t(lang, 'proximityNear') : p === 'medium' ? t(lang, 'proximityMedium') : t(lang, 'proximityFar');
+  const posLabel = (p: string) =>
+    p === 'left' ? t(lang, 'positionLeft') : p === 'right' ? t(lang, 'positionRight') : t(lang, 'positionCenter');
+
+  return (
+    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+      <ImageSourcePicker onImage={handleImage} onError={setError} />
+
+      {busy && (
+        <View style={styles.row}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'analyzing')}</Text>
+        </View>
+      )}
+      {!!error && (
+        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger }]}>
+          {error}
+        </Text>
+      )}
+
+      {image && (
+        <View>
+          <Text style={[styles.heading, { color: colors.text }]}>{t(lang, 'imagePreview')}</Text>
+          <View
+            style={styles.previewWrap}
+            onLayout={(e) => setPreviewSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+          >
+            <Image
+              source={{ uri: image.uri }}
+              style={[styles.preview, { aspectRatio: image.width / Math.max(1, image.height) }]}
+              resizeMode="contain"
+              accessibilityLabel={t(lang, 'imagePreview')}
+            />
+            {previewSize.w > 0 &&
+              detections.map((d, i) => (
+                <View
+                  key={i}
+                  pointerEvents="none"
+                  style={[
+                    styles.box,
+                    {
+                      borderColor: colors.overlayBox,
+                      left: d.box.x * previewSize.w,
+                      top: d.box.y * previewSize.h,
+                      width: d.box.width * previewSize.w,
+                      height: d.box.height * previewSize.h,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.boxLabel, { backgroundColor: colors.overlayBox, color: colors.background }]}>
+                    {lang === 'ar' ? d.labelAr : d.labelEn}
+                  </Text>
+                </View>
+              ))}
+          </View>
+        </View>
+      )}
+
+      {!!description && (
+        <Text accessibilityLiveRegion="polite" style={[styles.bodyLarge, { color: colors.text }]}>
+          {description}
+        </Text>
+      )}
+
+      {detections.length > 0 && (
+        <View>
+          <Text style={[styles.heading, { color: colors.text }]}>{t(lang, 'detectionsFound')}</Text>
+          {detections.map((d, i) => (
+            <Text key={i} style={[styles.body, { color: colors.text }]}>
+              • {describeDetection(d, lang)}
+            </Text>
+          ))}
+          <Text style={[styles.heading, { color: colors.text, marginTop: spacing.md }]}>
+            {t(lang, 'obstacleSummary')}
+          </Text>
+          {obstacles.slice(0, 5).map((o, i) => (
+            <Text key={i} style={[styles.body, { color: colors.text }]}>
+              • {lang === 'ar' ? o.detection.labelAr : o.detection.labelEn} — {posLabel(o.position)} — {proxLabel(o.proximity)}
+            </Text>
+          ))}
+        </View>
+      )}
+
+      <View style={styles.actions}>
+        <AccessibleButton
+          label={t(lang, 'speak')}
+          onPress={() => description && void speechService.speak(description, lang)}
+          disabled={!description}
+        />
+        <AccessibleButton label={t(lang, 'repeat')} onPress={() => void speechService.repeatLast()} variant="secondary" />
+        <AccessibleButton label={t(lang, 'stopSpeaking')} onPress={() => void speechService.stop()} variant="secondary" />
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { padding: spacing.lg, gap: spacing.md },
+  heading: { fontSize: typeScale.heading, fontWeight: '700', marginBottom: spacing.xs },
+  body: { fontSize: typeScale.body, lineHeight: 29 },
+  bodyLarge: { fontSize: typeScale.bodyLarge, lineHeight: 32, fontWeight: '600' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  previewWrap: { position: 'relative', width: '100%' },
+  preview: { width: '100%', borderRadius: 12 },
+  box: { position: 'absolute', borderWidth: 3, borderRadius: 4 },
+  boxLabel: { fontSize: 14, fontWeight: '700', paddingHorizontal: 4, alignSelf: 'flex-start' },
+  actions: { marginTop: spacing.sm },
+});

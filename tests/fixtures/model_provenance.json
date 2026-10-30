@@ -1,0 +1,4 @@
+{
+ "yolo11n.onnx (official Ultralytics asset v8.3.0)": "634279b40c07c6391472c51ad45b81ebc48706a9a1fe72dd3396322acd0c053b",
+ "yolo11n.tflite (shipped, converted from the official ONNX)": "19bfdc3cf16231b1d6d5604d245e934a5eeef5300fb3d04595b2dc92b69b5997"
+}

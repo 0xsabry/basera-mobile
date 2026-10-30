@@ -1,0 +1,12 @@
+# EAS build archive exclusions — caches and build outputs only.
+# NEVER exclude assets/: assets/models/yolo11n.tflite must ship in the build.
+node_modules/
+.expo/
+dist/
+dist-web/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+*.log
+.DS_Store
