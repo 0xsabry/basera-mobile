@@ -34,6 +34,74 @@ interface FormState {
 
 const EMPTY_FORM: FormState = { name: '', category: 'custom', note: '', entranceInfo: '', obstaclesNote: '' };
 
+const PlaceCard = React.memo(function PlaceCard({
+  place,
+  lang,
+  colors,
+  type,
+  onChanged,
+  onEdit,
+  onDelete,
+}: {
+  place: Place;
+  lang: 'ar' | 'en';
+  colors: ReturnType<typeof useSettings>['colors'];
+  type: ReturnType<typeof useSettings>['type'];
+  onChanged: () => void;
+  onEdit: (place: Place) => void;
+  onDelete: (place: Place) => void;
+}) {
+  return (
+    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <Text style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
+        {place.name}
+        {place.favorite ? ' ★' : ''}
+      </Text>
+      {!!place.note && (
+        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{place.note}</Text>
+      )}
+      <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
+        {place.lastVisitedAt
+          ? `${t(lang, 'placesLastVisited')}: ${new Date(place.lastVisitedAt).toLocaleDateString(
+              lang === 'ar' ? 'ar-EG' : 'en-US',
+            )}`
+          : t(lang, 'placesNeverVisited')}
+      </Text>
+      <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
+        {place.proximityEnabled ? t(lang, 'placesProximityOn') : t(lang, 'placesProximityOff')}
+      </Text>
+      <AccessibleButton
+        label={t(lang, 'placesListen')}
+        variant="secondary"
+        onPress={() => void speechService.speak(describePlace(lang, place), lang)}
+      />
+      <AccessibleButton
+        label={t(lang, 'placesMarkVisited')}
+        variant="secondary"
+        onPress={() => {
+          void placesStore.markVisited(place.id).then(onChanged);
+        }}
+      />
+      <AccessibleButton
+        label={place.favorite ? `★ ${t(lang, 'placesFavorite')}` : t(lang, 'placesFavorite')}
+        variant="secondary"
+        onPress={() => {
+          void placesStore.update(place.id, { favorite: !place.favorite }).then(onChanged);
+        }}
+      />
+      <AccessibleButton
+        label={place.proximityEnabled ? t(lang, 'placesProximityOff') : t(lang, 'placesProximityOn')}
+        variant="secondary"
+        onPress={() => {
+          void placesStore.update(place.id, { proximityEnabled: !place.proximityEnabled }).then(onChanged);
+        }}
+      />
+      <AccessibleButton label={t(lang, 'placesEdit')} variant="secondary" onPress={() => onEdit(place)} />
+      <AccessibleButton label={t(lang, 'delete')} variant="danger" onPress={() => onDelete(place)} />
+    </View>
+  );
+});
+
 export default function PlacesScreen() {
   const { settings, colors, type } = useSettings();
   const lang = settings.language;
@@ -47,6 +115,10 @@ export default function PlacesScreen() {
   const refresh = useCallback(async () => {
     setPlaces(await placesStore.list());
   }, []);
+
+  const handleChanged = useCallback(() => {
+    void refresh();
+  }, [refresh]);
 
   useFocusEffect(
     useCallback(() => {
@@ -114,7 +186,7 @@ export default function PlacesScreen() {
     await refresh();
   };
 
-  const confirmDelete = (place: Place) => {
+  const confirmDelete = useCallback((place: Place) => {
     Alert.alert(place.name, t(lang, 'placesDeleteConfirm'), [
       { text: t(lang, 'cancel'), style: 'cancel' },
       {
@@ -126,9 +198,9 @@ export default function PlacesScreen() {
         },
       },
     ]);
-  };
+  }, [lang, refresh]);
 
-  const startEdit = (place: Place) => {
+  const startEdit = useCallback((place: Place) => {
     setEditingId(place.id);
     setForm({
       name: place.name,
@@ -137,7 +209,7 @@ export default function PlacesScreen() {
       entranceInfo: place.entranceInfo ?? '',
       obstaclesNote: place.obstaclesNote ?? '',
     });
-  };
+  }, []);
 
   const grouped = PLACE_CATEGORIES.map((cat) => ({
     category: cat,
@@ -239,58 +311,16 @@ export default function PlacesScreen() {
             {categoryLabel(lang, g.category)}
           </Text>
           {g.items.map((place) => (
-            <View
+            <PlaceCard
               key={place.id}
-              style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            >
-              <Text style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
-                {place.name}
-                {place.favorite ? ' ★' : ''}
-              </Text>
-              {!!place.note && (
-                <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{place.note}</Text>
-              )}
-              <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
-                {place.lastVisitedAt
-                  ? `${t(lang, 'placesLastVisited')}: ${new Date(place.lastVisitedAt).toLocaleDateString(
-                      lang === 'ar' ? 'ar-EG' : 'en-US',
-                    )}`
-                  : t(lang, 'placesNeverVisited')}
-              </Text>
-              <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
-                {place.proximityEnabled ? t(lang, 'placesProximityOn') : t(lang, 'placesProximityOff')}
-              </Text>
-              <AccessibleButton
-                label={t(lang, 'placesListen')}
-                variant="secondary"
-                onPress={() => void speechService.speak(describePlace(lang, place), lang)}
-              />
-              <AccessibleButton
-                label={t(lang, 'placesMarkVisited')}
-                variant="secondary"
-                onPress={() => {
-                  void placesStore.markVisited(place.id).then(refresh);
-                }}
-              />
-              <AccessibleButton
-                label={place.favorite ? `★ ${t(lang, 'placesFavorite')}` : t(lang, 'placesFavorite')}
-                variant="secondary"
-                onPress={() => {
-                  void placesStore.update(place.id, { favorite: !place.favorite }).then(refresh);
-                }}
-              />
-              <AccessibleButton
-                label={place.proximityEnabled ? t(lang, 'placesProximityOff') : t(lang, 'placesProximityOn')}
-                variant="secondary"
-                onPress={() => {
-                  void placesStore
-                    .update(place.id, { proximityEnabled: !place.proximityEnabled })
-                    .then(refresh);
-                }}
-              />
-              <AccessibleButton label={t(lang, 'placesEdit')} variant="secondary" onPress={() => startEdit(place)} />
-              <AccessibleButton label={t(lang, 'delete')} variant="danger" onPress={() => confirmDelete(place)} />
-            </View>
+              place={place}
+              lang={lang}
+              colors={colors}
+              type={type}
+              onChanged={handleChanged}
+              onEdit={startEdit}
+              onDelete={confirmDelete}
+            />
           ))}
         </View>
       ))}

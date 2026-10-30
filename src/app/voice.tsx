@@ -188,6 +188,7 @@ export default function VoiceScreen() {
   };
 
   const start = async () => {
+    if (listening) return; // duplicate-tap guard (same pattern as detect/read)
     setError('');
     setFeedback('');
     try {
