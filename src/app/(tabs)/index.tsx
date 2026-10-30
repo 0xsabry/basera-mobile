@@ -14,6 +14,7 @@ import { historyStore, type HistoryItem } from '../../data/HistoryStore';
 import { getGuardianService } from '../../guardian/GuardianService';
 import { alertHistoryStore, type AlertEvent } from '../../hazards/AlertHistoryStore';
 import { t } from '../../i18n/strings';
+import { announceNearbyPlaces } from '../../places/proximity';
 import { pushOnce } from '../../state/navGuard';
 import { useSettings } from '../../state/SettingsContext';
 import { radius, spacing } from '../../theme/tokens';
@@ -35,7 +36,10 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void refresh();
-    }, [refresh]),
+      // Foreground proximity awareness: speaks only when a fix is
+      // already permitted and a place is newly within radius.
+      void announceNearbyPlaces(lang, settings.proximityRadiusM);
+    }, [refresh, lang, settings.proximityRadiusM]),
   );
 
   if (loaded && !settings.onboardingDone) {

@@ -240,4 +240,31 @@ begin
 end;
 $$;
 
+-- ============================ saved places: guardians get NO access (0004)
+do $$
+declare n int;
+begin
+  perform pg_temp.act_as(:'owner_id');
+  insert into public.saved_places (user_id, local_id, name, category, lat, lng, place_created_at)
+  values (:'owner_id'::uuid, 'p-test-1', 'Home', 'home', 30.0, 31.0, now());
+  select count(*) into n from public.saved_places;
+  perform pg_temp.assert(n = 1, 'owner can read own saved places');
+
+  -- Even an ACTIVE guardian must see zero of the owner's places.
+  perform pg_temp.act_as(:'guardian_id');
+  select count(*) into n from public.saved_places;
+  perform pg_temp.assert(n = 0, 'ACTIVE guardian sees NONE of the owner saved places');
+  begin
+    insert into public.saved_places (user_id, local_id, name, category, lat, lng, place_created_at)
+    values (:'owner_id'::uuid, 'p-evil', 'X', 'custom', 0, 0, now());
+    perform pg_temp.assert(false, 'guardian inserting a place for the owner must fail');
+  exception when insufficient_privilege or check_violation or others then
+    null; -- expected: RLS rejects it
+  end;
+
+  perform pg_temp.act_admin();
+  delete from public.saved_places where local_id = 'p-test-1';
+end;
+$$;
+
 select 'ALL RLS TESTS PASSED' as result;

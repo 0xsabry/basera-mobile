@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import {
@@ -11,6 +11,9 @@ import { voiceCommandService } from '../ai/voiceSingleton';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { acknowledgeHazards, triggerSos } from '../hazards/HazardService';
 import { t } from '../i18n/strings';
+import { getCurrentFix } from '../places/currentFix';
+import { PlacesAssistant } from '../places/PlacesAssistant';
+import { placesStore } from '../places/PlacesStore';
 import { setAccessibilityBusy } from '../state/accessibilityBusy';
 import { useSettings } from '../state/SettingsContext';
 import { spacing, typeScale } from '../theme/tokens';
@@ -33,11 +36,54 @@ export default function VoiceScreen() {
     return () => setAccessibilityBusy('recognition', false);
   }, []);
 
+  // Place Memory voice flows: a pending state consumes the NEXT
+  // utterance (a place name, a note, or a yes/no confirmation) instead
+  // of parsing it as a fresh command.
+  type PendingPlace =
+    | { kind: 'place-name' }
+    | { kind: 'place-note'; placeName: string | null }
+    | { kind: 'delete-place'; placeName: string };
+  const pendingRef = useRef<PendingPlace | null>(null);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const assistantRef = useRef<PlacesAssistant | null>(null);
+  if (!assistantRef.current) {
+    assistantRef.current = new PlacesAssistant({
+      store: placesStore,
+      getFix: () => getCurrentFix(true),
+      proximityRadiusM: () => settingsRef.current.proximityRadiusM,
+    });
+  }
+  const assistant = assistantRef.current;
+  const say = (msg: string) => {
+    setFeedback(msg);
+    void speechService.speakAnnouncement(msg, lang);
+  };
+
   const handleTranscript = async (text: string) => {
     setTranscript(text);
     setListening(false);
-    const cmd = parseVoiceCommand(text);
     speechService.setRate(settings.speechRate);
+
+    const pending = pendingRef.current;
+    if (pending) {
+      pendingRef.current = null;
+      const value = text.trim();
+      if (pending.kind === 'place-name') {
+        say(await assistant.savePlace(lang, value));
+        return;
+      }
+      if (pending.kind === 'place-note') {
+        say(await assistant.addNote(lang, pending.placeName, value));
+        return;
+      }
+      // delete-place: explicit yes required; anything else cancels.
+      const yes = /^(yes|yeah|ok|أيوه|ايوه|نعم|تمام)$/i.test(value.replace(/[.؟?]/g, ''));
+      say(yes ? await assistant.deletePlace(lang, pending.placeName) : t(lang, 'cancel'));
+      return;
+    }
+
+    const cmd = parseVoiceCommand(text);
     switch (cmd.action) {
       case 'describe':
         router.push('/detect');
@@ -66,6 +112,48 @@ export default function VoiceScreen() {
         await acknowledgeHazards();
         setFeedback(t(lang, 'alertsAcknowledged'));
         void speechService.speakAnnouncement(t(lang, 'alertsAcknowledged'), lang);
+        break;
+      case 'save-place':
+        if (cmd.argument) {
+          say(await assistant.savePlace(lang, cmd.argument));
+        } else {
+          pendingRef.current = { kind: 'place-name' };
+          say(t(lang, 'placesVoiceAskName'));
+        }
+        break;
+      case 'save-place-unnamed':
+        pendingRef.current = { kind: 'place-name' };
+        say(t(lang, 'placesVoiceAskName'));
+        break;
+      case 'add-place-note':
+        pendingRef.current = { kind: 'place-note', placeName: cmd.argument ?? null };
+        say(t(lang, 'placesVoiceAskNote'));
+        break;
+      case 'list-places':
+        say(await assistant.listPlaces(lang));
+        break;
+      case 'find-place':
+        say(cmd.argument ? await assistant.findPlace(lang, cmd.argument) : t(lang, 'placesVoiceNotFound'));
+        break;
+      case 'near-place':
+        say(cmd.argument ? await assistant.nearPlace(lang, cmd.argument) : t(lang, 'placesVoiceNoLocation'));
+        break;
+      case 'delete-place': {
+        if (!cmd.argument) {
+          say(t(lang, 'placesVoiceNotFound'));
+          break;
+        }
+        const target = await placesStore.findByName(cmd.argument);
+        if (!target) {
+          say(t(lang, 'placesVoiceNotFound'));
+          break;
+        }
+        pendingRef.current = { kind: 'delete-place', placeName: target.name };
+        say(`${t(lang, 'placesVoiceAskDeleteConfirm')}: ${target.name}? ${t(lang, 'placesVoiceSayYesNo')}`);
+        break;
+      }
+      case 'describe-place':
+        say(assistant.repeatDescription(lang));
         break;
       case 'open-settings':
         router.push('/settings');

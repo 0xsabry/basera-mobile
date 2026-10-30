@@ -16,6 +16,7 @@ import { join } from 'path';
 const MIGRATIONS_DIR = join(__dirname, '..', '..', '..', 'supabase', 'migrations');
 const schema = readFileSync(join(MIGRATIONS_DIR, '0001_schema.sql'), 'utf8');
 const rls = readFileSync(join(MIGRATIONS_DIR, '0002_rls_and_functions.sql'), 'utf8');
+const places = readFileSync(join(MIGRATIONS_DIR, '0004_saved_places.sql'), 'utf8');
 
 const TABLES = [
   'profiles',
@@ -118,5 +119,41 @@ describe('static RLS contract — RPC functions', () => {
       'revoke all on function public.cleanup_locations() from public, anon, authenticated',
     );
     expect(rls).toContain('grant execute on function public.cleanup_locations() to service_role');
+  });
+});
+
+describe('static RLS contract — saved places (migration 0004)', () => {
+  it('saved_places exists with RLS enabled and owner-only policies', () => {
+    expect(places).toContain('create table if not exists public.saved_places');
+    expect(places).toContain('alter table public.saved_places enable row level security');
+    for (const policy of [
+      'saved_places_owner_select',
+      'saved_places_owner_insert',
+      'saved_places_owner_update',
+      'saved_places_owner_delete',
+    ]) {
+      expect(places).toContain(`create policy ${policy}`);
+    }
+    const policyLines = places.split('\n').filter((l) => l.includes('create policy'));
+    expect(policyLines.length).toBe(4);
+    for (const line of policyLines) {
+      expect(line).toContain('owner');
+    }
+  });
+
+  it('NO guardian policy or guardian reference grants place access', () => {
+    // The only "guardian" mentions allowed are the explanatory comments
+    // stating guardians get no access.
+    const codeLines = places
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('--'))
+      .join('\n');
+    expect(codeLines).not.toContain('guardian');
+    expect(codeLines).not.toContain('guardian_links');
+  });
+
+  it('every saved_places policy checks auth.uid() = user_id', () => {
+    const matches = places.match(/auth\.uid\(\) = user_id/g) ?? [];
+    expect(matches.length).toBeGreaterThanOrEqual(4);
   });
 });
