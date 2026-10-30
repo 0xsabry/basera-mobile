@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { buildDescription, describeDetection } from '../ai/DescriptionBuilder';
-import { YoloDetector } from '../ai/ObjectDetector';
+import { DetectorUnavailableError, YoloDetector } from '../ai/ObjectDetector';
 import { analyzeObstacles } from '../ai/ObstacleAwareness';
 import { speechService } from '../ai/SpeechService';
 import type { Detection } from '../ai/types';
@@ -25,8 +25,11 @@ export default function DetectScreen() {
   const [busy, setBusy] = useState(false);
   const [previewSize, setPreviewSize] = useState({ w: 0, h: 0 });
   const runId = useRef(0);
+  const busyRef = useRef(false);
 
   const handleImage = async (img: CapturedImage) => {
+    if (busyRef.current) return; // never run two detections at once
+    busyRef.current = true;
     const id = ++runId.current;
     setImage(img);
     setError('');
@@ -51,8 +54,19 @@ export default function DetectScreen() {
       });
     } catch (e) {
       if (runId.current !== id) return;
-      setError(e instanceof Error ? e.message : t(lang, 'errorGeneric'));
+      // Typed unavailability and Arabic mode get localized text — never a
+      // raw (English) service message.
+      setError(
+        e instanceof DetectorUnavailableError
+          ? t(lang, 'featureUnavailableInBuild')
+          : lang === 'ar'
+            ? t(lang, 'errorGeneric')
+            : e instanceof Error
+              ? e.message
+              : t(lang, 'errorGeneric'),
+      );
     } finally {
+      busyRef.current = false;
       if (runId.current === id) setBusy(false);
     }
   };
@@ -65,7 +79,7 @@ export default function DetectScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <ImageSourcePicker onImage={handleImage} onError={setError} />
+      <ImageSourcePicker onImage={handleImage} onError={setError} disabled={busy} />
 
       {busy && (
         <View style={styles.row}>

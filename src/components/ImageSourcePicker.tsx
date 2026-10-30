@@ -13,16 +13,19 @@ import { AccessibleButton } from './AccessibleButton';
 interface Props {
   onImage: (image: CapturedImage) => void;
   onError: (message: string) => void;
+  /** True while the parent screen is analyzing — blocks duplicate runs. */
+  disabled?: boolean;
 }
 
 /** Shared source chooser used by Detection + Text Reader screens. */
-export function ImageSourcePicker({ onImage, onError }: Props) {
+export function ImageSourcePicker({ onImage, onError, disabled = false }: Props) {
   const { settings, colors } = useSettings();
   const lang = settings.language;
   const [showSamples, setShowSamples] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const run = async (fn: () => Promise<CapturedImage | null>) => {
+    if (busy || disabled) return; // one capture/analysis at a time
     setBusy(true);
     try {
       const img = await fn();
@@ -45,22 +48,23 @@ export function ImageSourcePicker({ onImage, onError }: Props) {
       <AccessibleButton
         label={t(lang, 'sourceGallery')}
         onPress={() => run(() => new GalleryImageSource().getImage())}
-        disabled={busy}
+        disabled={busy || disabled}
       />
       <AccessibleButton
         label={t(lang, 'sourceCameraTest')}
         onPress={() => run(() => new PhoneCameraTestSource().getImage())}
-        disabled={busy}
+        disabled={busy || disabled}
         variant="secondary"
       />
       <AccessibleButton
         label={t(lang, 'sourceSample')}
         onPress={() => setShowSamples((v) => !v)}
-        disabled={busy}
+        disabled={busy || disabled}
         variant="secondary"
       />
       <AccessibleButton
         label={t(lang, 'sourceGlasses')}
+        disabled={busy || disabled}
         onPress={async () => {
           try {
             await new SmartGlassesCameraSource().getImage();
@@ -84,7 +88,7 @@ export function ImageSourcePicker({ onImage, onError }: Props) {
               <AccessibleButton
                 label={lang === 'ar' ? s.titleAr : s.titleEn}
                 onPress={() => run(() => new SampleImageSource(s).getImage())}
-                disabled={busy}
+                disabled={busy || disabled}
               />
             </View>
           ))}

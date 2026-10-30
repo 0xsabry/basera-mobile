@@ -90,16 +90,91 @@ export function parseVoiceCommand(raw: string): VoiceCommand {
   return { action: 'unknown', implemented: false, exampleEn: '', exampleAr: '' };
 }
 
+/** Machine-readable voice failure kinds — the UI localizes these, so a
+ * raw English native message never reaches an Arabic user (ROOT CAUSE 4). */
+export type VoiceErrorKind =
+  | 'permission'
+  | 'unavailable'
+  | 'language'
+  | 'network'
+  | 'no-match'
+  | 'aborted'
+  | 'audio'
+  | 'unknown';
+
 export class VoiceUnavailableError extends Error {
   readonly code = 'VOICE_UNAVAILABLE';
-  constructor(message: string) {
+  readonly kind: 'permission' | 'unavailable';
+  constructor(message: string, kind: 'permission' | 'unavailable' = 'unavailable') {
     super(message);
     this.name = 'VoiceUnavailableError';
+    this.kind = kind;
+  }
+}
+
+/** A recognition-session failure reported by the native recognizer. */
+export class VoiceRecognitionError extends Error {
+  readonly code = 'VOICE_RECOGNITION_ERROR';
+  readonly kind: VoiceErrorKind;
+  constructor(kind: VoiceErrorKind, message: string) {
+    super(message);
+    this.name = 'VoiceRecognitionError';
+    this.kind = kind;
+  }
+}
+
+/** Map a native expo-speech-recognition error code to a VoiceErrorKind. */
+export function mapNativeErrorCode(code: string): VoiceErrorKind {
+  switch (code) {
+    case 'not-allowed':
+      return 'permission';
+    case 'service-not-allowed':
+      return 'unavailable';
+    case 'language-not-supported':
+      return 'language';
+    case 'network':
+      return 'network';
+    case 'no-speech':
+    case 'no-match':
+      return 'no-match';
+    case 'audio-capture':
+      return 'audio';
+    case 'aborted':
+      return 'aborted';
+    default:
+      return 'unknown';
+  }
+}
+
+/** i18n key for any voice failure — screens render THIS, never e.message. */
+export function voiceErrorMessageKey(e: unknown): import('../i18n/strings').StringKey {
+  const kind: VoiceErrorKind | null =
+    e instanceof VoiceUnavailableError || e instanceof VoiceRecognitionError
+      ? e.kind
+      : null;
+  switch (kind) {
+    case 'permission':
+      return 'voiceErrPermission';
+    case 'unavailable':
+      return 'voiceErrUnavailable';
+    case 'language':
+      return 'voiceErrLanguage';
+    case 'network':
+      return 'voiceErrNetwork';
+    case 'no-match':
+      return 'voiceErrNoMatch';
+    default:
+      return 'voiceErrGeneric';
   }
 }
 
 export interface VoiceCommandService {
-  startListening(lang: 'ar' | 'en', onResult: (transcript: string) => void, onError: (e: Error) => void): Promise<void>;
+  startListening(
+    lang: 'ar' | 'en',
+    onResult: (transcript: string) => void,
+    onError: (e: Error) => void,
+    onEnd?: () => void,
+  ): Promise<void>;
   stopListening(): Promise<void>;
 }
 
@@ -117,8 +192,8 @@ interface SpeechModuleLike {
   start(options: { lang: string; interimResults: boolean; maxAlternatives: number }): void;
   stop(): void;
   addListener(
-    event: 'result' | 'error',
-    cb: ((ev: SpeechRecognitionResultEventLike) => void) | ((ev: SpeechRecognitionErrorEventLike) => void),
+    event: 'result' | 'error' | 'end' | 'nomatch',
+    cb: ((ev: any) => void),
   ): { remove(): void };
 }
 
@@ -132,6 +207,7 @@ function loadSpeechModule(): SpeechModuleLike {
     throw new VoiceUnavailableError(
       'Voice recognition is unavailable in this build. It needs the BASERA development build (native speech module); it does not run in Expo Go. ' +
         `(${e instanceof Error ? e.message : String(e)})`,
+      'unavailable',
     );
   }
 }
@@ -156,6 +232,7 @@ export class NativeVoiceCommandService implements VoiceCommandService {
     lang: 'ar' | 'en',
     onResult: (transcript: string) => void,
     onError: (e: Error) => void,
+    onEnd?: () => void,
   ): Promise<void> {
     const mod = loadSpeechModule();
     this.module = mod;
@@ -164,24 +241,54 @@ export class NativeVoiceCommandService implements VoiceCommandService {
     if (!permission.granted) {
       throw new VoiceUnavailableError(
         'Microphone permission was denied. BASERA needs microphone access for voice commands; you can grant it in system settings.',
+        'permission',
       );
     }
     if (!mod.isRecognitionAvailable()) {
       throw new VoiceUnavailableError(
         'Speech recognition is not available on this device (no speech recognition service found). BASERA never assumes offline recognition support.',
+        'unavailable',
       );
     }
 
     this.clearSubscriptions();
+
+    // Session completion fires exactly once: final result, error,
+    // 'nomatch', or the recognizer's own 'end' — the screen resets its
+    // state from onEnd, so it can never get stuck on "listening".
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      onEnd?.();
+    };
     this.subscriptions.push(
       mod.addListener('result', (ev: SpeechRecognitionResultEventLike) => {
         if (!ev.isFinal) return;
-        const transcript = ev.results?.[0]?.transcript;
-        if (transcript) onResult(transcript);
+        const transcript = ev.results?.[0]?.transcript?.trim();
+        if (transcript) {
+          onResult(transcript);
+          finish();
+        }
       }),
       mod.addListener('error', (ev: SpeechRecognitionErrorEventLike) => {
-        onError(new Error(ev.message || ev.error || 'Speech recognition error'));
+        const kind = mapNativeErrorCode(ev.error ?? '');
+        // 'aborted' = we (or the system) stopped listening on purpose:
+        // a normal end of session, not a failure to report.
+        if (kind === 'aborted') {
+          finish();
+          return;
+        }
+        onError(
+          new VoiceRecognitionError(kind, ev.message || ev.error || 'Speech recognition error'),
+        );
+        finish();
       }),
+      mod.addListener('nomatch', () => {
+        onError(new VoiceRecognitionError('no-match', 'No speech matched.'));
+        finish();
+      }),
+      mod.addListener('end', finish),
     );
 
     mod.start({

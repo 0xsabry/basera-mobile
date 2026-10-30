@@ -5,8 +5,11 @@
  */
 import {
   NativeVoiceCommandService,
+  VoiceRecognitionError,
   VoiceUnavailableError,
+  mapNativeErrorCode,
   parseVoiceCommand,
+  voiceErrorMessageKey,
 } from '../VoiceCommandService';
 
 type Listener = (ev: never) => void;
@@ -133,5 +136,102 @@ describe('NativeVoiceCommandService (expo-speech-recognition adapter)', () => {
     expect(mockModule.stopped).toBe(true);
     mockModule.emit('result', { isFinal: true, results: [{ transcript: 'repeat' }] });
     expect(onResult).not.toHaveBeenCalled();
+  });
+
+  it("'end' event completes the session via onEnd (screen never stuck listening)", async () => {
+    const svc = new NativeVoiceCommandService();
+    const onEnd = jest.fn();
+    await svc.startListening('en', jest.fn(), jest.fn(), onEnd);
+    mockModule.emit('end', {});
+    expect(onEnd).toHaveBeenCalledTimes(1);
+    // A second end (or a trailing event) must not fire it again.
+    mockModule.emit('end', {});
+    expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('final result also completes the session exactly once', async () => {
+    const svc = new NativeVoiceCommandService();
+    const onEnd = jest.fn();
+    await svc.startListening('en', jest.fn(), jest.fn(), onEnd);
+    mockModule.emit('result', { isFinal: true, results: [{ transcript: 'repeat' }] });
+    mockModule.emit('end', {});
+    expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("'nomatch' completes with a typed no-match error", async () => {
+    const svc = new NativeVoiceCommandService();
+    const onError = jest.fn();
+    const onEnd = jest.fn();
+    await svc.startListening('en', jest.fn(), onError, onEnd);
+    mockModule.emit('nomatch', {});
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'no-match' }),
+    );
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(VoiceRecognitionError);
+    expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('error codes map to typed kinds and localization keys', () => {
+    expect(mapNativeErrorCode('not-allowed')).toBe('permission');
+    expect(mapNativeErrorCode('service-not-allowed')).toBe('unavailable');
+    expect(mapNativeErrorCode('language-not-supported')).toBe('language');
+    expect(mapNativeErrorCode('network')).toBe('network');
+    expect(mapNativeErrorCode('no-speech')).toBe('no-match');
+    expect(mapNativeErrorCode('audio-capture')).toBe('audio');
+    expect(mapNativeErrorCode('aborted')).toBe('aborted');
+    expect(mapNativeErrorCode('something-else')).toBe('unknown');
+
+    expect(voiceErrorMessageKey(new VoiceRecognitionError('permission', 'x'))).toBe('voiceErrPermission');
+    expect(voiceErrorMessageKey(new VoiceRecognitionError('unavailable', 'x'))).toBe('voiceErrUnavailable');
+    expect(voiceErrorMessageKey(new VoiceRecognitionError('language', 'x'))).toBe('voiceErrLanguage');
+    expect(voiceErrorMessageKey(new VoiceRecognitionError('network', 'x'))).toBe('voiceErrNetwork');
+    expect(voiceErrorMessageKey(new VoiceRecognitionError('no-match', 'x'))).toBe('voiceErrNoMatch');
+    expect(voiceErrorMessageKey(new VoiceRecognitionError('audio', 'x'))).toBe('voiceErrGeneric');
+    expect(voiceErrorMessageKey(new VoiceUnavailableError('x', 'permission'))).toBe('voiceErrPermission');
+    expect(voiceErrorMessageKey(new VoiceUnavailableError('x'))).toBe('voiceErrUnavailable');
+    expect(voiceErrorMessageKey(new Error('raw'))).toBe('voiceErrGeneric');
+  });
+
+  it('error event carries the typed kind (network), not just a message', async () => {
+    const svc = new NativeVoiceCommandService();
+    const onError = jest.fn();
+    const onEnd = jest.fn();
+    await svc.startListening('en', jest.fn(), onError, onEnd);
+    mockModule.emit('error', { error: 'network', message: 'Network error' });
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'network', message: 'Network error' }),
+    );
+    expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("'aborted' error ends the session WITHOUT surfacing an error", async () => {
+    const svc = new NativeVoiceCommandService();
+    const onError = jest.fn();
+    const onEnd = jest.fn();
+    await svc.startListening('en', jest.fn(), onError, onEnd);
+    mockModule.emit('error', { error: 'aborted', message: 'Aborted' });
+    expect(onError).not.toHaveBeenCalled();
+    expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('permission-denied error carries kind=permission for localization', async () => {
+    mockModule.granted = false;
+    const svc = new NativeVoiceCommandService();
+    const err = await svc.startListening('en', jest.fn(), jest.fn()).catch((e) => e);
+    expect(err).toBeInstanceOf(VoiceUnavailableError);
+    expect(err.kind).toBe('permission');
+    expect(voiceErrorMessageKey(err)).toBe('voiceErrPermission');
+  });
+
+  it('after stopListening, late end/error events reach no callbacks', async () => {
+    const svc = new NativeVoiceCommandService();
+    const onError = jest.fn();
+    const onEnd = jest.fn();
+    await svc.startListening('en', jest.fn(), onError, onEnd);
+    await svc.stopListening();
+    mockModule.emit('end', {});
+    mockModule.emit('error', { error: 'network', message: 'Network error' });
+    expect(onError).not.toHaveBeenCalled();
+    expect(onEnd).not.toHaveBeenCalled();
   });
 });

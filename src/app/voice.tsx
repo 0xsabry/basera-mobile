@@ -1,11 +1,12 @@
-import { router } from 'expo-router';
-import React, { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import {
   COMMAND_REGISTRY,
   NativeVoiceCommandService,
   parseVoiceCommand,
+  voiceErrorMessageKey,
 } from '../ai/VoiceCommandService';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { t } from '../i18n/strings';
@@ -43,7 +44,7 @@ export default function VoiceScreen() {
       case 'change-language': {
         const next = lang === 'ar' ? 'en' : 'ar';
         await update({ language: next });
-        void speechService.speak(next === 'ar' ? 'تم تغيير اللغة إلى العربية' : 'Language changed to English', next);
+        void speechService.speakAnnouncement(next === 'ar' ? 'تم تغيير اللغة إلى العربية' : 'Language changed to English', next);
         break;
       }
       case 'open-settings':
@@ -62,18 +63,45 @@ export default function VoiceScreen() {
     }
   };
 
+  // Never leave a recognition session (and its subscriptions) running
+  // after the screen loses focus or unmounts.
+  useEffect(() => {
+    return () => {
+      void voiceService.stopListening();
+    };
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        void voiceService.stopListening();
+        setListening(false);
+      };
+    }, []),
+  );
+
+  const stopListening = async () => {
+    await voiceService.stopListening();
+    setListening(false);
+  };
+
   const start = async () => {
     setError('');
     setFeedback('');
     try {
       setListening(true);
-      await voiceService.startListening(lang, handleTranscript, (e) => {
-        setListening(false);
-        setError(e.message);
-      });
+      await voiceService.startListening(
+        lang,
+        handleTranscript,
+        (e) => {
+          setListening(false);
+          // Localized message only — never a raw native error string.
+          setError(t(lang, voiceErrorMessageKey(e)));
+        },
+        () => setListening(false),
+      );
     } catch (e) {
       setListening(false);
-      setError(e instanceof Error ? e.message : t(lang, 'errorGeneric'));
+      setError(t(lang, voiceErrorMessageKey(e)));
     }
   };
 
@@ -99,6 +127,9 @@ export default function VoiceScreen() {
         <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger }]}>
           {error}
         </Text>
+      )}
+      {listening && (
+        <AccessibleButton label={t(lang, 'stopListening')} onPress={() => void stopListening()} variant="secondary" />
       )}
       <AccessibleButton label={t(lang, 'stopSpeaking')} onPress={() => void speechService.stop()} variant="secondary" />
 

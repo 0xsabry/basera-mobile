@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
-import { MlKitTextRecognizer } from '../ai/TextRecognizer';
+import { OcrUnavailableError, RoutingTextRecognizer } from '../ai/TextRecognizer';
 import type { OcrResult } from '../ai/types';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { ImageSourcePicker } from '../components/ImageSourcePicker';
@@ -11,8 +11,6 @@ import { t } from '../i18n/strings';
 import { useSettings } from '../state/SettingsContext';
 import { spacing, typeScale } from '../theme/tokens';
 
-const recognizer = new MlKitTextRecognizer();
-
 export default function ReadScreen() {
   const { settings, colors } = useSettings();
   const lang = settings.language;
@@ -21,18 +19,21 @@ export default function ReadScreen() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const runId = useRef(0);
+  const busyRef = useRef(false);
 
   const spokenText = (r: OcrResult) =>
     lang === 'ar' ? `النص بيقول: ${r.text}` : `The text says: ${r.text}`;
 
   const handleImage = async (img: CapturedImage) => {
+    if (busyRef.current) return; // never run two OCR passes at once
+    busyRef.current = true;
     const id = ++runId.current;
     setImage(img);
     setError('');
     setResult(null);
     setBusy(true);
     try {
-      const r = await recognizer.recognize(img);
+      const r = await new RoutingTextRecognizer(lang).recognize(img);
       if (runId.current !== id) return;
       setResult(r);
       if (r.text) {
@@ -49,8 +50,19 @@ export default function ReadScreen() {
       }
     } catch (e) {
       if (runId.current !== id) return;
-      setError(e instanceof Error ? e.message : t(lang, 'errorGeneric'));
+      // Typed unavailability and Arabic mode get localized text — never a
+      // raw (English) service message.
+      setError(
+        e instanceof OcrUnavailableError
+          ? t(lang, 'featureUnavailableInBuild')
+          : lang === 'ar'
+            ? t(lang, 'errorGeneric')
+            : e instanceof Error
+              ? e.message
+              : t(lang, 'errorGeneric'),
+      );
     } finally {
+      busyRef.current = false;
       if (runId.current === id) setBusy(false);
     }
   };
@@ -60,7 +72,7 @@ export default function ReadScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <ImageSourcePicker onImage={handleImage} onError={setError} />
+      <ImageSourcePicker onImage={handleImage} onError={setError} disabled={busy} />
       {busy && (
         <View style={styles.row}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -90,6 +102,8 @@ export default function ReadScreen() {
             <Text selectable style={[styles.bodyLarge, { color: colors.text }]}>
               {result.text}
             </Text>
+          ) : result.engineNote === 'arabic-unsupported' ? (
+            <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'arabicOcrUnsupported')}</Text>
           ) : (
             <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'noTextFound')}</Text>
           )}

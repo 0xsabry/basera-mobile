@@ -81,8 +81,10 @@ produces the installable build.
    docs/FEATURE_STATUS.md.
 2. Arabic TTS voice quality/availability depends on the device's TTS
    engine (ar-EG requested, device Arabic voice used as fallback).
-3. ML Kit Arabic OCR accuracy depends on the Arabic script model shipped
-   with the native build / Play services.
+3. ~~ML Kit Arabic OCR~~ — CORRECTED 2026-10-30: ML Kit has no Arabic
+   text model at all (see the stabilization section below). Arabic OCR
+   is PP-OCR on-device; Latin OCR is ML Kit with the explicit Latin
+   script.
 4. RTL: `I18nManager.forceRTL` is applied on language change; a full
    native RTL flip requires an app restart (platform behavior).
 5. JPEG pixel decoding for the YOLO pipeline (jpeg-js) is pure JS —
@@ -106,3 +108,78 @@ produces the installable build.
 - Project linked: @0xsabry/basera, projectId f402737d-1b54-441d-8738-99ce8e9009e9 (the ID in the task message was missing its final character; the correct one was read from the Expo API for the same project).
 - EAS build 2bf63ba2-0d92-4ac3-b205-1ee4462fc9bf (development profile): FINISHED. APK artifact verified after download (294,660,016 bytes): package me.auramarketing.basera, versionName 1.0.0 versionCode 1; libNitroTflite.so present for all 4 ABIs; ML Kit OCR models bundled. NOTE: as with all dev-client builds, the JS bundle and the YOLO .tflite asset are served by Metro (`npx expo start --dev-client`), not embedded in the APK; the earlier expo export proved the model embeds correctly (hash-identical) for standalone builds.
 - STILL hardware-only pending: launching the app, on-device YOLO inference, OCR run, TTS audibility, microphone recognition (incl. ar-EG service availability on the test device).
+
+## MVP stabilization (2026-10-30) — root-cause fixes + gates
+
+Root causes fixed (each verified in code before fixing):
+
+1. **Detection failed on device** — `ObjectDetector` used `globalThis.atob`
+   + `Buffer.from`; Hermes/RN provides neither reliably (Node-based jest
+   masked it). Fixed: pure-TS base64 decoder (`src/ai/base64.ts`), the
+   `Uint8Array` passed directly to jpeg-js (`useTArray: true` avoids its
+   Buffer path — verified in the jpeg-js source). Regression test deletes
+   `globalThis.Buffer`/`atob` and builds the real [1,3,640,640] tensor
+   from a real JPEG: passes.
+2. **OCR** — (a) ML Kit now called explicitly with
+   `TextRecognitionScript.LATIN`. (b) Arabic: ML Kit has NO Arabic model
+   (proven in the installed library). Real on-device Arabic OCR added
+   via PP-OCR + react-native-fast-tflite (details in docs/MODELS.md).
+   Conversion notes: PP-OCRv4 Arabic Paddle→ONNX produced a graph
+   onnxruntime cannot load (Concat rank error) and PP-OCR det Paddle
+   models hit a paddle2onnx PIR parser bug, so ONNX conversions of the
+   official weights were used (det = PP-OCRv3, rec =
+   arabic_PP-OCRv3_mobile_rec; dictionary byte-identical to official).
+   fast-tflite cannot resize input tensors (verified in its native
+   source), so the TFLite shapes were pinned by flatbuffer editing to
+   det [1,960,960,3] / rec [1,48,640,3].
+   **Host gate (mandatory, PASSED):** the shipped TFLite files, TF Lite
+   interpreter, `BUILTIN_WITHOUT_DEFAULT_DELEGATES` (no XNNPACK — it
+   fails to prepare the rec graph), NO `resize_tensor_input`:
+   sample `text-arabic.png` → 3 line boxes → recognized text with
+   **0.730 character overlap** vs the known text (gate ≥ 0.70).
+   Full dynamic-shape pipeline scored 0.712; fixed-640 rec width beat
+   fixed-320 (0.684 — squashing wide lines hurts). Jest reproduces the
+   recorded det prob map → TS boxes and rec logits → TS CTC text
+   exactly (`tests/fixtures/ppocr_*`).
+3. **Repeat replayed the welcome** — `speak()` recorded every utterance.
+   Fixed: `speakAnnouncement()` for greetings/status (does not touch the
+   repeat target); `repeatLast()` with no repeatable response speaks a
+   localized "nothing to repeat yet" via the announcement path.
+   Unit-tested: welcome→repeat = nothing-to-repeat; description→welcome
+   →repeat = description; language preserved.
+4. **Voice fragility** — adapter now: typed error kinds
+   (`VoiceRecognitionError.kind`, `VoiceUnavailableError.kind`),
+   native-code mapping, `end`/`nomatch` session completion (exactly
+   once), `aborted` ends silently, stop-listening button on the voice
+   screen, stop on unmount/blur. Screens render localized strings via
+   `voiceErrorMessageKey` — raw native English never reaches Arabic UI.
+   Adapter tests extended (end/nomatch/mapping/aborted/stop-cleanup).
+5. **Arabic audit (bounded)** — voice/detect/read error surfaces
+   localized (incl. new `featureUnavailableInBuild` key); brand spelling
+   بصيرة kept; no other string defects found. Picker errors were
+   already localized (permission + glasses).
+6. **Perf/stability (bounded)** — `ImageSourcePicker` gained a
+   `disabled` prop wired to the screens' busy state + a `busyRef`
+   re-entry guard in detect/read `handleImage` (no duplicate runs).
+
+Gates — actual results (2026-10-30):
+
+| Gate | Result |
+|---|---|
+| `npm ci` | ✅ succeeds |
+| `npx tsc --noEmit` | ✅ clean, 0 errors |
+| `npm run lint` | ✅ 0 errors, 0 warnings |
+| `npm test -- --runInBand` | ✅ **10 suites, 79 tests, all pass** (was 7/52) |
+| `npx expo export --platform android` | ✅ succeeds — dist contains all 3 model assets, each SHA256-identical to source (YOLO 19bfdc3c…, det 04e8e0b6…, rec 1fc31af5…) |
+| Python host verification (shipped OCR TFLite) | ✅ both allocate with exact fixed shapes, no resize; full Arabic gate 0.730 on byte-identical files |
+| `sha256sum assets/models/yolo11n.tflite` | ✅ `19bfdc3cf16231b1d6d5604d245e934a5eeef5300fb3d04595b2dc92b69b5997` — unchanged |
+
+**Device tests: NONE executed by the agent.** The following remain
+team-verification-pending on a real Android device: open the app;
+voice assistant + microphone; Arabic and English voice commands;
+camera photo; real scene description; OCR of visible Latin and Arabic
+text; Repeat repeating the latest meaningful response (not the
+welcome); navigating all screens without freezing; Arabic/English
+switch incl. RTL/LTR layout; microphone-permission denial + recovery;
+offline/API-unavailable behavior showing an honest understandable
+error.

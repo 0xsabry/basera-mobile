@@ -23,4 +23,10 @@ export interface OcrResult {
   /** Best-effort detected language: 'ar' | 'en' | 'mixed' | 'unknown' */
   language: 'ar' | 'en' | 'mixed' | 'unknown';
   blocks: { text: string }[];
+  /**
+   * Set when Arabic was requested but the Arabic engine is unavailable
+   * in this build, so the UI can say so honestly instead of showing a
+   * generic "no text found".
+   */
+  engineNote?: 'arabic-unsupported';
 }

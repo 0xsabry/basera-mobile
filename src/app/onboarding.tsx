@@ -16,7 +16,9 @@ export default function OnboardingScreen() {
     await update({ language: chosen, onboardingDone: true });
     speechService.setRate(settings.speechRate);
     if (settings.announcements) {
-      void speechService.speak(
+      // Announcement path on purpose: the welcome must NEVER become the
+      // "Repeat" target (ROOT CAUSE 3).
+      void speechService.speakAnnouncement(
         chosen === 'ar' ? 'أهلاً بك في بصيرة. اختار اللي تحب تعمله من الشاشة الرئيسية.' : 'Welcome to BASERA. Choose what you would like to do from the home screen.',
         chosen,
       );

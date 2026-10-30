@@ -1,0 +1,30 @@
+{
+ "sample": "text-arabic.png",
+ "origW": 1200,
+ "origH": 800,
+ "probW": 960,
+ "probH": 640,
+ "expectedBoxes": [
+  [
+   394,
+   137,
+   798,
+   197
+  ],
+  [
+   382,
+   273,
+   822,
+   347
+  ],
+  [
+   227,
+   407,
+   979,
+   490
+  ]
+ ],
+ "recTimesteps": 80,
+ "recClasses": 163,
+ "recLine1Text": "مكتبهرصيرق"
+}
