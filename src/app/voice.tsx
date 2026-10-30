@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import {
@@ -44,19 +44,6 @@ export default function VoiceScreen() {
     | { kind: 'place-note'; placeName: string | null }
     | { kind: 'delete-place'; placeName: string };
   const pendingRef = useRef<PendingPlace | null>(null);
-  const settingsRef = useRef(settings);
-  useEffect(() => {
-    settingsRef.current = settings;
-  }, [settings]);
-  const assistant = useMemo(
-    () =>
-      new PlacesAssistant({
-        store: placesStore,
-        getFix: () => getCurrentFix(true),
-        proximityRadiusM: () => settingsRef.current.proximityRadiusM,
-      }),
-    [],
-  );
   const say = (msg: string) => {
     setFeedback(msg);
     void speechService.speakAnnouncement(msg, lang);
@@ -66,6 +53,12 @@ export default function VoiceScreen() {
     setTranscript(text);
     setListening(false);
     speechService.setRate(settings.speechRate);
+    // Built per utterance so it always reads the current settings.
+    const assistant = new PlacesAssistant({
+      store: placesStore,
+      getFix: () => getCurrentFix(true),
+      proximityRadiusM: () => settings.proximityRadiusM,
+    });
 
     const pending = pendingRef.current;
     if (pending) {
