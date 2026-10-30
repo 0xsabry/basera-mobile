@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0B3D2E" />
+    <title>BASERA Guardian | بصيرة — الوصي</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon-192.png" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <style>
+      :root { --bg:#0b3d2e; --panel:#ffffff; --ink:#12211b; --accent:#0b3d2e; --danger:#b3261e; }
+      * { box-sizing: border-box; }
+      body { margin:0; font-family: system-ui, "Segoe UI", Tahoma, sans-serif; color:var(--ink); background:#f2f5f3; }
+      header { background:var(--bg); color:#fff; padding:14px 16px; display:flex; gap:12px; align-items:center; justify-content:space-between; }
+      header h1 { font-size:20px; margin:0; }
+      main { max-width:860px; margin:0 auto; padding:16px; display:grid; gap:16px; }
+      section { background:var(--panel); border-radius:14px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+      h2 { margin-top:0; font-size:18px; }
+      label { display:block; font-weight:600; margin:10px 0 4px; }
+      input { width:100%; min-height:52px; font-size:18px; padding:10px; border:1.5px solid #9db8ae; border-radius:10px; }
+      button { min-height:52px; min-width:52px; font-size:17px; font-weight:700; border-radius:10px; border:1.5px solid var(--accent); background:var(--accent); color:#fff; padding:10px 18px; cursor:pointer; }
+      button.secondary { background:#fff; color:var(--accent); }
+      button.danger { background:var(--danger); border-color:var(--danger); }
+      button:disabled { opacity:.5; }
+      .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+      #map { height:380px; border-radius:12px; }
+      .msg { min-height:24px; font-weight:600; }
+      .err { color:var(--danger); }
+      .person { border:1.5px solid #d7e2dd; border-radius:12px; padding:12px; margin:8px 0; }
+      .fresh { color:#0b3d2e; font-weight:700; }
+      .stale { color:#8a6d00; font-weight:700; }
+      [hidden] { display:none !important; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1 id="appTitle">بصيرة — الوصي</h1>
+      <button id="langToggle" class="secondary" type="button">English</button>
+    </header>
+
+    <main>
+      <p class="msg" id="statusMsg" role="status" aria-live="polite"></p>
+      <p class="msg err" id="errorMsg" role="alert"></p>
+
+      <section id="configSection" hidden>
+        <h2 data-i18n="notConfiguredTitle">الخدمة غير مهيأة</h2>
+        <p data-i18n="notConfiguredBody">
+          لم يتم إعداد اتصال الخادم بعد (config.js). راجع docs/GUARDIAN_SETUP.md.
+        </p>
+      </section>
+
+      <section id="authSection" hidden>
+        <h2 data-i18n="signInTitle">تسجيل الدخول</h2>
+        <label for="email" data-i18n="email">البريد الإلكتروني</label>
+        <input id="email" type="email" autocomplete="email" />
+        <label for="password" data-i18n="password">كلمة المرور</label>
+        <input id="password" type="password" autocomplete="current-password" />
+        <div class="row" style="margin-top:12px">
+          <button id="signInBtn" type="button" data-i18n="signIn">دخول</button>
+          <button id="signUpBtn" class="secondary" type="button" data-i18n="signUp">إنشاء حساب</button>
+        </div>
+      </section>
+
+      <section id="redeemSection" hidden>
+        <h2 data-i18n="redeemTitle">ربط بشخص يشارك موقعه معك</h2>
+        <p data-i18n="redeemBody">
+          أدخل كود الربط الذي أعطاك إياه. سيُنشئ الكود طلبًا معلّقًا فقط — ولن
+          ترى أي موقع حتى يوافق هو على الطلب من تطبيقه.
+        </p>
+        <label for="pairCode" data-i18n="pairCode">كود الربط (6 أرقام)</label>
+        <input id="pairCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+        <div class="row" style="margin-top:12px">
+          <button id="redeemBtn" type="button" data-i18n="redeem">إرسال طلب الربط</button>
+        </div>
+      </section>
+
+      <section id="peopleSection" hidden>
+        <h2 data-i18n="peopleTitle">الأشخاص الذين يشاركون موقعهم معي</h2>
+        <div id="peopleList"></div>
+        <div id="map"></div>
+        <p id="freshness" class="msg"></p>
+        <div class="row">
+          <button id="refreshBtn" class="secondary" type="button" data-i18n="refresh">تحديث</button>
+          <button id="revokeBtn" class="danger" type="button" data-i18n="revokeMine" hidden>
+            إزالة وصولي لهذا الشخص
+          </button>
+        </div>
+      </section>
+
+      <section id="notifySection" hidden>
+        <h2 data-i18n="notifyTitle">تنبيهات الخطر</h2>
+        <p id="notifyState" data-i18n="notifyBody">
+          فعّل التنبيهات لتصلك إشعارات فورية عند حدوث تنبيه خطر (المرحلة 3).
+        </p>
+        <button id="notifyBtn" type="button" data-i18n="enableNotify">تفعيل التنبيهات</button>
+        <button id="testNotifyBtn" class="secondary" type="button" data-i18n="testNotify">
+          إرسال تنبيه تجريبي لأوصيائي
+        </button>
+      </section>
+
+      <section id="sessionSection" hidden>
+        <p id="whoami"></p>
+        <button id="signOutBtn" class="secondary" type="button" data-i18n="signOut">تسجيل الخروج</button>
+      </section>
+    </main>
+
+    <script src="config.js"></script>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
