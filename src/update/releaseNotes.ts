@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-10-30',
     runtimeVersion: '1.1.0',
+    titleEn: 'OTA smoke test — delivery channel verified',
+    titleAr: 'اختبار التحديث الهوائي — تم التحقق من قناة التوصيل',
+    bodyEn:
+      'This note arrived over the air, without reinstalling the app. If you can read it in the update screen, the OTA pipeline (runtime 1.1.0, preview channel) works end to end. No features changed in this update.',
+    bodyAr:
+      'الملحوظة دي وصلت عبر الهواء، من غير إعادة تثبيت التطبيق. لو قادر تقراها في شاشة التحديثات، يبقى خط التحديثات الهوائية (runtime 1.1.0، قناة preview) شغال من الطرف للطرف. مفيش مزايا اتغيرت في التحديث ده.',
+  },
+  {
+    date: '2026-10-30',
+    runtimeVersion: '1.1.0',
     titleEn: 'BASERA 1.1.0 — Guardian + over-the-air updates',
     titleAr: 'بصيرة 1.1.0 — الوصي + التحديثات الهوائية',
     bodyEn:
