@@ -18,7 +18,7 @@ Labels: **Implemented and tested** · **Implemented but not fully tested** ·
 | OCR — ML Kit (Arabic + Latin) | Implemented but not fully tested (needs device/dev build) | Real ML Kit binding installed; language-detection logic unit-tested; native OCR run needs a device |
 | Text-to-Speech (AR + EN, rate, repeat, stop) | Implemented but not fully tested | expo-speech integration; audible verification needs a device |
 | Voice commands — parser (AR + EN, 7 implemented + 1 planned) | Implemented and tested | Unit-tested incl. planned/unknown handling |
-| Voice commands — microphone recognition | Implemented but not fully tested (needs device/dev build) | @react-native-voice/voice native module; device check pending |
+| Voice commands — microphone recognition | Implemented but not fully tested (needs device/dev build) | expo-speech-recognition 58.0.1 native module (migrated 2026-10-30 from the archived voice library that broke Gradle); EAS dev build FINISHED + artifact-verified; device check pending |
 | History (save/list/reopen/delete/clear, on-device only) | Implemented and tested | Store logic unit-tested incl. cap + corruption handling |
 | Settings (language, theme, rate, contrast, announcements, privacy) | Implemented and tested | Persistence + theme resolution unit-tested |
 | Arabic RTL layout flipping | Implemented but not fully tested | I18nManager.forceRTL applied on language change; full visual flip verification needs a device (native RTL switch requires app reload) |
