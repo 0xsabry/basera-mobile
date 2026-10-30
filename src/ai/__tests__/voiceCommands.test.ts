@@ -31,6 +31,38 @@ describe('parseVoiceCommand — Arabic', () => {
   });
 });
 
+describe('parseVoiceCommand — hazards + places intents', () => {
+  it.each([
+    ['استغاثة', 'sos', undefined],
+    ['help me', 'sos', undefined],
+    ['أنا بخير', 'acknowledge-ok', undefined],
+    ["i'm okay", 'acknowledge-ok', undefined],
+    ['احفظ المكان ده باسم البيت', 'save-place', 'البيت'],
+    ['save this place as University', 'save-place', 'university'],
+    ['احفظ المكان ده', 'save-place-unnamed', undefined],
+    ['save this place', 'save-place-unnamed', undefined],
+    ['إيه الأماكن اللي حفظتها؟', 'list-places', undefined],
+    ['what places have i saved', 'list-places', undefined],
+    ['فين الجامعة؟', 'find-place', 'الجامعة'],
+    ['where is the pharmacy', 'find-place', 'the pharmacy'],
+    ['أنا قريب من البيت؟', 'near-place', 'البيت'],
+    ['امسح المكان المحفوظ باسم النادي', 'delete-place', 'النادي'],
+    ['كرر وصف المكان', 'describe-place', undefined],
+    ['describe the place', 'describe-place', undefined],
+  ])('"%s" -> %s (arg=%s)', (input, action, argument) => {
+    const cmd = parseVoiceCommand(input);
+    expect(cmd.action).toBe(action);
+    expect(cmd.implemented).toBe(true);
+    expect(cmd.argument).toBe(argument);
+  });
+
+  it('generic commands still win where there is no specific pattern', () => {
+    expect(parseVoiceCommand('describe').action).toBe('describe');
+    expect(parseVoiceCommand('كرر').action).toBe('repeat');
+    expect(parseVoiceCommand('اقرأ النص').action).toBe('read-text');
+  });
+});
+
 describe('registry honesty', () => {
   it('planned command is parsed but marked not implemented', () => {
     const cmd = parseVoiceCommand('is the path clear');

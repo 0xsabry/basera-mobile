@@ -188,6 +188,7 @@ const en = {
   guardianDeletionRetry: 'Retry deletion now',
   guardianDeletionPendingNote:
     'You asked for a server deletion earlier and it is still pending. When the connection returns, it runs first and removes the locations stored up to that moment.',
+  alertsAcknowledged: 'Alerts acknowledged. Stay safe.',
   hazardWarnPrefix: 'Warning!',
   hazardCarefulPrefix: 'Careful:',
   sosTitle: 'Emergency SOS',
@@ -397,6 +398,7 @@ const ar: Record<StringKey, string> = {
   guardianDeletionRetry: 'حاول الحذف تاني دلوقتي',
   guardianDeletionPendingNote:
     'انت طلبت حذف من الخادم قبل كده ولسه معلّق. أول ما الاتصال يرجع هيتنفذ الأول ويمسح المواقع المحفوظة لحد اللحظة دي.',
+  alertsAcknowledged: 'تم تأكيد التنبيهات. خليك في أمان.',
   hazardWarnPrefix: 'احذر!',
   hazardCarefulPrefix: 'انتبه:',
   sosTitle: 'استغاثة طارئة',

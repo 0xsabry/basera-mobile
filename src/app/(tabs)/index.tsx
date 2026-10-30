@@ -12,6 +12,7 @@ import { speechService } from '../../ai/SpeechService';
 import { AccessibleButton } from '../../components/AccessibleButton';
 import { historyStore, type HistoryItem } from '../../data/HistoryStore';
 import { getGuardianService } from '../../guardian/GuardianService';
+import { alertHistoryStore, type AlertEvent } from '../../hazards/AlertHistoryStore';
 import { t } from '../../i18n/strings';
 import { pushOnce } from '../../state/navGuard';
 import { useSettings } from '../../state/SettingsContext';
@@ -21,10 +22,12 @@ export default function HomeScreen() {
   const { settings, colors, type, loaded } = useSettings();
   const lang = settings.language;
   const [last, setLast] = useState<HistoryItem | null>(null);
+  const [activeAlert, setActiveAlert] = useState<AlertEvent | null>(null);
 
   const refresh = useCallback(async () => {
     const items = await historyStore.list();
     setLast(items[0] ?? null);
+    setActiveAlert(await alertHistoryStore.latestUnacknowledgedHigh());
   }, []);
 
   // Tab screens stay mounted — refresh on every focus so "last result"
@@ -103,6 +106,19 @@ export default function HomeScreen() {
         onPress={() => pushOnce('/places')}
         variant="secondary"
       />
+
+      {activeAlert && (
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.danger, borderWidth: 3 }]}>
+          <Text style={[styles.label, { color: colors.danger, fontSize: type.caption }]}>
+            {t(lang, 'alertsLatest')}
+          </Text>
+          <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+            {activeAlert.kind === 'sos' ? t(lang, 'sosTitle') : activeAlert.className} —{' '}
+            {new Date(activeAlert.timestamp).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}
+          </Text>
+          <AccessibleButton label={t(lang, 'viewAlerts')} onPress={() => pushOnce('/alerts')} variant="secondary" />
+        </View>
+      )}
 
       <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>

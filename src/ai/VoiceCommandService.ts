@@ -22,8 +22,23 @@ export type CommandAction =
   | 'change-language'
   | 'open-settings'
   | 'go-home'
+  | 'sos'
+  | 'acknowledge-ok'
+  | 'save-place'
+  | 'save-place-unnamed'
+  | 'add-place-note'
+  | 'list-places'
+  | 'find-place'
+  | 'near-place'
+  | 'delete-place'
+  | 'describe-place'
   | 'obstacle-check' // planned
   | 'unknown';
+
+export interface ParsedCommand extends VoiceCommand {
+  /** Extracted argument (e.g. a place name) for parameterized commands. */
+  argument?: string;
+}
 
 export interface VoiceCommand {
   action: CommandAction;
@@ -42,6 +57,16 @@ export const COMMAND_REGISTRY: VoiceCommand[] = [
   { action: 'change-language', implemented: true, exampleEn: 'Change language', exampleAr: 'غير اللغة' },
   { action: 'open-settings', implemented: true, exampleEn: 'Open settings', exampleAr: 'افتح الإعدادات' },
   { action: 'go-home', implemented: true, exampleEn: 'Go home', exampleAr: 'ارجع للرئيسية' },
+  { action: 'sos', implemented: true, exampleEn: 'SOS / Help me', exampleAr: 'استغاثة' },
+  { action: 'acknowledge-ok', implemented: true, exampleEn: "I'm okay", exampleAr: 'أنا بخير' },
+  { action: 'save-place', implemented: true, exampleEn: 'Save this place as Home', exampleAr: 'احفظ المكان ده باسم البيت' },
+  { action: 'save-place-unnamed', implemented: true, exampleEn: 'Save this place', exampleAr: 'احفظ المكان ده' },
+  { action: 'add-place-note', implemented: true, exampleEn: 'Add a note to the place Home', exampleAr: 'ضيف ملاحظة للمكان ده' },
+  { action: 'list-places', implemented: true, exampleEn: 'What places have I saved?', exampleAr: 'إيه الأماكن اللي حفظتها؟' },
+  { action: 'find-place', implemented: true, exampleEn: 'Where is the university?', exampleAr: 'فين الجامعة؟' },
+  { action: 'near-place', implemented: true, exampleEn: 'Am I near home?', exampleAr: 'أنا قريب من البيت؟' },
+  { action: 'delete-place', implemented: true, exampleEn: 'Delete the saved place Club', exampleAr: 'امسح المكان المحفوظ باسم النادي' },
+  { action: 'describe-place', implemented: true, exampleEn: 'Repeat the place description', exampleAr: 'كرر وصف المكان' },
   { action: 'obstacle-check', implemented: false, exampleEn: 'Is the path clear? (planned)', exampleAr: 'هل الطريق فاضي؟ (مخطط)' },
 ];
 
@@ -54,7 +79,73 @@ function normalize(input: string): string {
     .trim();
 }
 
-const PATTERNS: { action: CommandAction; patterns: string[] }[] = [
+interface PatternEntry {
+  action: CommandAction;
+  patterns: string[];
+  /** Prefixes (normalized the same way) after which the argument —
+   *  e.g. a place name — is taken from the transcript. */
+  argFrom?: string[];
+}
+
+const PATTERNS: PatternEntry[] = [
+  // --- Hazards + Places FIRST: these patterns are specific and several
+  // contain generic words ('describe the place' contains 'describe';
+  // 'كرر وصف المكان' contains 'كرر'). The generic describe/read-text/
+  // repeat entries below only match what is left over. ---
+  {
+    action: 'describe-place',
+    patterns: ['كرر وصف المكان', 'وصف المكان', 'repeat the place description', 'describe the place'],
+  },
+  {
+    action: 'sos',
+    patterns: ['استغاثة', 'النجدة', 'sos', 'help me', 'emergency'],
+  },
+  {
+    action: 'acknowledge-ok',
+    patterns: ['انا بخير', 'أنا بخير', 'انا كويس', 'i am ok', "i'm okay", 'im okay'],
+  },
+  {
+    action: 'save-place',
+    patterns: [
+      'احفظ المكان ده باسم', 'احفظ المكان باسم', 'سمي المكان ده', 'سمي المكان',
+      'save this place as', 'save place as', 'name this place',
+    ],
+    argFrom: [
+      'احفظ المكان ده باسم', 'احفظ المكان باسم', 'سمي المكان ده', 'سمي المكان',
+      'save this place as', 'save place as', 'name this place',
+    ],
+  },
+  {
+    action: 'save-place-unnamed',
+    patterns: ['احفظ المكان ده', 'احفظ المكان', 'save this place', 'save place'],
+  },
+  {
+    action: 'delete-place',
+    patterns: ['امسح المكان المحفوظ باسم', 'احذف المكان المحفوظ باسم', 'امسح المكان', 'احذف المكان', 'delete the saved place', 'delete place'],
+    argFrom: ['امسح المكان المحفوظ باسم', 'احذف المكان المحفوظ باسم', 'delete the saved place', 'delete place', 'امسح المكان', 'احذف المكان'],
+  },
+  {
+    action: 'add-place-note',
+    patterns: ['ضيف ملاحظة للمكان', 'اضف ملاحظة للمكان', 'أضف ملاحظة للمكان', 'ضيف ملاحظة', 'add a note to the place', 'add note to the place', 'add a note'],
+    argFrom: ['ضيف ملاحظة للمكان', 'اضف ملاحظة للمكان', 'أضف ملاحظة للمكان', 'add a note to the place', 'add note to the place'],
+  },
+  {
+    action: 'list-places',
+    patterns: [
+      'ايه الاماكن اللي حفظتها', 'إيه الأماكن اللي حفظتها', 'الاماكن المحفوظة', 'الأماكن المحفوظة',
+      'اماكني', 'what places have i saved', 'my places', 'list places', 'saved places',
+    ],
+  },
+  {
+    action: 'near-place',
+    patterns: ['انا قريب من', 'أنا قريب من', 'قريب من', 'am i near', 'near'],
+    argFrom: ['انا قريب من', 'أنا قريب من', 'قريب من', 'am i near', 'near'],
+  },
+  {
+    action: 'find-place',
+    patterns: ['فين', 'where is'],
+    argFrom: ['فين', 'where is'],
+  },
   {
     action: 'describe',
     patterns: [
@@ -77,13 +168,26 @@ const PATTERNS: { action: CommandAction; patterns: string[] }[] = [
   },
 ];
 
-export function parseVoiceCommand(raw: string): VoiceCommand {
+export function parseVoiceCommand(raw: string): ParsedCommand {
   const text = normalize(raw);
   for (const entry of PATTERNS) {
     for (const p of entry.patterns) {
-      if (text.includes(normalize(p))) {
+      const np = normalize(p);
+      if (text.includes(np)) {
         const reg = COMMAND_REGISTRY.find((c) => c.action === entry.action)!;
-        return reg;
+        let argument: string | undefined;
+        if (entry.argFrom) {
+          for (const prefix of entry.argFrom) {
+            const npre = normalize(prefix);
+            const idx = text.indexOf(npre);
+            if (idx >= 0) {
+              const rest = text.slice(idx + npre.length).trim();
+              if (rest) argument = rest;
+              break;
+            }
+          }
+        }
+        return { ...reg, argument };
       }
     }
   }

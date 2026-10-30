@@ -8,6 +8,12 @@ import type { Detection } from '../ai/types';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { ImageSourcePicker } from '../components/ImageSourcePicker';
 import { historyStore, persistImageCopy } from '../data/HistoryStore';
+import {
+  acknowledgeHazards,
+  hazardAlertText,
+  processHazardDetections,
+} from '../hazards/HazardService';
+import type { HazardAlert } from '../hazards/RiskEngine';
 import type { CapturedImage } from '../input/ImageSource';
 import { t } from '../i18n/strings';
 import { setAccessibilityBusy } from '../state/accessibilityBusy';
@@ -24,6 +30,7 @@ export default function DetectScreen() {
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [hazardAlerts, setHazardAlerts] = useState<HazardAlert[]>([]);
   const [previewSize, setPreviewSize] = useState({ w: 0, h: 0 });
   const runId = useRef(0);
   const busyRef = useRef(false);
@@ -41,6 +48,11 @@ export default function DetectScreen() {
     try {
       const results = await detector.detect(img);
       if (runId.current !== id) return;
+      // Hazard check on THIS captured frame (scan-based, not continuous):
+      // the risk engine may speak/vibrate an alert and record an event.
+      const hz = await processHazardDetections(results, lang);
+      if (runId.current !== id) return;
+      if (hz.alerts.length > 0) setHazardAlerts(hz.alerts);
       const desc = buildDescription(results, lang);
       setDetections(results);
       setDescription(desc);
@@ -134,6 +146,38 @@ export default function DetectScreen() {
         </View>
       )}
 
+      {hazardAlerts.length > 0 && (
+        <View
+          accessibilityLiveRegion="assertive"
+          style={[
+            styles.hazardBanner,
+            {
+              backgroundColor: colors.surface,
+              borderColor: hazardAlerts.some((a) => a.level === 'high') ? colors.danger : colors.warning,
+            },
+          ]}
+        >
+          {hazardAlerts.map((a) => (
+            <Text key={a.id} style={[styles.bodyLarge, { color: colors.text }]}>
+              {hazardAlertText(lang, a)}
+            </Text>
+          ))}
+          <Text style={[styles.body, { color: colors.textSecondary }]}>{t(lang, 'hazardScanNote')}</Text>
+          <AccessibleButton
+            label={t(lang, 'iAmOk')}
+            onPress={() => {
+              void acknowledgeHazards();
+              setHazardAlerts([]);
+            }}
+          />
+          <AccessibleButton
+            label={t(lang, 'repeatWarning')}
+            variant="secondary"
+            onPress={() => void speechService.repeatAlert()}
+          />
+        </View>
+      )}
+
       {!!description && (
         <Text accessibilityLiveRegion="polite" style={[styles.bodyLarge, { color: colors.text }]}>
           {description}
@@ -183,4 +227,5 @@ const styles = StyleSheet.create({
   box: { position: 'absolute', borderWidth: 3, borderRadius: 4 },
   boxLabel: { fontSize: 14, fontWeight: '700', paddingHorizontal: 4, alignSelf: 'flex-start' },
   actions: { marginTop: spacing.sm },
+  hazardBanner: { borderWidth: 3, borderRadius: 16, padding: spacing.md, gap: spacing.sm },
 });

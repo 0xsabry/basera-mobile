@@ -9,6 +9,7 @@ import {
 } from '../ai/VoiceCommandService';
 import { voiceCommandService } from '../ai/voiceSingleton';
 import { AccessibleButton } from '../components/AccessibleButton';
+import { acknowledgeHazards, triggerSos } from '../hazards/HazardService';
 import { t } from '../i18n/strings';
 import { setAccessibilityBusy } from '../state/accessibilityBusy';
 import { useSettings } from '../state/SettingsContext';
@@ -56,6 +57,16 @@ export default function VoiceScreen() {
         void speechService.speakAnnouncement(next === 'ar' ? 'تم تغيير اللغة إلى العربية' : 'Language changed to English', next);
         break;
       }
+      case 'sos': {
+        const outcome = await triggerSos(lang);
+        setFeedback(outcome.message);
+        break;
+      }
+      case 'acknowledge-ok':
+        await acknowledgeHazards();
+        setFeedback(t(lang, 'alertsAcknowledged'));
+        void speechService.speakAnnouncement(t(lang, 'alertsAcknowledged'), lang);
+        break;
       case 'open-settings':
         router.push('/settings');
         break;
