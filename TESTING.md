@@ -286,3 +286,26 @@ Gates — actual results (2026-10-30, branch v1.1):
   updates screen) — pending the 1.1.0 build and the owner's Supabase setup.
 - Background tracking (Phase 2) and live hazard alerts (Phase 3) are NOT
   implemented and must not be claimed.
+
+## V1.1 build + OTA smoke test (2026-10-30, parent-verified)
+- EAS preview build 422c78b1-c5ca-4971-84f1-9c9438eb4c97: FINISHED. APK
+  https://expo.dev/artifacts/eas/dlg3b43qcODwHH-z8ObF7em3z7b9KGjsKT_L16Kdlns.apk
+  (206,294,287 B, sha256 40b5dd1e27124308327b5670004821d7fd64d5702fd93268e932d2df54d914f6)
+  verified locally: package me.auramarketing.basera, versionName 1.1.0,
+  versionCode 2; libexpo-updates.so present (4 ABIs); all 3 models embedded
+  hash-identical (YOLO 19bfdc3c…, PP-OCR rec 1fc31af5…, det 04e8e0b6…);
+  manifest (aapt2) has FINE/COARSE/BACKGROUND location, FOREGROUND_SERVICE
+  (+_LOCATION), POST_NOTIFICATIONS.
+- Submit lesson: bare workflow rejects runtimeVersion POLICIES — first
+  submits failed AFTER upload with a deterministic EAS error; runtimeVersion
+  is now the manual string "1.1.0" (bump together with version).
+- OTA smoke test: JS-only update published to channel preview — update
+  group 2f29ef5b-72b4-4154-9005-046e2740741c, branch preview, runtimeVersion
+  "1.1.0" (server-verified via eas update:list). The update adds one release
+  note entry (src/update/releaseNotes.ts) — visible proof on a 1.1.0 device
+  after download + safe restart. eas update on this CLI requires
+  --environment preview in non-interactive mode.
+- 1.0.0 exclusion reconfirmed: the 1.0.0 APK contains zero expo-updates
+  native libraries — it cannot receive OTA updates at all.
+- On-device pickup of the update (install 1.1.0 → relaunch → note appears)
+  remains a TEAM device check; server-side targeting is proven.
