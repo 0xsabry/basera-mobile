@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-10-31',
     runtimeVersion: '1.1.0',
+    titleEn: 'BASERA 1.1.5 — Status bar fixed, light by default, tablet layout, shape-proof icon',
+    titleAr: 'بصيرة 1.1.5 — إصلاح شريط الحالة وسمة فاتحة افتراضية وتخطيط للأجهزة اللوحية وأيقونة تتكيف مع كل شكل',
+    bodyEn:
+      'Four device fixes. The phone status bar (clock and battery) is visible again in the light theme — its icons now follow the app theme, dark on light and light on dark. The app now opens in the light theme by default on fresh installs; your saved theme choice is untouched. On tablets and large screens the content now sits in a centered column instead of stretching across the whole display. And the app icon is now the BASERA symbol alone, so it sits correctly inside every launcher shape — circle, square, or any other. The icon arrives with the new app file; the other fixes also reach existing installs by update. The app also checks for updates on every launch from now on, so new versions reach you inside the app.',
+    bodyAr:
+      'أربعة إصلاحات للأجهزة. أصبح شريط حالة الهاتف (الساعة والبطارية) ظاهرًا من جديد في السمة الفاتحة — إذ أصبحت أيقوناته تتبع سمة التطبيق: داكنة على الفاتح وفاتحة على الداكن. وأصبح التطبيق يفتح بالسمة الفاتحة افتراضيًا عند التثبيت الجديد، مع بقاء اختيارك المحفوظ كما هو دون تغيير. وعلى الأجهزة اللوحية والشاشات الكبيرة أصبح المحتوى في عمود وسطي بدلًا من أن يمتد على عرض الشاشة كله. وأصبحت أيقونة التطبيق هي رمز بصيرة وحده، فتستقر بصورة صحيحة داخل أي شكل للواجهة — دائرة أو مربع أو غيرهما. وتصل الأيقونة مع ملف التطبيق الجديد، بينما تصل بقية الإصلاحات إلى التثبيتات الحالية عبر التحديث. وأصبح التطبيق أيضًا يتحقق من التحديثات عند كل تشغيل من الآن فصاعدًا، فتصلك الإصدارات الجديدة داخل التطبيق نفسه.',
+  },
+  {
+    date: '2026-10-31',
+    runtimeVersion: '1.1.0',
     titleEn: 'BASERA 1.1.4 — Olive identity, compact Home, one-line navigation',
     titleAr: 'بصيرة 1.1.4 — هوية زيتونية ورئيسية مدمجة وتنقل في سطر واحد',
     bodyEn:

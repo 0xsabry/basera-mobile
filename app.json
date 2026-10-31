@@ -13,7 +13,7 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.POST_NOTIFICATIONS"
       ],
-      "versionCode": 6
+      "versionCode": 7
     },
     "experiments": {
       "typedRoutes": false
@@ -93,7 +93,7 @@
     "scheme": "basera",
     "slug": "basera",
     "userInterfaceStyle": "automatic",
-    "version": "1.1.4",
+    "version": "1.1.5",
     "web": {
       "bundler": "metro",
       "favicon": "./assets/icon.png"
