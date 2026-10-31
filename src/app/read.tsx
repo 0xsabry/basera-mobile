@@ -5,6 +5,7 @@
  */
 import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
+import { classifyImageError } from '../ai/normalizeImage';
 import { speechService } from '../ai/SpeechService';
 import { OcrUnavailableError, RoutingTextRecognizer } from '../ai/TextRecognizer';
 import type { OcrResult } from '../ai/types';
@@ -29,6 +30,32 @@ import { useSettings } from '../state/SettingsContext';
 import { GLYPHS } from '../theme/glyphs';
 import { radius, spacing } from '../theme/tokens';
 
+/** Every pipeline failure maps to a specific LOCALIZED message — never
+ * a raw (often English/technical) service message, in either language.
+ * OcrUnavailableError is classified by its stable code inside
+ * classifyImageError (model-failed, or decode-failed for its decode
+ * message), so it lands on the same mapping. */
+function localizedImageError(lang: 'en' | 'ar', e: unknown): string {
+  // Engine unavailability keeps its established localized message
+  // (its decode variant still routes through classify below).
+  if (e instanceof OcrUnavailableError && !/decode/i.test(e.message)) {
+    return t(lang, 'featureUnavailableInBuild');
+  }
+  switch (classifyImageError(e).kind) {
+    case 'permission-denied':
+      return t(lang, 'permissionDenied');
+    case 'unsupported-format':
+      return t(lang, 'imageErrorUnsupported');
+    case 'decode-failed':
+      return t(lang, 'imageErrorDecode');
+    case 'model-failed':
+      return t(lang, 'featureUnavailableInBuild');
+    case 'processing-failed':
+    default:
+      return t(lang, 'imageErrorProcessing');
+  }
+}
+
 export default function ReadScreen() {
   const { settings, colors, type } = useSettings();
   const lang = settings.language;
@@ -39,8 +66,7 @@ export default function ReadScreen() {
   const runId = useRef(0);
   const busyRef = useRef(false);
 
-  const spokenText = (r: OcrResult) =>
-    lang === 'ar' ? `النص بيقول: ${r.text}` : `The text says: ${r.text}`;
+  const spokenText = (r: OcrResult) => `${t(lang, 'ocrSpokenPrefix')} ${r.text}`;
 
   const handleImage = async (img: CapturedImage) => {
     if (busyRef.current) return; // never run two OCR passes at once
@@ -69,17 +95,8 @@ export default function ReadScreen() {
       }
     } catch (e) {
       if (runId.current !== id) return;
-      // Typed unavailability and Arabic mode get localized text — never a
-      // raw (English) service message.
-      setError(
-        e instanceof OcrUnavailableError
-          ? t(lang, 'featureUnavailableInBuild')
-          : lang === 'ar'
-            ? t(lang, 'errorGeneric')
-            : e instanceof Error
-              ? e.message
-              : t(lang, 'errorGeneric'),
-      );
+      // Classified, specific, localized — never a raw service message.
+      setError(localizedImageError(lang, e));
     } finally {
       busyRef.current = false;
       setAccessibilityBusy('processing', false);

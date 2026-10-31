@@ -12,6 +12,7 @@
 import type { CapturedImage } from '../input/ImageSource';
 import { decodeBase64 } from './base64';
 import { buildInputTensor } from './imagePreprocess';
+import { classifyImageError, ImagePipelineError, normalizeImage } from './normalizeImage';
 import type { LetterboxInfo } from './yoloPostprocess';
 import type { Detection } from './types';
 
@@ -39,10 +40,24 @@ export class DetectorUnavailableError extends Error {
 export function buildTensorFromJpegBase64(base64: string, letterbox: LetterboxInfo): Float32Array {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const jpeg = require('jpeg-js');
-  const bytes = decodeBase64(base64);
-  const decoded = jpeg.decode(bytes, { useTArray: true });
+  let decoded: { width: number; height: number; data: Uint8Array } | null | undefined;
+  try {
+    const bytes = decodeBase64(base64);
+    decoded = jpeg.decode(bytes, { useTArray: true });
+  } catch (e) {
+    // jpeg-js throws raw errors ("SOI not found", …) on PNG/corrupt
+    // bytes. A decode failure is an IMAGE problem, not a model problem:
+    // surface it typed so the UI can say "choose another photo".
+    throw new ImagePipelineError(
+      'decode-failed',
+      `Could not decode the selected image for detection. (${e instanceof Error ? e.message : String(e)})`,
+    );
+  }
   if (!decoded?.data) {
-    throw new DetectorUnavailableError('Could not decode the selected image for detection.');
+    throw new ImagePipelineError(
+      'decode-failed',
+      'Could not decode the selected image for detection.',
+    );
   }
   return buildInputTensor(
     { width: decoded.width, height: decoded.height, data: decoded.data, channels: 4 },
@@ -87,19 +102,33 @@ export class YoloDetector implements ObjectDetector {
     const FileSystem = require('expo-file-system');
     const { computeLetterbox, decodeYoloOutput, MODEL_INPUT_SIZE } = await import('./yoloPostprocess');
 
-    const letterbox = computeLetterbox(image.width, image.height);
-    const resizedW = Math.round(image.width * letterbox.scale);
-    const resizedH = Math.round(image.height * letterbox.scale);
+    // Normalize FIRST: any picker format/URI (PNG/WebP/HEIC, content://,
+    // huge) becomes a local JPEG with the long edge ≤1280, and format
+    // failures surface as typed unsupported-format errors.
+    const normalized = await normalizeImage(image);
 
-    const resized = await manipulateAsync(
-      image.uri,
-      [{ resize: { width: resizedW, height: resizedH } }],
-      { format: SaveFormat.JPEG, compress: 1 },
-    );
+    // Letterbox is computed from the NORMALIZED dimensions — that is
+    // the image the model actually sees.
+    const letterbox = computeLetterbox(normalized.width, normalized.height);
+    const resizedW = Math.round(normalized.width * letterbox.scale);
+    const resizedH = Math.round(normalized.height * letterbox.scale);
+
+    let resized: { uri: string };
+    try {
+      resized = await manipulateAsync(
+        normalized.uri,
+        [{ resize: { width: resizedW, height: resizedH } }],
+        { format: SaveFormat.JPEG, compress: 1 },
+      );
+    } catch (e) {
+      throw classifyImageError(e);
+    }
 
     const base64: string = await FileSystem.readAsStringAsync(resized.uri, {
       encoding: 'base64',
     });
+    // Throws ImagePipelineError('decode-failed') on undecodable bytes;
+    // interpreter-load failure below stays DetectorUnavailableError.
     const tensor = buildTensorFromJpegBase64(base64, letterbox);
 
     const model = await this.loadModel();

@@ -14,6 +14,7 @@
  * typed error — it NEVER returns invented text.
  */
 import type { CapturedImage } from '../input/ImageSource';
+import { normalizeImage } from './normalizeImage';
 import type { OcrResult } from './types';
 
 export interface TextRecognizer {
@@ -62,9 +63,13 @@ export class MlKitTextRecognizer implements TextRecognizer {
           `(${e instanceof Error ? e.message : String(e)})`,
       );
     }
+    // Normalize first: ML Kit gets a local JPEG (long edge ≤1280), not
+    // the raw picker URI (content://, HEIC/WebP, or a huge original it
+    // may fail to resolve or load). Format failures surface typed.
+    const normalized = await normalizeImage(image);
     // Explicit Latin script — never rely on library defaults, and never
     // claim Arabic support ML Kit does not have.
-    const result = await mod.default.recognize(image.uri, mod.TextRecognitionScript.LATIN);
+    const result = await mod.default.recognize(normalized.uri, mod.TextRecognitionScript.LATIN);
     const text = (result?.text ?? '').trim();
     return {
       text,
@@ -88,6 +93,15 @@ export class RoutingTextRecognizer implements TextRecognizer {
   readonly id = 'routing-ocr';
   private readonly latin: TextRecognizer;
   private readonly arabic: TextRecognizer;
+  /**
+   * True only for the real (default) engines. Injected engines are an
+   * explicit seam (tests / custom engines): they receive the caller's
+   * image untouched and own their input handling. The default pipeline
+   * normalizes once here so BOTH real engines — including the Arabic
+   * PP-OCR engine, which has no normalization of its own — run on the
+   * same local JPEG instead of the raw picker URI.
+   */
+  private readonly usesDefaultEngines: boolean;
 
   constructor(
     private readonly preferred: 'ar' | 'en',
@@ -98,15 +112,21 @@ export class RoutingTextRecognizer implements TextRecognizer {
     if (engines) {
       this.latin = engines.latin;
       this.arabic = engines.arabic;
+      this.usesDefaultEngines = false;
     } else {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { ArabicOcrEngine } = require('./ArabicOcrEngine');
       this.latin = new MlKitTextRecognizer();
       this.arabic = new ArabicOcrEngine();
+      this.usesDefaultEngines = true;
     }
   }
 
   async recognize(image: CapturedImage): Promise<OcrResult> {
+    // Normalize before routing (default engines only — see above).
+    // A normalization failure is an image error, not engine
+    // unavailability, so it propagates typed instead of falling through.
+    const img = this.usesDefaultEngines ? await normalizeImage(image) : image;
     const order =
       this.preferred === 'ar'
         ? ([['arabic', this.arabic], ['latin', this.latin]] as const)
@@ -115,7 +135,7 @@ export class RoutingTextRecognizer implements TextRecognizer {
     let firstUnavailableError: OcrUnavailableError | null = null;
     for (const [kind, engine] of order) {
       try {
-        const r = await engine.recognize(image);
+        const r = await engine.recognize(img);
         if (r.text) return r;
       } catch (e) {
         if (e instanceof OcrUnavailableError) {

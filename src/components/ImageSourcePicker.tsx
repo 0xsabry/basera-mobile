@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, View } from 'react-native';
+import { classifyImageError } from '../ai/normalizeImage';
 import type { CapturedImage } from '../input/ImageSource';
 import { GalleryImageSource } from '../input/GalleryImageSource';
 import { PhoneCameraTestSource } from '../input/PhoneCameraTestSource';
@@ -39,11 +40,25 @@ export function ImageSourcePicker({ onImage, onError, disabled = false }: Props)
       const img = await fn();
       if (img) onImage(img);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.startsWith('PERMISSION_DENIED')) {
-        onError(t(lang, 'permissionDenied'));
-      } else {
-        onError(msg);
+      // Every failure kind gets its LOCALIZED message — raw/native
+      // messages are never shown verbatim.
+      switch (classifyImageError(e).kind) {
+        case 'permission-denied':
+          onError(t(lang, 'permissionDenied'));
+          break;
+        case 'unsupported-format':
+          onError(t(lang, 'imageErrorUnsupported'));
+          break;
+        case 'decode-failed':
+          onError(t(lang, 'imageErrorDecode'));
+          break;
+        case 'model-failed':
+          onError(t(lang, 'featureUnavailableInBuild'));
+          break;
+        case 'processing-failed':
+        default:
+          onError(t(lang, 'imageErrorProcessing'));
+          break;
       }
     } finally {
       setBusy(false);

@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import { ImagePipelineError } from '../ai/normalizeImage';
 import type { CapturedImage, ImageSource } from './ImageSource';
 
 /** Pick an existing photo from the phone's gallery. */
@@ -9,7 +10,8 @@ export class GalleryImageSource implements ImageSource {
   async getImage(): Promise<CapturedImage | null> {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      throw new Error('PERMISSION_DENIED:gallery');
+      // Typed error (message prefix kept for any legacy prefix mapper).
+      throw new ImagePipelineError('permission-denied', 'PERMISSION_DENIED:gallery');
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],

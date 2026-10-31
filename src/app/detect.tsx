@@ -7,7 +7,8 @@
 import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import { buildDescription, describeDetection } from '../ai/DescriptionBuilder';
-import { DetectorUnavailableError, YoloDetector } from '../ai/ObjectDetector';
+import { classifyImageError } from '../ai/normalizeImage';
+import { YoloDetector } from '../ai/ObjectDetector';
 import { analyzeObstacles } from '../ai/ObstacleAwareness';
 import { speechService } from '../ai/SpeechService';
 import type { Detection } from '../ai/types';
@@ -40,6 +41,24 @@ import { GLYPHS } from '../theme/glyphs';
 import { radius, spacing } from '../theme/tokens';
 
 const detector = new YoloDetector();
+
+/** Every pipeline failure maps to a specific LOCALIZED message — never
+ * a raw (often English/technical) service message, in either language. */
+function localizedImageError(lang: 'en' | 'ar', e: unknown): string {
+  switch (classifyImageError(e).kind) {
+    case 'permission-denied':
+      return t(lang, 'permissionDenied');
+    case 'unsupported-format':
+      return t(lang, 'imageErrorUnsupported');
+    case 'decode-failed':
+      return t(lang, 'imageErrorDecode');
+    case 'model-failed':
+      return t(lang, 'featureUnavailableInBuild');
+    case 'processing-failed':
+    default:
+      return t(lang, 'imageErrorProcessing');
+  }
+}
 
 export default function DetectScreen() {
   const { settings, colors, type } = useSettings();
@@ -87,17 +106,8 @@ export default function DetectScreen() {
       });
     } catch (e) {
       if (runId.current !== id) return;
-      // Typed unavailability and Arabic mode get localized text — never a
-      // raw (English) service message.
-      setError(
-        e instanceof DetectorUnavailableError
-          ? t(lang, 'featureUnavailableInBuild')
-          : lang === 'ar'
-            ? t(lang, 'errorGeneric')
-            : e instanceof Error
-              ? e.message
-              : t(lang, 'errorGeneric'),
-      );
+      // Classified, specific, localized — never a raw service message.
+      setError(localizedImageError(lang, e));
     } finally {
       busyRef.current = false;
       setAccessibilityBusy('processing', false);
