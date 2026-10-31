@@ -174,3 +174,34 @@ speak as they like; only displayed/spoken product copy is MSA.
 - After: AR «جاهز» / EN "Ready"
 - Why: the instruction was redundant — the actions are directly below the
   status.
+
+---
+
+## Addendum — v1.1.4 (owner-mandated tile subtitles + home section)
+
+The owner supplied the exact subtitles for the four feature tiles;
+they replace the previous descriptive lines everywhere the keys are
+used (Home + Assistance grids, onboarding rows, places intro):
+
+| key | Before (AR) | After (AR, owner-exact) | After (EN) |
+|---|---|---|---|
+| identifyObjectsHint | سماع الأشياء الموجودة في الصورة ومواضعها | **استمع إلى وصف ما حولك** | Listen to a description of your surroundings |
+| readTextHint | صوّر نصًا لسماعه بصوت عالٍ | **التقط النص واستمع إليه** | Capture text and listen to it |
+| placesHint | أماكن حفظتها مع أوصافك | **اعثر على الأماكن التي حفظتها** | Find your saved places |
+| alertsSubtitle | تنبيهات من عمليات الفحص والاستغاثة | **تنبيهات عند رصد مخاطر محتملة** | Alerts when a scan spots possible hazards |
+
+The alerts wording keeps the scan-based truth: alerts arise from
+scans the user runs, never from continuous monitoring — the phrase
+«عند رصد» ("when spotted") preserves that; do not "improve" it
+into a continuous-protection claim.
+
+New key: `locationAndPlaces` — AR «الموقع والأماكن» / EN "Location
+and places", the combined Home section that carries the sharing
+status line and the last result.
+
+A full in-context re-audit of card/description strings accompanied
+this change; the remaining copy was already compliant with this
+guide from the v1.1.2 overhaul (short MSA, one term per feature,
+honesty caveats intact), so no other strings were rewritten.
+Guard tests: `copy.test.ts` now pins the four owner subtitles and
+the section key in both languages.

@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-10-31',
     runtimeVersion: '1.1.0',
+    titleEn: 'BASERA 1.1.4 — Olive identity, compact Home, one-line navigation',
+    titleAr: 'بصيرة 1.1.4 — هوية زيتونية ورئيسية مدمجة وتنقل في سطر واحد',
+    bodyEn:
+      'BASERA now wears a calm olive, sage and ivory identity in light and dark themes — the official logo is unchanged. Home is recomposed to be compact: a smaller header, the Smart Assistant first, the four features in a tidy grid with shorter captions, an SOS strip on Home itself, and location and places in one section. Bottom navigation labels now sit on one line and resize to fit any screen width, so nothing is cut off. Arabic captions on the feature tiles are shorter and clearer. Everything else — features, guardian service, wording of settings — works exactly as before.',
+    bodyAr:
+      'أصبحت لبصيرة هوية هادئة بألوان الزيتوني والمريمية والعاجي في السمتين الفاتحة والداكنة — والشعار الرسمي لم يتغير. أُعيد ترتيب الشاشة الرئيسية لتكون مدمجة: ترويسة أصغر، والمساعد الذكي أولًا، والمزايا الأربع في شبكة مرتبة بعبارات أقصر، وشريط استغاثة في الرئيسية نفسها، والموقع والأماكن في قسم واحد. أصبحت تسميات شريط التنقل السفلي في سطر واحد وتتكيف مع أي عرض شاشة فلا يُقتطع منها شيء. وأصبحت عبارات بطاقات المزايا العربية أقصر وأوضح. وكل شيء آخر — المزايا وخدمة الوصي ونصوص الإعدادات — يعمل كما كان تمامًا.',
+  },
+  {
+    date: '2026-10-31',
+    runtimeVersion: '1.1.0',
     titleEn: 'BASERA 1.1.3 — Official logo and brand colors',
     titleAr: 'بصيرة 1.1.3 — الشعار الرسمي وألوان العلامة',
     bodyEn:
