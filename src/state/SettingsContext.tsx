@@ -54,7 +54,12 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   language: 'ar',
-  theme: 'system',
+  // Fresh installs default to LIGHT (owner decision 2026-10-31): a user
+  // who never chose a theme gets the light palette even when the OS is
+  // in dark mode. This is only the fallback — parseSettings merges any
+  // stored preference over it, so an explicit 'dark'/'system' choice
+  // always wins and existing stored values are never reset.
+  theme: 'light',
   speechRate: 1.0,
   highContrast: false,
   announcements: true,
