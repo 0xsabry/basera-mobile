@@ -1,6 +1,63 @@
-# BASERA Branding & Launcher Icon — audit and fix (v1.1.2)
+# BASERA Branding & Launcher Icon
 
-## What was actually shipping before this pass
+## CURRENT STATE (v1.1.3) — the OFFICIAL logo is now the brand
+
+On **2026-10-31 the owner supplied the official BASERA logo** (a
+1254×1254 PNG: deep-navy/royal-blue rounded-square artwork — white
+eye+person symbol with gold sound waves, the "BASERA" wordmark, and
+the Arabic tagline «بصيرة.. نحو حياة أسهل»). This supersedes the
+v1.1.2 audit below: the "no official asset exists" finding was true
+until that delivery and is **no longer true**.
+
+- **Preserved original**: `assets/brand/basera-logo-official.png` —
+  a byte-identical copy of the delivered file (SHA-256
+  `b44e8357332deaef671a3e8c7c2850c26e9862ff27f2cbc971769c373b3fe8e4`).
+  The artwork is never redrawn, regenerated, or modified; derived
+  assets are only crops/scales/composites of it.
+- **Single source of truth**: that file. Every brand surface derives
+  from it via `scripts/generate-brand-icons.py` (rewritten for it).
+- **Classic icon** (`assets/icon.png`, 1024², opaque): the full
+  official artwork over the deep-navy field `#061434` (the artwork's
+  own corners are transparent; the field fills them).
+- **Adaptive icon**: background `#061434` (app.json +
+  `@color/iconBackground`); foreground
+  (`assets/adaptive-foreground.png`, 1024², alpha) = a rounded
+  "chip" crop of the artwork's SYMBOL portion (eye + person + gold
+  waves). The crop was measured from the file: symbol content spans
+  x 146..1086 / y 119..~677 of 1254, the wordmark starts at y ~730,
+  and the crop box `(100, 80) → (1130, 705)` bottoms out in the
+  silent band between them so no letter fragment enters the symbol
+  assets. The chip is placed at 62% canvas width, centered, so the
+  symbol sits inside the 66% adaptive safe zone under circle /
+  squircle / rounded masks (verified on the branding board,
+  `branding-v5-board.png`).
+- **Symbol asset** (`assets/brand/basera-symbol.png`): the same crop
+  at native resolution, for in-app tight spots.
+- **Splash**: the full official lockup centered on transparency
+  (`drawable-*/splashscreen_logo.png`), over the deep-navy splash
+  background `#061434` (`@color/splashscreen_background`).
+- **In-app**: the Home header (`AppHeader`) and the onboarding hero
+  show the official logo (`BrandLogo` in `src/components/ui.tsx`);
+  the guardian-auth header (tight row) shows the symbol crop
+  (`BrandSymbol`). The «ب» `BrandMark` component remains in the
+  library for reference but is **retired** from launcher / splash /
+  header duty — do not reintroduce it on prominent surfaces.
+- **Brand colors**: the app's four palettes are aligned to this
+  logo — see `docs/BRAND_COLORS_1.1.3.md`.
+
+Regeneration: `python3 scripts/generate-brand-icons.py` re-derives
+the whole set from the preserved official file. Do not hand-edit
+the density files.
+
+Notes / limits (unchanged from v1.1.2): launcher icons ship inside
+the APK and cannot change via OTA; no monochrome (themed-icon)
+layer exists (background + foreground only).
+
+---
+
+## HISTORICAL (v1.1.2 audit — superseded by the above)
+
+### What was actually shipping before the v1.1.2 pass
 
 Inspected first-hand at HEAD `6ff796b`:
 
@@ -24,49 +81,18 @@ Inspected first-hand at HEAD `6ff796b`:
   placeholder; whatever the exact perception, the set was inconsistent
   (eye outside / «ب» inside / template splash) and is now unified.
 
-## Does an official BASERA logo asset exist?
+### Did an official BASERA logo asset exist at v1.1.2 time?
 
-**No.** The repository was searched (`assets/`, `docs/`, the full tree
-for `*logo*` / `*brand*` files): the only brand artwork anywhere is the
-eye `icon.png` above and the in-app «ب» `BrandMark`. No distinct
-official logo file was ever delivered to the project.
+**No — at that time.** The repository was searched (`assets/`, `docs/`,
+the full tree for `*logo*` / `*brand*` files): the only brand artwork
+anywhere was the eye `icon.png` above and the in-app «ب» `BrandMark`.
+No distinct official logo file had been delivered to the project.
+The owner delivered the official logo on 2026-10-31 (see top of this
+document); the v1.1.2 «ب» launcher set it replaced is retired.
 
-## The fix — the established «ب» mark, reproduced faithfully
+### The v1.1.2 fix (retired in v1.1.3)
 
-Per the owner's fallback instruction, the launcher set is the product's
-established brand mark — the «ب» BrandMark — rendered properly:
-
-- **Foreground** (`assets/adaptive-foreground.png`, 1024², transparent):
-  the «ب» letterform in white (`#FFFFFF`) with its accent dot in brand
-  mint (`#2FBF8F`, the old icon's iris color) below it, composed inside
-  the adaptive safe zone (letterform ≈46% of canvas width; letter + dot
-  span ≈24–76% vertically, inside the central 66% mask circle).
-- **Background layer**: unchanged — `#0B3D2E`
-  (`app.json adaptiveIcon.backgroundColor` + `@color/iconBackground`).
-- **Classic icon** (`assets/icon.png`): the same mark composited on the
-  `#0B3D2E` field.
-- **Splash logo**: the BrandMark as a rounded `#0B3D2E` tile with the
-  white «ب» + mint dot, on transparency, over the existing white
-  splash background — replacing the Expo template placeholder.
-- **In-app surfaces** (header `BrandMark`, onboarding) already render
-  the same «ب» mark and were not changed; launcher and in-app identity
-  now match.
-
-The letter is set in **Noto Sans Arabic Bold** — the family/weight the
-in-app mark renders in on Android (system Arabic font, weight 700).
-
-## Regeneration
-
-`scripts/generate-brand-icons.py` (Python + Pillow, supersampled ×4)
-renders the whole set: `assets/icon.png`,
-`assets/adaptive-foreground.png`, the five mipmap densities
-(`ic_launcher`, `ic_launcher_round`, `ic_launcher_foreground` webp) and
-the five splash-logo densities. Re-run it after any brand-color change;
-do not hand-edit the density files.
-
-## Notes / limits
-
-- Launcher icons ship inside the APK; they **cannot** change via OTA.
-  Existing installs keep the eye until they install the 1.1.2 APK.
-- No monochrome (themed-icon) layer was added: the adaptive XML ships
-  background + foreground only, as before.
+The launcher set was the product's established «ب» BrandMark rendered
+as a proper adaptive set (white letterform + mint dot in the safe
+zone on the `#0B3D2E` field, splash tile to match). It shipped in
+1.1.2 and is fully replaced by the official-logo set above.
