@@ -76,9 +76,11 @@ export default function TabsLayout() {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: StyleSheet.hairlineWidth,
-          height: 70 + insets.bottom,
-          paddingBottom: insets.bottom + 6,
-          paddingTop: 6,
+          // 78 (was 70): Arabic labels need the extra line room so
+          // descenders/dots never crowd the bar's bottom edge.
+          height: 78 + insets.bottom,
+          paddingBottom: insets.bottom + 8,
+          paddingTop: 8,
         },
         tabBarItemStyle: { minHeight: 58 },
         tabBarLabelStyle: { fontSize: Math.min(type.caption, 17), fontWeight: '700' },

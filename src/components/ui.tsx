@@ -174,17 +174,21 @@ export function BrandMark({ size = 52 }: { size?: number }) {
         {GLYPHS.brand}
       </Text>
       {/* The letter's own dot, in accent — the "eye" of the mark. It
-          sits below the «ب» exactly where its dot belongs. */}
-      <View
-        style={{
-          position: 'absolute',
-          bottom: size * 0.16,
-          width: dotSize,
-          height: dotSize,
-          borderRadius: radius.pill,
-          backgroundColor: colors.accent,
-        }}
-      />
+          sits below the «ب» exactly where its dot belongs. At small
+          header sizes (≤32) it muddles into the letterform's own dot,
+          so it renders only on the larger identity marks. */}
+      {size >= 40 ? (
+        <View
+          style={{
+            position: 'absolute',
+            bottom: size * 0.16,
+            width: dotSize,
+            height: dotSize,
+            borderRadius: radius.pill,
+            backgroundColor: colors.accent,
+          }}
+        />
+      ) : null}
     </View>
   );
 }
