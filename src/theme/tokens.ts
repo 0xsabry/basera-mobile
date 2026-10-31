@@ -1,11 +1,29 @@
-/** BASERA design tokens — accessibility first. */
-export const spacing = { xs: 6, sm: 10, md: 16, lg: 24, xl: 32 };
-export const radius = { sm: 10, md: 14, lg: 20 };
+/**
+ * BASERA design tokens — V1.1 premium design system.
+ *
+ * One source of truth for color, spacing, radius, elevation and type.
+ * Every screen composes the shared primitives in src/components/ui.tsx
+ * from these tokens; screens never hard-code hex values.
+ *
+ * Accessibility contract:
+ * - Every text/background pair in the standard light and dark palettes
+ *   is verified ≥ 4.5:1 (WCAG AA) by src/theme/__tests__/contrast.test.ts.
+ * - Status is always icon glyph + text, never color alone.
+ * - Touch targets are ≥ 56dp (MIN_TOUCH), primary actions 64dp+.
+ */
+
+/** 4pt spacing scale. */
+export const spacing = { xxs: 4, xs: 6, sm: 10, md: 16, lg: 24, xl: 32, xxl: 40 };
+export const radius = { xs: 6, sm: 10, md: 14, lg: 20, xl: 24, pill: 999 };
 /** Minimum touch target: 60dp (above the 48dp platform minimum). */
 export const MIN_TOUCH = 60;
 export const BUTTON_HEIGHT = 64;
 
+/** Android elevation steps for cards / raised / hero surfaces. */
+export const elevation = { card: 2, raised: 5, hero: 8 };
+
 export const typeScale = {
+  display: 34,
   title: 30,
   heading: 24,
   body: 19,
@@ -46,33 +64,64 @@ export interface ThemeColors {
   info: string;
   border: string;
   overlayBox: string;
+  /** Soft tints for icon tiles / status pills, with their "on" text colors. */
+  primarySoft: string;
+  onPrimarySoft: string;
+  dangerSoft: string;
+  onDangerSoft: string;
+  successSoft: string;
+  onSuccessSoft: string;
+  warningSoft: string;
+  onWarningSoft: string;
+  infoSoft: string;
+  onInfoSoft: string;
+  /** Hero (primary action) surface. */
+  heroBackground: string;
+  heroText: string;
+  heroTextSecondary: string;
+  /** Drop-shadow color for elevated surfaces. */
+  shadow: string;
 }
 
 export const lightColors: ThemeColors = {
-  background: '#FFFFFF',
-  surface: '#F2F5F3',
-  surfaceAlt: '#E4EBE7',
-  text: '#0A1F16',
-  textSecondary: '#3D5247',
-  primary: '#0B6B4F',
+  background: '#F5F7F6',
+  surface: '#FFFFFF',
+  surfaceAlt: '#E8EFEB',
+  text: '#0B1F18',
+  textSecondary: '#3D5A4F',
+  primary: '#0A6B4C',
   primaryText: '#FFFFFF',
-  accent: '#8A5A00',
+  accent: '#7C4D00',
   danger: '#B3261E',
-  success: '#146C2E',
-  warning: '#8A5A00',
+  success: '#14632C',
+  warning: '#7C4D00',
   info: '#0B5394',
   border: '#5A7264',
-  overlayBox: '#0B6B4F',
+  overlayBox: '#0A6B4C',
+  primarySoft: '#DCEBE2',
+  onPrimarySoft: '#0A4A34',
+  dangerSoft: '#F9DEDC',
+  onDangerSoft: '#7A1A14',
+  successSoft: '#D8EDDD',
+  onSuccessSoft: '#0B4A20',
+  warningSoft: '#F5E7C8',
+  onWarningSoft: '#5C3A00',
+  infoSoft: '#D9E8F7',
+  onInfoSoft: '#083E6E',
+  heroBackground: '#0A6B4C',
+  heroText: '#FFFFFF',
+  heroTextSecondary: '#DCEBE2',
+  shadow: 'rgba(9, 30, 22, 0.14)',
 };
 
 export const darkColors: ThemeColors = {
-  background: '#0A120E',
-  surface: '#16211B',
-  surfaceAlt: '#1F2E25',
+  background: '#0A100D',
+  surface: '#131D17',
+  surfaceAlt: '#1D2A22',
   text: '#F2F7F4',
-  textSecondary: '#B9CFC2',
+  textSecondary: '#B4CCBE',
   primary: '#2FBF8F',
-  primaryText: '#04150D',
+  primaryText: '#03130B',
   accent: '#FFC44D',
   danger: '#FF8A80',
   success: '#4CC38A',
@@ -80,6 +129,20 @@ export const darkColors: ThemeColors = {
   info: '#6CB2F5',
   border: '#4A6A58',
   overlayBox: '#2FBF8F',
+  primarySoft: '#173528',
+  onPrimarySoft: '#7FE3BC',
+  dangerSoft: '#3D1A16',
+  onDangerSoft: '#FFB4A8',
+  successSoft: '#14301F',
+  onSuccessSoft: '#8FE8B0',
+  warningSoft: '#38300F',
+  onWarningSoft: '#FFD968',
+  infoSoft: '#12293D',
+  onInfoSoft: '#8FC6F8',
+  heroBackground: '#2FBF8F',
+  heroText: '#03130B',
+  heroTextSecondary: '#052E1D',
+  shadow: 'rgba(0, 0, 0, 0.5)',
 };
 
 /** High-contrast variants push text/background to extremes. */
@@ -93,18 +156,48 @@ export const lightHighContrast: ThemeColors = {
   warning: '#5C3A00',
   info: '#003B73',
   danger: '#8F130C',
+  accent: '#5C3A00',
+  primarySoft: '#FFFFFF',
+  onPrimarySoft: '#004D33',
+  dangerSoft: '#FFFFFF',
+  onDangerSoft: '#8F130C',
+  successSoft: '#FFFFFF',
+  onSuccessSoft: '#00511F',
+  warningSoft: '#FFFFFF',
+  onWarningSoft: '#5C3A00',
+  infoSoft: '#FFFFFF',
+  onInfoSoft: '#003B73',
+  heroBackground: '#004D33',
+  heroText: '#FFFFFF',
+  heroTextSecondary: '#DCEBE2',
 };
 
 export const darkHighContrast: ThemeColors = {
   ...darkColors,
   background: '#000000',
   surface: '#0D0D0D',
+  surfaceAlt: '#1A1A1A',
   text: '#FFFFFF',
   textSecondary: '#FFFFFF',
   border: '#FFFFFF',
   primary: '#4DFFC3',
+  primaryText: '#00150C',
   success: '#00FF9D',
   warning: '#FFE14D',
   info: '#66CCFF',
   danger: '#FF6D60',
+  accent: '#FFE14D',
+  primarySoft: '#0D0D0D',
+  onPrimarySoft: '#4DFFC3',
+  dangerSoft: '#0D0D0D',
+  onDangerSoft: '#FF6D60',
+  successSoft: '#0D0D0D',
+  onSuccessSoft: '#00FF9D',
+  warningSoft: '#0D0D0D',
+  onWarningSoft: '#FFE14D',
+  infoSoft: '#0D0D0D',
+  onInfoSoft: '#66CCFF',
+  heroBackground: '#4DFFC3',
+  heroText: '#00150C',
+  heroTextSecondary: '#052E1D',
 };

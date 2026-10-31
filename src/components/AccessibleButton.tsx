@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { useSettings } from '../state/SettingsContext';
-import { BUTTON_HEIGHT, radius, typeScale } from '../theme/tokens';
+import { BUTTON_HEIGHT, elevation, radius, typeScale } from '../theme/tokens';
 
 interface Props {
   label: string;
@@ -9,9 +9,18 @@ interface Props {
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
+  /** Optional leading system glyph (design system src/theme/glyphs.ts). */
+  glyph?: string;
 }
 
-export function AccessibleButton({ label, hint, onPress, variant = 'primary', disabled }: Props) {
+/**
+ * The app's standard large action button — full-width, ≥64dp, with
+ * design-system surfaces: filled primary/danger with elevation, soft
+ * secondary with a border. Variants are distinguished by label weight
+ * and (for danger) a leading ✕ glyph slot is available, never by
+ * color alone — the text label always says what the button does.
+ */
+export function AccessibleButton({ label, hint, onPress, variant = 'primary', disabled, glyph }: Props) {
   const { colors, type, settings } = useSettings();
   const bg =
     variant === 'primary' ? colors.primary : variant === 'danger' ? colors.danger : colors.surfaceAlt;
@@ -28,10 +37,19 @@ export function AccessibleButton({ label, hint, onPress, variant = 'primary', di
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: bg, borderColor: colors.border, opacity: disabled ? 0.5 : pressed ? pressOpacity : 1 },
+        {
+          backgroundColor: bg,
+          borderColor: variant === 'secondary' ? colors.border : bg,
+          shadowColor: colors.shadow,
+          elevation: variant === 'secondary' ? 0 : elevation.card,
+          opacity: disabled ? 0.5 : pressed ? pressOpacity : 1,
+        },
       ]}
     >
-      <Text style={[styles.label, { color: fg, fontSize: type.button }]}>{label}</Text>
+      <Text style={[styles.label, { color: fg, fontSize: type.button }]}>
+        {glyph ? `${glyph}  ` : ''}
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -39,12 +57,15 @@ export function AccessibleButton({ label, hint, onPress, variant = 'primary', di
 const styles = StyleSheet.create({
   button: {
     minHeight: BUTTON_HEIGHT,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
     marginVertical: 6,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
   },
-  label: { fontSize: typeScale.button, fontWeight: '700', textAlign: 'center' },
+  label: { fontSize: typeScale.button, fontWeight: '700', textAlign: 'center', lineHeight: 28 },
 });
