@@ -1,6 +1,8 @@
 // BASERA Guardian PWA — app logic.
-// Data access is enforced by Supabase RLS: this client only ever sees
-// locations of people who approved THIS account as an active guardian.
+// Data access is enforced by Supabase RLS on the DEPLOYED project:
+// this client only ever sees locations/SOS of wearers who paired with
+// this account AND enabled per-link consent for it (see
+// docs/SUPABASE_INTEGRATION.md).
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm";
 
 const STRINGS = {

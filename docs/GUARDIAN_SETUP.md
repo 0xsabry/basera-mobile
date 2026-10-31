@@ -1,12 +1,19 @@
 # BASERA Guardian — Owner Setup Checklist
 
-> **Status today: remote guardian tracking is NOT CONFIGURED.**
-> No Supabase project, Edge Functions, Firebase project, or hosted
-> Guardian PWA have been set up yet, so the guardian (remote) features
-> are inactive and the app honestly shows “not configured” for them.
-> **Local GPS in the app does not depend on any of this** — on-device
-> location features keep working without completing this checklist.
-> Everything below is an owner action; nothing here has been done for you.
+> **Status (updated 2026-10-31): the owner's Supabase project EXISTS
+> and is DEPLOYED, and both clients are wired to it.**
+> Project: `https://vbvvwyeccsegfwprwrga.supabase.co` (publishable
+> key in app config + `guardian-pwa/config.js`). Pairing (Edge
+> Functions), per-link consent, latest location, SOS and Realtime are
+> live-verified — see `docs/SUPABASE_INTEGRATION.md` for the deployed
+> contract **as discovered**, which DIFFERS from the local design this
+> checklist originally described. **Do NOT run steps 2 or 4 below**:
+> the migrations and functions in `supabase/` were never applied to
+> the deployed project and are archived history only. Remaining owner
+> items: host the Guardian PWA (step 7's hosting part) if not already
+> done; push *delivery* is untested (only token registration is
+> implemented); SOS rows and auth accounts cannot be deleted by
+> clients (owner Dashboard actions).
 
 Complete the steps in order.
 
@@ -19,7 +26,11 @@ Complete the steps in order.
       The `service_role` key is server-only: never put it in the app,
       the PWA, `config.js`, or git.
 
-## 2. Run the migrations 0001 → 0004, in order
+## 2. ~~Run the migrations 0001 → 0004, in order~~ — SUPERSEDED, DO NOT RUN
+
+The deployed project uses the owner's own schema (see
+`docs/SUPABASE_INTEGRATION.md`). The files below are the archived
+local design only.
 
 Supabase Dashboard → SQL Editor → run each file fully, in this exact
 order (or use the Supabase CLI: `supabase db push`):
@@ -40,7 +51,11 @@ design (guardians get no access to saved places).
       Guardian PWA’s HTTPS origin (from step 7) and add that same
       origin to the **Redirect URLs** allow-list.
 
-## 4. Deploy the Edge Functions and set their secrets
+## 4. ~~Deploy the Edge Functions and set their secrets~~ — SUPERSEDED
+
+The deployed project runs the owner's `create-guardian-invite` /
+`accept-guardian-invite` functions instead. The functions below are
+the archived local design only.
 
 The functions on disk in `supabase/functions/` are exactly:
 
