@@ -2,33 +2,44 @@
  * Supabase gateway — the ONE module that knows the DEPLOYED contract of
  * the owner's Supabase project (vbvvwyeccsegfwprwrga). Every table name,
  * column name and Edge Function name used by the guardian features lives
- * here and nowhere else, so a discovery correction is a one-file change.
+ * here and nowhere else.
  *
- * Deployed contract (owner-created project; see
- * docs/SUPABASE_INTEGRATION.md):
- * - Tables (authenticated-only; the anon role has NO grants):
- *   profiles, guardian_links, guardian_locations, sos_alerts,
- *   user_push_tokens. There is no invites table and no RPC pairing API —
- *   pairing lives behind the Edge Functions below.
- * - Edge Functions (require the signed-in user's JWT; an apikey-only
- *   call is rejected): `create-guardian-invite` (wearer) and
- *   `accept-guardian-invite` (guardian, body { invite_code }).
- * - guardian_locations holds ONLY the latest fix per wearer (upsert).
- * - Consent lives on profiles: location_sharing_enabled and
- *   sos_sharing_enabled, both default FALSE, wearer-controlled.
+ * The contract below was DISCOVERED LIVE on 2026-10-31 with three
+ * confirmed test accounts (wearer/guardian/stranger) — see
+ * docs/SUPABASE_INTEGRATION.md for the full evidence and
+ * scripts/live-rls-test.mjs for the repeatable matrix:
  *
- * The project's exact column list was never published (the OpenAPI root
- * requires a secret key), so reads/writes below are written defensively:
- * unknown OPTIONAL columns are dropped and retried once when PostgREST
- * reports them missing, and payloads from the Edge Functions are parsed
- * by searching the documented key names. The wearer key column of
- * guardian_locations / sos_alerts / user_push_tokens is centralized in
- * WEARER_COLUMN. scripts/live-rls-test.mjs runs a discovery phase that
- * prints the real columns once confirmed test accounts exist.
+ * - profiles(id, display_name, preferred_language='ar', created_at,
+ *   updated_at). NO signup trigger: the client must ensure the row.
+ *   NO consent columns here.
+ * - guardian_links(id, subject_user_id [the wearer],
+ *   guardian_user_id, location_sharing_enabled=false,
+ *   sos_sharing_enabled=false, consent_version, accepted_at,
+ *   created_at). Consent is PER-LINK and only the SUBJECT (wearer) can
+ *   change it (a guardian's update silently affects 0 rows). Either
+ *   party can DELETE the link (unlink). Accepting an invite for an
+ *   already-paired guardian returns the SAME link id (idempotent).
+ * - guardian_locations(subject_user_id PK, latitude, longitude,
+ *   accuracy_m, recorded_at [server-set], updated_at). Latest-only.
+ *   The wearer can always write/delete their own row; a guardian can
+ *   READ it only while their link has location_sharing_enabled=true
+ *   (the row's existence alone grants nothing). Strangers see nothing.
+ * - sos_alerts(id, subject_user_id, latitude, longitude, accuracy_m,
+ *   status='active', message, triggered_at, resolved_at). Wearer
+ *   inserts; guardians READ only while sos_sharing_enabled=true on
+ *   their link; updates are wearer-only (a guardian cannot resolve);
+ *   clients CANNOT delete alerts (no delete policy — safety log).
+ * - user_push_tokens(id, user_id, expo_push_token, platform
+ *   ['android' verified], created_at, updated_at).
+ * - Edge Functions (user JWT required; apikey-only is rejected):
+ *   create-guardian-invite -> { invite_code (dashed hex), expires_at }
+ *   (~15 min); accept-guardian-invite { invite_code } ->
+ *   { link_id, status: 'paired' }. Invalid / expired / reused /
+ *   self-pairing all fail with {"error":"invalid_or_expired_invite"}.
  *
  * All access goes through the signed-in user's JWT — RLS is the only
- * authorization layer; nothing here bypasses it and no secret key exists
- * in client code.
+ * authorization layer; nothing here bypasses it and no secret key
+ * exists in client code.
  */
 
 export const DEPLOYED = {
@@ -43,14 +54,6 @@ export const DEPLOYED = {
     createInvite: 'create-guardian-invite',
     acceptInvite: 'accept-guardian-invite',
   },
-  /** Column that identifies the wearer in locations / sos / token rows. */
-  wearerColumn: 'user_id',
-  profileColumns: {
-    id: 'id',
-    displayName: 'display_name',
-    locationSharing: 'location_sharing_enabled',
-    sosSharing: 'sos_sharing_enabled',
-  },
 } as const;
 
 export class GatewayError extends Error {
@@ -64,9 +67,8 @@ export class GatewayError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// Minimal structural client surface (the real SupabaseClient satisfies it;
-// tests inject fakes). Kept loose on purpose — supabase-js builders are
-// thenables with chainable filters.
+// Minimal structural client surface (the real SupabaseClient satisfies
+// it; tests inject fakes).
 // ---------------------------------------------------------------------------
 
 export interface GatewayQueryResult {
@@ -86,47 +88,28 @@ export interface GatewayClient {
   removeChannel(channel: unknown): Promise<unknown>;
 }
 
-// ---------------------------------------------------------------------------
-// Profiles + consent
-// ---------------------------------------------------------------------------
+type Row = Record<string, unknown>;
 
-export interface ConsentState {
-  locationSharingEnabled: boolean;
-  sosSharingEnabled: boolean;
-}
-
-export const DEFAULT_CONSENT: ConsentState = {
-  locationSharingEnabled: false,
-  sosSharingEnabled: false,
-};
+// ---------------------------------------------------------------------------
+// Profiles (no consent here — consent is per-link, below)
+// ---------------------------------------------------------------------------
 
 export interface ProfileInfo {
   id: string;
   displayName: string | null;
-  consent: ConsentState;
+  preferredLanguage: string | null;
 }
 
-type Row = Record<string, unknown>;
-
-function parseConsent(row: Row | null | undefined): ConsentState {
-  if (!row) return { ...DEFAULT_CONSENT };
-  const pc = DEPLOYED.profileColumns;
-  return {
-    locationSharingEnabled: row[pc.locationSharing] === true,
-    sosSharingEnabled: row[pc.sosSharing] === true,
-  };
-}
+const PROFILE_SELECT = 'id, display_name, preferred_language';
 
 function parseProfile(row: Row | null | undefined): ProfileInfo | null {
-  if (!row || typeof row[DEPLOYED.profileColumns.id] !== 'string') return null;
+  if (!row || typeof row.id !== 'string') return null;
   return {
-    id: row[DEPLOYED.profileColumns.id] as string,
-    displayName: (row[DEPLOYED.profileColumns.displayName] as string | null) ?? null,
-    consent: parseConsent(row),
+    id: row.id,
+    displayName: (row.display_name as string | null) ?? null,
+    preferredLanguage: (row.preferred_language as string | null) ?? null,
   };
 }
-
-const PROFILE_SELECT = 'id, display_name, location_sharing_enabled, sos_sharing_enabled';
 
 async function selectOwnProfile(client: GatewayClient, uid: string): Promise<Row | null> {
   const { data, error } = (await client
@@ -139,37 +122,43 @@ async function selectOwnProfile(client: GatewayClient, uid: string): Promise<Row
 }
 
 /**
- * Idempotently make sure the signed-in user has a profile row.
- * - Existing row: returned as-is; consent is NEVER reset by this call,
- *   and a display name is only filled in when the row has none.
- * - Missing row: inserted with both consents FALSE (the privacy default).
+ * Idempotently make sure the signed-in user has a profile row (the
+ * deployed project has NO signup trigger). An existing row is returned
+ * untouched except that a display name / language is filled in only
+ * when the row does not have one yet.
  */
 export async function ensureProfile(
   client: GatewayClient,
   user: { id: string; email: string | null },
-  displayName?: string | null,
+  options?: { displayName?: string | null; preferredLanguage?: string | null },
 ): Promise<ProfileInfo> {
   const existing = await selectOwnProfile(client, user.id);
   if (existing) {
     const profile = parseProfile(existing)!;
-    const wanted = displayName?.trim();
-    if (wanted && !profile.displayName) {
+    const patch: Row = {};
+    const wantedName = options?.displayName?.trim();
+    if (wantedName && !profile.displayName) patch.display_name = wantedName;
+    if (options?.preferredLanguage && !profile.preferredLanguage) {
+      patch.preferred_language = options.preferredLanguage;
+    }
+    if (Object.keys(patch).length > 0) {
       const { error } = (await client
         .from(DEPLOYED.tables.profiles)
-        .update({ [DEPLOYED.profileColumns.displayName]: wanted })
+        .update(patch)
         .eq('id', user.id)) as GatewayQueryResult;
-      if (!error) profile.displayName = wanted;
+      if (!error) {
+        if (patch.display_name) profile.displayName = patch.display_name as string;
+        if (patch.preferred_language) {
+          profile.preferredLanguage = patch.preferred_language as string;
+        }
+      }
     }
     return profile;
   }
   const fallbackName =
-    displayName?.trim() || (user.email ? user.email.split('@')[0] : null) || null;
-  const row: Row = {
-    id: user.id,
-    [DEPLOYED.profileColumns.displayName]: fallbackName,
-    [DEPLOYED.profileColumns.locationSharing]: false,
-    [DEPLOYED.profileColumns.sosSharing]: false,
-  };
+    options?.displayName?.trim() || (user.email ? user.email.split('@')[0] : null) || null;
+  const row: Row = { id: user.id, display_name: fallbackName };
+  if (options?.preferredLanguage) row.preferred_language = options.preferredLanguage;
   const { error } = (await client
     .from(DEPLOYED.tables.profiles)
     .upsert(row, { onConflict: 'id', ignoreDuplicates: true })) as GatewayQueryResult;
@@ -179,55 +168,9 @@ export async function ensureProfile(
     parseProfile(created) ?? {
       id: user.id,
       displayName: fallbackName,
-      consent: { ...DEFAULT_CONSENT },
+      preferredLanguage: options?.preferredLanguage ?? null,
     }
   );
-}
-
-/** Consent for the signed-in user; a missing profile means both OFF. */
-export async function getConsent(client: GatewayClient, uid: string): Promise<ConsentState> {
-  const row = await selectOwnProfile(client, uid);
-  return parseConsent(row);
-}
-
-/**
- * Persist a consent change. Uses UPDATE first so an existing row's other
- * consent flag is never clobbered; inserts a full default row only when
- * the profile does not exist yet.
- */
-export async function updateConsent(
-  client: GatewayClient,
-  uid: string,
-  patch: Partial<ConsentState>,
-): Promise<ConsentState> {
-  const pc = DEPLOYED.profileColumns;
-  const fields: Row = {};
-  if (patch.locationSharingEnabled !== undefined) {
-    fields[pc.locationSharing] = patch.locationSharingEnabled;
-  }
-  if (patch.sosSharingEnabled !== undefined) {
-    fields[pc.sosSharing] = patch.sosSharingEnabled;
-  }
-  if (Object.keys(fields).length === 0) return getConsent(client, uid);
-  const { data, error } = (await client
-    .from(DEPLOYED.tables.profiles)
-    .update(fields)
-    .eq('id', uid)
-    .select(PROFILE_SELECT)) as GatewayQueryResult;
-  if (error) throw new GatewayError(error.message, 'server');
-  const updated = Array.isArray(data) ? (data[0] as Row | undefined) : (data as Row | null);
-  if (updated) return parseConsent(updated);
-  // No row yet -> create it with defaults + this patch.
-  const row: Row = {
-    id: uid,
-    [pc.locationSharing]: patch.locationSharingEnabled ?? false,
-    [pc.sosSharing]: patch.sosSharingEnabled ?? false,
-  };
-  const { error: insertError } = (await client
-    .from(DEPLOYED.tables.profiles)
-    .upsert(row, { onConflict: 'id', ignoreDuplicates: true })) as GatewayQueryResult;
-  if (insertError) throw new GatewayError(insertError.message, 'server');
-  return getConsent(client, uid);
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +214,7 @@ export function parseInvitePayload(data: unknown): Invite {
 }
 
 export type InviteErrorKind =
+  | 'invalid-or-expired'
   | 'expired'
   | 'already-used'
   | 'self-pairing'
@@ -279,9 +223,13 @@ export type InviteErrorKind =
   | 'unauthenticated'
   | 'unknown';
 
-/** Classify an Edge Function failure message into an honest UI state. */
+/** Classify an Edge Function failure into an honest UI state. The
+ *  deployed function uses ONE combined code — invalid_or_expired_invite —
+ *  for invalid, expired, reused and self-pairing attempts alike, and it
+ *  is checked FIRST so the UI never claims "expired" for a typo'd code. */
 export function classifyInviteErrorMessage(message: string): InviteErrorKind {
   const m = message.toLowerCase();
+  if (m.includes('invalid_or_expired')) return 'invalid-or-expired';
   if (/expir/.test(m)) return 'expired';
   if (/already|used|redeemed|consumed/.test(m)) return 'already-used';
   if (/self|own code|your own|same user/.test(m)) return 'self-pairing';
@@ -329,13 +277,15 @@ export async function createInvite(client: GatewayClient): Promise<Invite> {
 }
 
 export interface AcceptInviteResult {
-  /** Wearer (owner) id when the function payload carries it. */
-  ownerId: string | null;
   linkId: string | null;
+  /** The deployed function returns status 'paired' on success. */
+  status: string | null;
 }
 
-/** Guardian: accept an invite code. Success means the link is ACTIVE —
- *  the deployed model has no separate owner-approval step. */
+/** Guardian: accept an invite code. Success means the link EXISTS
+ *  (paired immediately — there is no approval step in the deployed
+ *  model), but BOTH consent flags start FALSE: the wearer still
+ *  decides per link what this guardian may see. */
 export async function acceptInvite(
   client: GatewayClient,
   inviteCode: string,
@@ -345,81 +295,135 @@ export async function acceptInvite(
   });
   if (error) throw await extractFunctionError(error);
   return {
-    ownerId: findString(data, ['owner_id', 'wearer_id', 'ownerId']),
     linkId: findString(data, ['link_id', 'linkId', 'id']),
+    status: findString(data, ['status']),
   };
 }
 
 // ---------------------------------------------------------------------------
-// Links
+// Links + per-link consent
 // ---------------------------------------------------------------------------
-
-export type LinkStatus = 'pending' | 'active' | 'revoked' | string;
 
 export interface LinkInfo {
   id: string;
+  /** The wearer being shared (subject_user_id). */
   ownerId: string;
   guardianId: string;
-  /** Deployed rows may omit status; absence is treated as 'active'
-   *  because accept-guardian-invite activates the link immediately. */
-  status: LinkStatus;
+  locationSharingEnabled: boolean;
+  sosSharingEnabled: boolean;
   createdAt: string | null;
+  acceptedAt: string | null;
+}
+
+export interface ConsentState {
+  locationSharingEnabled: boolean;
+  sosSharingEnabled: boolean;
+}
+
+export const DEFAULT_CONSENT: ConsentState = {
+  locationSharingEnabled: false,
+  sosSharingEnabled: false,
+};
+
+/** Aggregate a wearer's links into one consent view: a capability is
+ *  ON when at least one link grants it. With no links, both are OFF. */
+export function aggregateConsent(links: LinkInfo[]): ConsentState {
+  return {
+    locationSharingEnabled: links.some((l) => l.locationSharingEnabled),
+    sosSharingEnabled: links.some((l) => l.sosSharingEnabled),
+  };
 }
 
 function parseLink(row: Row): LinkInfo | null {
   if (typeof row.id !== 'string') return null;
   return {
     id: row.id,
-    ownerId: typeof row.owner_id === 'string' ? row.owner_id : '',
-    guardianId: typeof row.guardian_id === 'string' ? row.guardian_id : '',
-    status: typeof row.status === 'string' ? row.status : 'active',
+    ownerId: typeof row.subject_user_id === 'string' ? row.subject_user_id : '',
+    guardianId: typeof row.guardian_user_id === 'string' ? row.guardian_user_id : '',
+    locationSharingEnabled: row.location_sharing_enabled === true,
+    sosSharingEnabled: row.sos_sharing_enabled === true,
     createdAt: typeof row.created_at === 'string' ? row.created_at : null,
+    acceptedAt: typeof row.accepted_at === 'string' ? row.accepted_at : null,
   };
 }
 
-const LINK_SELECT_WITH_STATUS = 'id, owner_id, guardian_id, status, created_at';
-const LINK_SELECT_PLAIN = 'id, owner_id, guardian_id, created_at';
+const LINK_SELECT =
+  'id, subject_user_id, guardian_user_id, location_sharing_enabled, sos_sharing_enabled, created_at, accepted_at';
 
 async function listLinksBy(
   client: GatewayClient,
-  column: 'owner_id' | 'guardian_id',
+  column: 'subject_user_id' | 'guardian_user_id',
   uid: string,
 ): Promise<LinkInfo[]> {
-  const run = async (cols: string) =>
-    (await client
-      .from(DEPLOYED.tables.links)
-      .select(cols)
-      .eq(column, uid)
-      .order('created_at', { ascending: false })) as GatewayQueryResult;
-  let res = await run(LINK_SELECT_WITH_STATUS);
-  if (res.error && isMissingColumnError(res.error.message, 'status')) {
-    res = await run(LINK_SELECT_PLAIN);
-  }
-  if (res.error) throw new GatewayError(res.error.message, 'server');
-  const rows = Array.isArray(res.data) ? (res.data as Row[]) : [];
-  return rows
-    .map(parseLink)
-    .filter((l): l is LinkInfo => l !== null)
-    .filter((l) => l.status !== 'revoked');
+  const { data, error } = (await client
+    .from(DEPLOYED.tables.links)
+    .select(LINK_SELECT)
+    .eq(column, uid)
+    .order('created_at', { ascending: false })) as GatewayQueryResult;
+  if (error) throw new GatewayError(error.message, 'server');
+  const rows = Array.isArray(data) ? (data as Row[]) : [];
+  return rows.map(parseLink).filter((l): l is LinkInfo => l !== null);
 }
 
-/** Links where the user is the WEARER (their guardians). */
+/** Links where the user is the SUBJECT/wearer (their guardians). */
 export function listLinksAsOwner(client: GatewayClient, uid: string): Promise<LinkInfo[]> {
-  return listLinksBy(client, 'owner_id', uid);
+  return listLinksBy(client, 'subject_user_id', uid);
 }
 
 /** Links where the user is the GUARDIAN (people sharing with them). */
 export function listLinksAsGuardian(client: GatewayClient, uid: string): Promise<LinkInfo[]> {
-  return listLinksBy(client, 'guardian_id', uid);
+  return listLinksBy(client, 'guardian_user_id', uid);
 }
 
-/** Unlink: delete the link row (RLS decides whether the caller may). */
+/**
+ * Change consent on ONE link. Only the wearer (subject) can do this —
+ * RLS silently affects 0 rows for anyone else, which is detected here
+ * and surfaced as an error instead of a fake success.
+ */
+export async function setLinkConsent(
+  client: GatewayClient,
+  linkId: string,
+  patch: Partial<ConsentState>,
+): Promise<LinkInfo> {
+  const fields: Row = {};
+  if (patch.locationSharingEnabled !== undefined) {
+    fields.location_sharing_enabled = patch.locationSharingEnabled;
+  }
+  if (patch.sosSharingEnabled !== undefined) {
+    fields.sos_sharing_enabled = patch.sosSharingEnabled;
+  }
+  if (Object.keys(fields).length === 0) {
+    throw new GatewayError('empty consent patch', 'unknown');
+  }
+  const { data, error } = (await client
+    .from(DEPLOYED.tables.links)
+    .update(fields)
+    .eq('id', linkId)
+    .select(LINK_SELECT)) as GatewayQueryResult;
+  if (error) throw new GatewayError(error.message, 'server');
+  const rows = Array.isArray(data) ? (data as Row[]) : [];
+  const updated = rows[0] ? parseLink(rows[0]) : null;
+  if (!updated) {
+    throw new GatewayError(
+      'consent update was not applied — only the wearer can change consent on a link',
+      'unknown',
+    );
+  }
+  return updated;
+}
+
+/** Unlink: delete the link row (either party may — RLS decides). */
 export async function deleteLink(client: GatewayClient, linkId: string): Promise<void> {
-  const { error } = (await client
+  const { data, error } = (await client
     .from(DEPLOYED.tables.links)
     .delete()
-    .eq('id', linkId)) as GatewayQueryResult;
+    .eq('id', linkId)
+    .select('id')) as GatewayQueryResult;
   if (error) throw new GatewayError(error.message, 'server');
+  const rows = Array.isArray(data) ? data : [];
+  if (rows.length === 0) {
+    throw new GatewayError('unlink was not applied', 'unknown');
+  }
 }
 
 /** Display names for a set of users (RLS-limited to what we may see). */
@@ -442,14 +446,14 @@ export async function fetchDisplayNames(
 }
 
 // ---------------------------------------------------------------------------
-// Locations (latest-only)
+// Locations (latest-only, keyed by subject_user_id)
 // ---------------------------------------------------------------------------
 
 export interface LocationFix {
   lat: number;
   lng: number;
   accuracyM: number | null;
-  recordedAt: string; // ISO
+  recordedAt: string; // ISO (client-side bookkeeping; server stamps its own)
 }
 
 export interface LatestLocationRow extends LocationFix {
@@ -457,71 +461,26 @@ export interface LatestLocationRow extends LocationFix {
   updatedAt: string | null;
 }
 
-/** PostgREST/PG "column does not exist" errors name the column — used to
- *  drop optional columns and retry once against the real schema. */
-export function missingColumnName(message: string): string | null {
-  const pg = /column (?:["\w.]+\.)?"?([a-z_][a-z0-9_]*)"? does not exist/i.exec(message);
-  if (pg) return pg[1];
-  const pgrst = /Could not find the '([a-z_][a-z0-9_]*)' column/i.exec(message);
-  if (pgrst) return pgrst[1];
-  const schemaCache = /'([a-z_][a-z0-9_]*)' column of '[^']+' in the schema cache/i.exec(message);
-  if (schemaCache) return schemaCache[1];
-  return null;
-}
+const SUBJECT = 'subject_user_id';
 
-export function isMissingColumnError(message: string, column?: string): boolean {
-  const found = missingColumnName(message);
-  if (!found) return false;
-  return column === undefined || found === column;
-}
-
-/** Columns a write must never silently lose (a row without them is
- *  meaningless or unaddressable). */
-const PROTECTED_COLUMNS = new Set([DEPLOYED.wearerColumn, 'lat', 'lng']);
-
-/** Drop OPTIONAL columns PostgREST says do not exist; retry up to 3
- *  times. Protected columns are never dropped — their absence is a
- *  real schema problem and surfaces as an error instead. */
-async function withColumnFallback<T extends Row>(
-  row: T,
-  run: (row: T) => Promise<GatewayQueryResult>,
-): Promise<void> {
-  let current: Row = { ...row };
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const { error } = await run(current as T);
-    if (!error) return;
-    const missing = missingColumnName(error.message);
-    if (missing && missing in current && !PROTECTED_COLUMNS.has(missing)) {
-      const next = { ...current };
-      delete next[missing];
-      current = next;
-      continue;
-    }
-    throw new GatewayError(error.message, 'server');
-  }
-  throw new GatewayError('column fallback exhausted', 'server');
-}
-
-/** Upsert the wearer's LATEST fix (the table keeps one row per wearer). */
+/** Upsert the wearer's LATEST fix (one row per wearer). The server
+ *  stamps recorded_at at insert and updated_at on every write, so the
+ *  client sends coordinates only. */
 export async function upsertLatestLocation(
   client: GatewayClient,
   uid: string,
   fix: LocationFix,
 ): Promise<void> {
-  const wc = DEPLOYED.wearerColumn;
-  const row: Row = {
-    [wc]: uid,
-    lat: fix.lat,
-    lng: fix.lng,
-    accuracy_m: fix.accuracyM,
-    recorded_at: fix.recordedAt,
-    updated_at: new Date().toISOString(),
-  };
-  await withColumnFallback(row, async (r) =>
-    (await client
-      .from(DEPLOYED.tables.locations)
-      .upsert(r, { onConflict: wc })) as GatewayQueryResult,
-  );
+  const { error } = (await client.from(DEPLOYED.tables.locations).upsert(
+    {
+      [SUBJECT]: uid,
+      latitude: fix.lat,
+      longitude: fix.lng,
+      accuracy_m: fix.accuracyM,
+    },
+    { onConflict: SUBJECT },
+  )) as GatewayQueryResult;
+  if (error) throw new GatewayError(error.message, 'server');
 }
 
 /** Delete the wearer's latest-location row (privacy on consent-off). */
@@ -529,7 +488,7 @@ export async function deleteLatestLocation(client: GatewayClient, uid: string): 
   const { error } = (await client
     .from(DEPLOYED.tables.locations)
     .delete()
-    .eq(DEPLOYED.wearerColumn, uid)) as GatewayQueryResult;
+    .eq(SUBJECT, uid)) as GatewayQueryResult;
   if (error) throw new GatewayError(error.message, 'server');
 }
 
@@ -537,24 +496,18 @@ export async function getLatestLocation(
   client: GatewayClient,
   wearerId: string,
 ): Promise<LatestLocationRow | null> {
-  const wc = DEPLOYED.wearerColumn;
-  const run = async (cols: string) =>
-    (await client
-      .from(DEPLOYED.tables.locations)
-      .select(cols)
-      .eq(wc, wearerId)
-      .maybeSingle()) as GatewayQueryResult;
-  let res = await run(`${wc}, lat, lng, accuracy_m, recorded_at, updated_at`);
-  if (res.error && missingColumnName(res.error.message)) {
-    res = await run(`${wc}, lat, lng`);
-  }
-  if (res.error) throw new GatewayError(res.error.message, 'server');
-  const row = res.data as Row | null;
+  const { data, error } = (await client
+    .from(DEPLOYED.tables.locations)
+    .select(`${SUBJECT}, latitude, longitude, accuracy_m, recorded_at, updated_at`)
+    .eq(SUBJECT, wearerId)
+    .maybeSingle()) as GatewayQueryResult;
+  if (error) throw new GatewayError(error.message, 'server');
+  const row = data as Row | null;
   if (!row) return null;
   return {
     userId: wearerId,
-    lat: row.lat as number,
-    lng: row.lng as number,
+    lat: row.latitude as number,
+    lng: row.longitude as number,
     accuracyM: (row.accuracy_m as number | null) ?? null,
     recordedAt: (row.recorded_at as string) ?? (row.updated_at as string) ?? '',
     updatedAt: (row.updated_at as string | null) ?? null,
@@ -565,25 +518,23 @@ export async function getLatestLocation(
 // SOS alerts
 // ---------------------------------------------------------------------------
 
-/**
- * Insert an SOS alert for the wearer. Location snapshot columns are
- * optional and dropped automatically if the deployed table lacks them.
- */
+/** Insert an SOS alert for the wearer (status defaults to 'active'
+ *  server-side; the location snapshot is included when available). */
 export async function insertSosAlert(
   client: GatewayClient,
   uid: string,
   fix: LocationFix | null,
 ): Promise<void> {
-  const wc = DEPLOYED.wearerColumn;
-  const row: Row = { [wc]: uid };
+  const row: Row = { [SUBJECT]: uid };
   if (fix) {
-    row.lat = fix.lat;
-    row.lng = fix.lng;
+    row.latitude = fix.lat;
+    row.longitude = fix.lng;
     row.accuracy_m = fix.accuracyM;
   }
-  await withColumnFallback(row, async (r) =>
-    (await client.from(DEPLOYED.tables.sosAlerts).insert(r)) as GatewayQueryResult,
-  );
+  const { error } = (await client
+    .from(DEPLOYED.tables.sosAlerts)
+    .insert(row)) as GatewayQueryResult;
+  if (error) throw new GatewayError(error.message, 'server');
 }
 
 export interface SosAlertInfo {
@@ -591,7 +542,21 @@ export interface SosAlertInfo {
   userId: string;
   lat: number | null;
   lng: number | null;
-  createdAt: string | null;
+  status: string | null;
+  createdAt: string | null; // triggered_at
+  resolvedAt: string | null;
+}
+
+function parseSos(row: Row): SosAlertInfo {
+  return {
+    id: typeof row.id === 'string' ? row.id : null,
+    userId: String(row[SUBJECT] ?? ''),
+    lat: typeof row.latitude === 'number' ? row.latitude : null,
+    lng: typeof row.longitude === 'number' ? row.longitude : null,
+    status: typeof row.status === 'string' ? row.status : null,
+    createdAt: typeof row.triggered_at === 'string' ? row.triggered_at : null,
+    resolvedAt: typeof row.resolved_at === 'string' ? row.resolved_at : null,
+  };
 }
 
 export async function listSosAlerts(
@@ -600,21 +565,32 @@ export async function listSosAlerts(
   limit = 20,
 ): Promise<SosAlertInfo[]> {
   if (wearerIds.length === 0) return [];
-  const wc = DEPLOYED.wearerColumn;
   const { data, error } = (await client
     .from(DEPLOYED.tables.sosAlerts)
     .select('*')
-    .in(wc, wearerIds)
-    .order('created_at', { ascending: false })
+    .in(SUBJECT, wearerIds)
+    .order('triggered_at', { ascending: false })
     .limit(limit)) as GatewayQueryResult;
   if (error) throw new GatewayError(error.message, 'server');
-  return ((Array.isArray(data) ? data : []) as Row[]).map((row) => ({
-    id: typeof row.id === 'string' ? row.id : null,
-    userId: String(row[wc] ?? ''),
-    lat: typeof row.lat === 'number' ? row.lat : null,
-    lng: typeof row.lng === 'number' ? row.lng : null,
-    createdAt: typeof row.created_at === 'string' ? row.created_at : null,
-  }));
+  return ((Array.isArray(data) ? data : []) as Row[]).map(parseSos);
+}
+
+/**
+ * Resolve the wearer's OWN active alerts ("I am OK"). Updates are
+ * wearer-only in the deployed RLS — a guardian cannot resolve.
+ * Clients cannot DELETE alerts at all (safety log); resolving is the
+ * only terminal transition.
+ */
+export async function resolveOwnActiveSosAlerts(
+  client: GatewayClient,
+  uid: string,
+): Promise<void> {
+  const { error } = (await client
+    .from(DEPLOYED.tables.sosAlerts)
+    .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+    .eq(SUBJECT, uid)
+    .eq('status', 'active')) as GatewayQueryResult;
+  if (error) throw new GatewayError(error.message, 'server');
 }
 
 // ---------------------------------------------------------------------------
@@ -622,34 +598,40 @@ export async function listSosAlerts(
 // NOT claimed anywhere; see docs/SUPABASE_INTEGRATION.md)
 // ---------------------------------------------------------------------------
 
-export type PushPlatform = 'android-expo' | 'web-fcm';
-
-const TOKEN_VALUE_COLUMNS = ['token', 'endpoint', 'push_token', 'expo_push_token'];
+export type PushPlatform = 'android' | 'ios';
 
 /**
- * Register (or refresh) the current device token for the signed-in user.
- * Replaces the user's previous row for the platform so a refreshed token
- * never leaves a stale one behind.
+ * Register (or refresh) the current device token for the signed-in
+ * user. Replaces the user's previous row for the platform so a
+ * refreshed token never leaves a stale one behind. The deployed value
+ * column is expo_push_token; the fallbacks cost one failed insert each
+ * and exist only in case the project schema is ever renamed.
  */
+const TOKEN_VALUE_COLUMNS = ['expo_push_token', 'token', 'endpoint', 'push_token'];
+
+export function isMissingColumnError(message: string, column: string): boolean {
+  return (
+    message.includes(`'${column}' column`) ||
+    message.includes(`"${column}"`) ||
+    message.includes(` ${column} `)
+  );
+}
+
 export async function registerPushToken(
   client: GatewayClient,
   uid: string,
   token: string,
   platform: PushPlatform,
 ): Promise<void> {
-  const wc = DEPLOYED.wearerColumn;
   await removePushTokens(client, uid, platform);
   let lastError: string | null = null;
   for (const valueColumn of TOKEN_VALUE_COLUMNS) {
-    const row: Row = { [wc]: uid, platform, [valueColumn]: token };
+    const row: Row = { user_id: uid, platform, [valueColumn]: token };
     const { error } = (await client
       .from(DEPLOYED.tables.pushTokens)
       .insert(row)) as GatewayQueryResult;
     if (!error) return;
     lastError = error.message;
-    // A missing VALUE column means: try the next candidate name. Any
-    // other failure (RLS, network, a missing structural column) is
-    // real — surface it immediately instead of guessing further.
     if (!isMissingColumnError(error.message, valueColumn)) {
       throw new GatewayError(error.message, 'server');
     }
@@ -657,52 +639,42 @@ export async function registerPushToken(
   throw new GatewayError(lastError ?? 'push token registration failed', 'server');
 }
 
-/** Remove the user's token rows for a platform (sign-out / disable). */
+/** Remove the user's token rows (sign-out cleanup; platform optional). */
 export async function removePushTokens(
   client: GatewayClient,
   uid: string,
   platform?: PushPlatform,
 ): Promise<void> {
-  let query = client
-    .from(DEPLOYED.tables.pushTokens)
-    .delete()
-    .eq(DEPLOYED.wearerColumn, uid);
+  let query = client.from(DEPLOYED.tables.pushTokens).delete().eq('user_id', uid);
   if (platform) query = query.eq('platform', platform);
   const { error } = (await query) as GatewayQueryResult;
   if (error) throw new GatewayError(error.message, 'server');
 }
 
 // ---------------------------------------------------------------------------
-// Account data cleanup (the deployed project exposes no client-callable
-// auth-account deletion; this removes the user's DATA rows, and the UI
-// states honestly that full account removal is an owner action)
+// Account data cleanup. The deployed project exposes no client-callable
+// auth-account deletion; this removes the user's DATA rows. One
+// exception, verified live: sos_alerts rows CANNOT be deleted by
+// clients (append-only safety log) — the delete below silently
+// affects 0 rows there, and the UI copy says alerts are retained.
 // ---------------------------------------------------------------------------
 
 export async function deleteAllUserData(client: GatewayClient, uid: string): Promise<void> {
-  const wc = DEPLOYED.wearerColumn;
   const steps: [string, () => Promise<GatewayQueryResult>][] = [
     [
       DEPLOYED.tables.locations,
       async () =>
-        (await client.from(DEPLOYED.tables.locations).delete().eq(wc, uid)) as GatewayQueryResult,
-    ],
-    [
-      DEPLOYED.tables.sosAlerts,
-      async () =>
-        (await client.from(DEPLOYED.tables.sosAlerts).delete().eq(wc, uid)) as GatewayQueryResult,
+        (await client.from(DEPLOYED.tables.locations).delete().eq(SUBJECT, uid)) as GatewayQueryResult,
     ],
     [
       DEPLOYED.tables.pushTokens,
       async () =>
-        (await client.from(DEPLOYED.tables.pushTokens).delete().eq(wc, uid)) as GatewayQueryResult,
+        (await client.from(DEPLOYED.tables.pushTokens).delete().eq('user_id', uid)) as GatewayQueryResult,
     ],
     [
-      `${DEPLOYED.tables.links} (as owner)`,
+      `${DEPLOYED.tables.links} (as subject)`,
       async () =>
-        (await client
-          .from(DEPLOYED.tables.links)
-          .delete()
-          .eq('owner_id', uid)) as GatewayQueryResult,
+        (await client.from(DEPLOYED.tables.links).delete().eq(SUBJECT, uid)) as GatewayQueryResult,
     ],
     [
       `${DEPLOYED.tables.links} (as guardian)`,
@@ -710,7 +682,7 @@ export async function deleteAllUserData(client: GatewayClient, uid: string): Pro
         (await client
           .from(DEPLOYED.tables.links)
           .delete()
-          .eq('guardian_id', uid)) as GatewayQueryResult,
+          .eq('guardian_user_id', uid)) as GatewayQueryResult,
     ],
     [
       DEPLOYED.tables.profiles,
@@ -725,9 +697,9 @@ export async function deleteAllUserData(client: GatewayClient, uid: string): Pro
 }
 
 // ---------------------------------------------------------------------------
-// Realtime subscriptions (postgres_changes). Requires the tables to be
-// in the supabase_realtime publication — the owner deployed it that way;
-// if a channel never delivers, polling fallbacks in the clients remain.
+// Realtime subscriptions (postgres_changes). VERIFIED LIVE: a guardian
+// subscribed to guardian_locations + sos_alerts received the wearer's
+// INSERT events within seconds (discovery round 4, 2026-10-31).
 // ---------------------------------------------------------------------------
 
 export interface Subscription {
@@ -748,7 +720,6 @@ export function subscribeWearerLocation(
   wearerId: string,
   onChange: (row: LatestLocationRow | null, eventType: string) => void,
 ): Subscription {
-  const wc = DEPLOYED.wearerColumn;
   const channel = client
     .channel(`basera-guardian-location-${wearerId}`)
     .on(
@@ -757,7 +728,7 @@ export function subscribeWearerLocation(
         event: '*',
         schema: 'public',
         table: DEPLOYED.tables.locations,
-        filter: `${wc}=eq.${wearerId}`,
+        filter: `${SUBJECT}=eq.${wearerId}`,
       },
       (payload: { eventType: string; new: Row | null; old: Row | null }) => {
         if (payload.eventType === 'DELETE' || !payload.new) {
@@ -768,8 +739,8 @@ export function subscribeWearerLocation(
         onChange(
           {
             userId: wearerId,
-            lat: row.lat as number,
-            lng: row.lng as number,
+            lat: row.latitude as number,
+            lng: row.longitude as number,
             accuracyM: (row.accuracy_m as number | null) ?? null,
             recordedAt: (row.recorded_at as string) ?? (row.updated_at as string) ?? '',
             updatedAt: (row.updated_at as string | null) ?? null,
@@ -788,7 +759,6 @@ export function subscribeWearerSos(
   wearerIds: string[],
   onAlert: (alert: SosAlertInfo) => void,
 ): Subscription {
-  const wc = DEPLOYED.wearerColumn;
   const channels: unknown[] = [];
   for (const wearerId of wearerIds) {
     const channel = client
@@ -799,17 +769,10 @@ export function subscribeWearerSos(
           event: 'INSERT',
           schema: 'public',
           table: DEPLOYED.tables.sosAlerts,
-          filter: `${wc}=eq.${wearerId}`,
+          filter: `${SUBJECT}=eq.${wearerId}`,
         },
         (payload: { new: Row }) => {
-          const row = payload.new ?? {};
-          onAlert({
-            id: typeof row.id === 'string' ? row.id : null,
-            userId: wearerId,
-            lat: typeof row.lat === 'number' ? row.lat : null,
-            lng: typeof row.lng === 'number' ? row.lng : null,
-            createdAt: typeof row.created_at === 'string' ? row.created_at : null,
-          });
+          onAlert(parseSos(payload.new ?? {}));
         },
       )
       .subscribe();
@@ -838,7 +801,7 @@ export function subscribeUserLinks(
         event: '*',
         schema: 'public',
         table: DEPLOYED.tables.links,
-        filter: `owner_id=eq.${uid}`,
+        filter: `${SUBJECT}=eq.${uid}`,
       },
       () => onChange(),
     )
@@ -848,7 +811,7 @@ export function subscribeUserLinks(
         event: '*',
         schema: 'public',
         table: DEPLOYED.tables.links,
-        filter: `guardian_id=eq.${uid}`,
+        filter: `guardian_user_id=eq.${uid}`,
       },
       () => onChange(),
     )

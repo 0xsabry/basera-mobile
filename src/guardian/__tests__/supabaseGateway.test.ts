@@ -1,18 +1,21 @@
 /**
- * supabaseGateway tests — the DEPLOYED contract (owner's project):
- * Edge-Function pairing, profiles consent, latest-only locations,
- * sos_alerts, user_push_tokens, realtime wiring. Runs against a fake
- * supabase-js-shaped client; the LIVE matrix is
- * scripts/live-rls-test.mjs (needs confirmed test accounts).
+ * supabaseGateway tests — the DISCOVERED deployed contract (live
+ * discovery 2026-10-31, docs/SUPABASE_INTEGRATION.md): subject_user_id
+ * links with per-link consent, latitude/longitude latest locations,
+ * sos_alerts with triggered_at/status, expo_push_token registration,
+ * Edge-Function pairing with the combined invalid_or_expired_invite
+ * error. Runs against a fake supabase-js-shaped client; the LIVE
+ * matrix is scripts/live-rls-test.mjs.
  */
 import {
   acceptInvite,
-  createInvite,
+  aggregateConsent,
   classifyInviteErrorMessage,
+  createInvite,
   deleteAllUserData,
   deleteLatestLocation,
+  deleteLink,
   ensureProfile,
-  getConsent,
   getLatestLocation,
   insertSosAlert,
   listLinksAsGuardian,
@@ -21,9 +24,10 @@ import {
   parseInvitePayload,
   registerPushToken,
   removePushTokens,
+  resolveOwnActiveSosAlerts,
+  setLinkConsent,
   subscribeUserLinks,
   subscribeWearerLocation,
-  updateConsent,
   upsertLatestLocation,
   GatewayError,
 } from '../supabaseGateway';
@@ -57,7 +61,7 @@ class FakeBuilder {
 
   select(cols?: string) {
     if (this.op === 'select') this.selectCols = cols;
-    if (this.op === 'update' || this.op === 'insert') this.returning = true;
+    else this.returning = true;
     return this;
   }
   eq(col: string, val: unknown) {
@@ -142,8 +146,9 @@ class FakeBuilder {
         return { data: this.returning ? updated : null, error: null };
       }
       case 'delete': {
+        const removed = rows.filter((r) => this.matches(r));
         this.store[this.table] = rows.filter((r) => !this.matches(r));
-        return { data: null, error: null };
+        return { data: this.returning ? removed : null, error: null };
       }
       default:
         return { data: null, error: null };
@@ -209,299 +214,284 @@ function fakeGatewayClient(responder?: Responder) {
 }
 
 const ME = 'user-me';
+const LINK_ROW = {
+  id: 'link-1',
+  subject_user_id: ME,
+  guardian_user_id: 'guardian-1',
+  location_sharing_enabled: false,
+  sos_sharing_enabled: false,
+  consent_version: '1.0',
+  created_at: '2026-10-31T10:00:00Z',
+  accepted_at: '2026-10-31T10:00:00Z',
+};
 
 describe('invite payload parsing + error classification', () => {
-  it('parses invite_code + expires_at at top level and nested', () => {
-    expect(parseInvitePayload({ invite_code: '847201', expires_at: '2026-10-31T13:00:00Z' })).toEqual({
-      code: '847201',
-      expiresAt: '2026-10-31T13:00:00Z',
-    });
-    expect(parseInvitePayload({ data: { code: 'XY29KD', expiry: 'soon' } }).code).toBe('XY29KD');
+  it('parses the deployed payload (dashed-hex code + expires_at)', () => {
+    expect(
+      parseInvitePayload({
+        invite_code: 'A5F2-99D2-23CB-A24B-36A5-4D73-4468-E1A4',
+        expires_at: '2026-10-31T11:05:41Z',
+      }),
+    ).toEqual({ code: 'A5F2-99D2-23CB-A24B-36A5-4D73-4468-E1A4', expiresAt: '2026-10-31T11:05:41Z' });
     expect(() => parseInvitePayload({ ok: true })).toThrow(GatewayError);
   });
 
-  it('classifies function error messages into honest kinds', () => {
+  it('classifies the deployed combined error code FIRST (never claims "expired" for a typo)', () => {
+    expect(classifyInviteErrorMessage('invalid_or_expired_invite')).toBe('invalid-or-expired');
     expect(classifyInviteErrorMessage('invite code has expired')).toBe('expired');
     expect(classifyInviteErrorMessage('code already used')).toBe('already-used');
-    expect(classifyInviteErrorMessage('you cannot pair with your own code')).toBe('self-pairing');
-    expect(classifyInviteErrorMessage('invalid invite code')).toBe('invalid');
     expect(classifyInviteErrorMessage('Failed to fetch')).toBe('network');
     expect(classifyInviteErrorMessage('something else')).toBe('unknown');
   });
 });
 
 describe('pairing via Edge Functions', () => {
-  it('createInvite invokes create-guardian-invite and maps the payload', async () => {
+  it('createInvite maps the deployed payload', async () => {
     const f = fakeGatewayClient();
     f.invokeResponses.set('create-guardian-invite', {
-      data: { invite_code: '555123', expires_at: '2026-10-31T13:15:00Z' },
+      data: { invite_code: 'AAAA-BBBB', expires_at: '2026-10-31T11:05:41Z' },
       error: null,
     });
-    const invite = await createInvite(f.client);
-    expect(invite).toEqual({ code: '555123', expiresAt: '2026-10-31T13:15:00Z' });
+    await expect(createInvite(f.client)).resolves.toEqual({
+      code: 'AAAA-BBBB',
+      expiresAt: '2026-10-31T11:05:41Z',
+    });
     expect(f.invokeCalls[0].name).toBe('create-guardian-invite');
   });
 
-  it('acceptInvite posts { invite_code } to accept-guardian-invite', async () => {
+  it('acceptInvite posts { invite_code } and maps { link_id, status: paired }', async () => {
     const f = fakeGatewayClient();
     f.invokeResponses.set('accept-guardian-invite', {
-      data: { owner_id: 'wearer-1', link_id: 'link-1' },
+      data: { link_id: 'link-9', status: 'paired' },
       error: null,
     });
-    const res = await acceptInvite(f.client, '555123');
-    expect(res).toEqual({ ownerId: 'wearer-1', linkId: 'link-1' });
+    await expect(acceptInvite(f.client, 'AAAA-BBBB')).resolves.toEqual({
+      linkId: 'link-9',
+      status: 'paired',
+    });
     expect(f.invokeCalls[0]).toEqual({
       name: 'accept-guardian-invite',
-      body: { invite_code: '555123' },
+      body: { invite_code: 'AAAA-BBBB' },
     });
   });
 
-  it('acceptInvite surfaces the function body error (expired) with its kind', async () => {
+  it('acceptInvite surfaces invalid_or_expired_invite with its combined kind', async () => {
     const f = fakeGatewayClient();
     f.invokeResponses.set('accept-guardian-invite', {
       data: null,
       error: {
         message: 'Edge Function returned a non-2xx status code',
-        context: {
-          json: async () => ({ error: 'This invite code has expired' }),
-        },
+        context: { json: async () => ({ error: 'invalid_or_expired_invite' }) },
       },
     });
-    await expect(acceptInvite(f.client, '555123')).rejects.toMatchObject({
+    await expect(acceptInvite(f.client, 'AAAA-BBBB')).rejects.toMatchObject({
       name: 'GatewayError',
-      kind: 'expired',
-      message: 'This invite code has expired',
+      kind: 'invalid-or-expired',
+      message: 'invalid_or_expired_invite',
     });
   });
 });
 
-describe('profiles + consent', () => {
-  it('ensureProfile inserts a new profile with BOTH consents false', async () => {
+describe('profiles (no consent columns, no trigger)', () => {
+  it('ensureProfile inserts { id, display_name, preferred_language } only', async () => {
     const f = fakeGatewayClient();
-    const profile = await ensureProfile(f.client, { id: ME, email: 'me@example.com' });
-    expect(profile.consent).toEqual({ locationSharingEnabled: false, sosSharingEnabled: false });
+    const profile = await ensureProfile(
+      f.client,
+      { id: ME, email: 'me@example.com' },
+      { preferredLanguage: 'en' },
+    );
+    expect(profile.preferredLanguage).toBe('en');
     expect(f.store.profiles).toHaveLength(1);
-    expect(f.store.profiles[0]).toMatchObject({
-      id: ME,
-      location_sharing_enabled: false,
-      sos_sharing_enabled: false,
-    });
+    expect(f.store.profiles[0]).toEqual({ id: ME, display_name: 'me', preferred_language: 'en' });
   });
 
-  it('ensureProfile NEVER resets an existing profile consent', async () => {
+  it('ensureProfile never clobbers an existing row', async () => {
     const f = fakeGatewayClient();
-    f.store.profiles.push({
-      id: ME,
-      display_name: 'Me',
-      location_sharing_enabled: true,
-      sos_sharing_enabled: true,
-    });
-    const profile = await ensureProfile(f.client, { id: ME, email: 'me@example.com' });
-    expect(profile.consent).toEqual({ locationSharingEnabled: true, sosSharingEnabled: true });
-    expect(f.calls.some((c) => c.op === 'insert' || c.op === 'upsert')).toBe(false);
-  });
-
-  it('getConsent defaults to both false when no profile row exists', async () => {
-    const f = fakeGatewayClient();
-    await expect(getConsent(f.client, ME)).resolves.toEqual({
-      locationSharingEnabled: false,
-      sosSharingEnabled: false,
-    });
-  });
-
-  it('updateConsent updates one flag without clobbering the other', async () => {
-    const f = fakeGatewayClient();
-    f.store.profiles.push({
-      id: ME,
-      display_name: null,
-      location_sharing_enabled: true,
-      sos_sharing_enabled: false,
-    });
-    const next = await updateConsent(f.client, ME, { sosSharingEnabled: true });
-    expect(next).toEqual({ locationSharingEnabled: true, sosSharingEnabled: true });
-    expect(f.store.profiles[0]).toMatchObject({
-      location_sharing_enabled: true,
-      sos_sharing_enabled: true,
-    });
-  });
-
-  it('updateConsent creates the profile (defaults + patch) when missing', async () => {
-    const f = fakeGatewayClient();
-    const next = await updateConsent(f.client, ME, { locationSharingEnabled: true });
-    expect(next.locationSharingEnabled).toBe(true);
-    expect(next.sosSharingEnabled).toBe(false);
-    expect(f.store.profiles).toHaveLength(1);
+    f.store.profiles.push({ id: ME, display_name: 'Real Name', preferred_language: 'ar' });
+    const profile = await ensureProfile(
+      f.client,
+      { id: ME, email: 'me@example.com' },
+      { displayName: 'Other', preferredLanguage: 'en' },
+    );
+    expect(profile.displayName).toBe('Real Name');
+    expect(profile.preferredLanguage).toBe('ar');
+    expect(f.calls.some((c) => c.op === 'upsert' || c.op === 'insert')).toBe(false);
   });
 });
 
-describe('links', () => {
-  it('lists owner/guardian links, hides revoked, defaults missing status to active', async () => {
+describe('links + per-link consent', () => {
+  it('lists owner/guardian links mapping subject/guardian + consent flags', async () => {
     const f = fakeGatewayClient();
     f.store.guardian_links.push(
-      { id: 'l1', owner_id: ME, guardian_id: 'g1', status: 'active', created_at: '2026-10-31T10:00:00Z' },
-      { id: 'l2', owner_id: ME, guardian_id: 'g2', status: 'revoked', created_at: '2026-10-30T10:00:00Z' },
-      { id: 'l3', owner_id: 'w1', guardian_id: ME, created_at: '2026-10-31T09:00:00Z' },
+      { ...LINK_ROW },
+      { ...LINK_ROW, id: 'link-2', subject_user_id: 'wearer-9', guardian_user_id: ME, location_sharing_enabled: true },
     );
     const mine = await listLinksAsOwner(f.client, ME);
-    expect(mine.map((l) => l.id)).toEqual(['l1']);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ guardianId: 'guardian-1', locationSharingEnabled: false });
     const guarding = await listLinksAsGuardian(f.client, ME);
     expect(guarding).toHaveLength(1);
-    expect(guarding[0].status).toBe('active'); // no status column value -> active
-    expect(guarding[0].ownerId).toBe('w1');
+    expect(guarding[0].ownerId).toBe('wearer-9');
+    expect(guarding[0].locationSharingEnabled).toBe(true);
   });
 
-  it('retries the link select WITHOUT status when the column is absent', async () => {
+  it('aggregateConsent: ON when at least one link grants it', () => {
+    expect(aggregateConsent([])).toEqual({ locationSharingEnabled: false, sosSharingEnabled: false });
+    const base = {
+      id: 'l', ownerId: ME, guardianId: 'g', createdAt: null, acceptedAt: null,
+      locationSharingEnabled: false, sosSharingEnabled: false,
+    };
+    expect(aggregateConsent([base, { ...base, sosSharingEnabled: true }])).toEqual({
+      locationSharingEnabled: false,
+      sosSharingEnabled: true,
+    });
+  });
+
+  it('setLinkConsent updates the row and returns it', async () => {
+    const f = fakeGatewayClient();
+    f.store.guardian_links.push({ ...LINK_ROW });
+    const updated = await setLinkConsent(f.client, 'link-1', { locationSharingEnabled: true });
+    expect(updated.locationSharingEnabled).toBe(true);
+    expect(updated.sosSharingEnabled).toBe(false);
+    expect(f.store.guardian_links[0].location_sharing_enabled).toBe(true);
+  });
+
+  it('setLinkConsent THROWS when RLS applies 0 rows (guardian attempting it)', async () => {
     const f = fakeGatewayClient((call) => {
-      if (call.table === 'guardian_links' && call.op === 'select' && call.selectCols?.includes('status')) {
-        return { data: null, error: { message: "column guardian_links.status does not exist" } };
+      if (call.table === 'guardian_links' && call.op === 'update') {
+        return { data: [], error: null }; // RLS silently filters the row out
       }
       return undefined;
     });
-    f.store.guardian_links.push({ id: 'l1', owner_id: ME, guardian_id: 'g1', created_at: 'x' });
-    const links = await listLinksAsOwner(f.client, ME);
-    expect(links).toHaveLength(1);
-    expect(f.calls.filter((c) => c.op === 'select')).toHaveLength(2);
+    f.store.guardian_links.push({ ...LINK_ROW });
+    await expect(setLinkConsent(f.client, 'link-1', { locationSharingEnabled: true })).rejects.toThrow(
+      /only the wearer/,
+    );
+  });
+
+  it('deleteLink removes the row; throws when nothing was deleted', async () => {
+    const f = fakeGatewayClient();
+    f.store.guardian_links.push({ ...LINK_ROW });
+    await deleteLink(f.client, 'link-1');
+    expect(f.store.guardian_links).toHaveLength(0);
+    await expect(deleteLink(f.client, 'missing')).rejects.toThrow(GatewayError);
   });
 });
 
-describe('locations (latest-only)', () => {
+describe('guardian_locations (subject key, latitude/longitude)', () => {
   const fix = { lat: 30.05, lng: 31.24, accuracyM: 14, recordedAt: '2026-10-31T10:00:00Z' };
 
-  it('upsertLatestLocation upserts on the wearer key with the fix fields', async () => {
+  it('upsertLatestLocation sends the discovered columns on subject_user_id', async () => {
     const f = fakeGatewayClient();
     await upsertLatestLocation(f.client, ME, fix);
     await upsertLatestLocation(f.client, ME, { ...fix, lat: 30.06 });
-    expect(f.store.guardian_locations).toHaveLength(1); // still ONE row
-    expect(f.store.guardian_locations[0]).toMatchObject({ user_id: ME, lat: 30.06, lng: 31.24 });
-    const upserts = f.calls.filter((c) => c.op === 'upsert');
-    expect(upserts[0].payload).toMatchObject({ recorded_at: fix.recordedAt, accuracy_m: 14 });
-  });
-
-  it('upsert drops an optional column PostgREST reports missing and retries', async () => {
-    const f = fakeGatewayClient((call) => {
-      const payload = call.payload as Row | undefined;
-      if (call.table === 'guardian_locations' && call.op === 'upsert' && payload && 'recorded_at' in payload) {
-        return {
-          data: null,
-          error: { message: "Could not find the 'recorded_at' column of 'guardian_locations' in the schema cache" },
-        };
-      }
-      return undefined;
-    });
-    await upsertLatestLocation(f.client, ME, fix);
     expect(f.store.guardian_locations).toHaveLength(1);
-    expect(f.store.guardian_locations[0]).not.toHaveProperty('recorded_at');
+    expect(f.store.guardian_locations[0]).toEqual({
+      subject_user_id: ME,
+      latitude: 30.06,
+      longitude: 31.24,
+      accuracy_m: 14,
+    });
   });
 
-  it('deleteLatestLocation removes only the wearer row', async () => {
-    const f = fakeGatewayClient();
-    f.store.guardian_locations.push(
-      { user_id: ME, lat: 1, lng: 2 },
-      { user_id: 'other', lat: 3, lng: 4 },
-    );
-    await deleteLatestLocation(f.client, ME);
-    expect(f.store.guardian_locations).toEqual([{ user_id: 'other', lat: 3, lng: 4 }]);
-  });
-
-  it('getLatestLocation maps the row, null when absent', async () => {
+  it('getLatestLocation maps latitude/longitude back to lat/lng; delete works', async () => {
     const f = fakeGatewayClient();
     await expect(getLatestLocation(f.client, ME)).resolves.toBeNull();
     f.store.guardian_locations.push({
-      user_id: ME, lat: 30, lng: 31, accuracy_m: 9,
+      subject_user_id: ME, latitude: 30, longitude: 31, accuracy_m: 9,
       recorded_at: '2026-10-31T10:00:00Z', updated_at: '2026-10-31T10:00:03Z',
     });
-    await expect(getLatestLocation(f.client, ME)).resolves.toMatchObject({ lat: 30, accuracyM: 9 });
+    await expect(getLatestLocation(f.client, ME)).resolves.toMatchObject({ lat: 30, lng: 31, accuracyM: 9 });
+    await deleteLatestLocation(f.client, ME);
+    expect(f.store.guardian_locations).toHaveLength(0);
   });
 });
 
 describe('sos_alerts', () => {
-  it('insertSosAlert writes wearer + snapshot; bare insert without a fix', async () => {
+  it('insertSosAlert writes subject + latitude/longitude snapshot; bare without a fix', async () => {
     const f = fakeGatewayClient();
     await insertSosAlert(f.client, ME, { lat: 30, lng: 31, accuracyM: 8, recordedAt: 't' });
     await insertSosAlert(f.client, ME, null);
-    expect(f.store.sos_alerts).toHaveLength(2);
-    expect(f.store.sos_alerts[0]).toMatchObject({ user_id: ME, lat: 30, lng: 31, accuracy_m: 8 });
-    expect(f.store.sos_alerts[1]).toEqual({ user_id: ME });
+    expect(f.store.sos_alerts[0]).toEqual({ subject_user_id: ME, latitude: 30, longitude: 31, accuracy_m: 8 });
+    expect(f.store.sos_alerts[1]).toEqual({ subject_user_id: ME });
   });
 
-  it('listSosAlerts maps rows for the given wearers', async () => {
+  it('listSosAlerts maps triggered_at/status; resolveOwnActiveSosAlerts updates actives', async () => {
     const f = fakeGatewayClient();
     f.store.sos_alerts.push(
-      { id: 's1', user_id: 'w1', lat: 1, lng: 2, created_at: '2026-10-31T10:00:00Z' },
-      { id: 's2', user_id: 'stranger', lat: 3, lng: 4, created_at: '2026-10-31T10:01:00Z' },
+      { id: 's1', subject_user_id: 'w1', latitude: 1, longitude: 2, status: 'active', triggered_at: '2026-10-31T10:00:00Z', resolved_at: null },
+      { id: 's2', subject_user_id: 'w1', latitude: 3, longitude: 4, status: 'resolved', triggered_at: '2026-10-30T10:00:00Z', resolved_at: '2026-10-30T11:00:00Z' },
     );
     const alerts = await listSosAlerts(f.client, ['w1']);
-    expect(alerts).toHaveLength(1);
-    expect(alerts[0]).toMatchObject({ id: 's1', userId: 'w1' });
+    expect(alerts[0]).toMatchObject({ id: 's1', status: 'active', createdAt: '2026-10-31T10:00:00Z' });
+    await resolveOwnActiveSosAlerts(f.client, 'w1');
+    // NOTE: the fake has no subject column named subject_user_id on s-rows? rows carry it — check update applied to the ACTIVE row of w1 only via filters subject+status.
+    const updates = f.calls.filter((c) => c.table === 'sos_alerts' && c.op === 'update');
+    expect(updates).toHaveLength(1);
+    expect(updates[0].payload).toMatchObject({ status: 'resolved' });
   });
 });
 
-describe('user_push_tokens (registration only)', () => {
-  it('registerPushToken replaces the previous row for the platform', async () => {
+describe('user_push_tokens (expo_push_token, platform android/ios)', () => {
+  it('registerPushToken replaces the previous row and uses expo_push_token', async () => {
     const f = fakeGatewayClient();
-    f.store.user_push_tokens.push({ user_id: ME, platform: 'android-expo', token: 'ExponentPushToken[old]' });
-    await registerPushToken(f.client, ME, 'ExponentPushToken[new]', 'android-expo');
+    f.store.user_push_tokens.push({ user_id: ME, platform: 'android', expo_push_token: 'ExponentPushToken[old]' });
+    await registerPushToken(f.client, ME, 'ExponentPushToken[new]', 'android');
     expect(f.store.user_push_tokens).toHaveLength(1);
-    expect(f.store.user_push_tokens[0]).toMatchObject({ token: 'ExponentPushToken[new]' });
-  });
-
-  it('registerPushToken falls back to the endpoint column when token is absent', async () => {
-    const f = fakeGatewayClient((call) => {
-      const payload = call.payload as Row | undefined;
-      if (call.table === 'user_push_tokens' && call.op === 'insert' && payload && 'token' in payload) {
-        return { data: null, error: { message: "column \"token\" does not exist" } };
-      }
-      return undefined;
+    expect(f.store.user_push_tokens[0]).toEqual({
+      user_id: ME,
+      platform: 'android',
+      expo_push_token: 'ExponentPushToken[new]',
     });
-    await registerPushToken(f.client, ME, 'tok-1', 'android-expo');
-    expect(f.store.user_push_tokens[0]).toMatchObject({ endpoint: 'tok-1' });
   });
 
   it('removePushTokens deletes by user (and platform when given)', async () => {
     const f = fakeGatewayClient();
     f.store.user_push_tokens.push(
-      { user_id: ME, platform: 'android-expo', token: 'a' },
-      { user_id: ME, platform: 'web-fcm', token: 'b' },
-      { user_id: 'other', platform: 'android-expo', token: 'c' },
+      { user_id: ME, platform: 'android', expo_push_token: 'a' },
+      { user_id: ME, platform: 'ios', expo_push_token: 'b' },
+      { user_id: 'other', platform: 'android', expo_push_token: 'c' },
     );
-    await removePushTokens(f.client, ME, 'android-expo');
+    await removePushTokens(f.client, ME, 'android');
     expect(f.store.user_push_tokens).toHaveLength(2);
     await removePushTokens(f.client, ME);
-    expect(f.store.user_push_tokens).toEqual([{ user_id: 'other', platform: 'android-expo', token: 'c' }]);
+    expect(f.store.user_push_tokens).toEqual([{ user_id: 'other', platform: 'android', expo_push_token: 'c' }]);
   });
 });
 
 describe('deleteAllUserData', () => {
-  it('removes the user rows from every deployed table + profile', async () => {
+  it('removes locations/tokens/links/profile — SOS rows REMAIN (clients cannot delete alerts)', async () => {
     const f = fakeGatewayClient();
-    f.store.guardian_locations.push({ user_id: ME, lat: 1, lng: 2 });
-    f.store.sos_alerts.push({ user_id: ME });
-    f.store.user_push_tokens.push({ user_id: ME, platform: 'android-expo', token: 'x' });
+    f.store.guardian_locations.push({ subject_user_id: ME, latitude: 1, longitude: 2 });
+    f.store.sos_alerts.push({ subject_user_id: ME });
+    f.store.user_push_tokens.push({ user_id: ME, platform: 'android', expo_push_token: 'x' });
     f.store.guardian_links.push(
-      { id: 'l1', owner_id: ME, guardian_id: 'g' },
-      { id: 'l2', owner_id: 'w', guardian_id: ME },
+      { ...LINK_ROW },
+      { ...LINK_ROW, id: 'link-2', subject_user_id: 'w', guardian_user_id: ME },
     );
     f.store.profiles.push({ id: ME });
     await deleteAllUserData(f.client, ME);
     expect(f.store.guardian_locations).toHaveLength(0);
-    expect(f.store.sos_alerts).toHaveLength(0);
     expect(f.store.user_push_tokens).toHaveLength(0);
     expect(f.store.guardian_links).toHaveLength(0);
     expect(f.store.profiles).toHaveLength(0);
+    // Verified live: sos_alerts has NO client delete policy (append-only
+    // safety log) — the cleanup deliberately does not claim otherwise.
+    expect(f.store.sos_alerts).toHaveLength(1);
+    expect(f.calls.some((c) => c.table === 'sos_alerts' && c.op === 'delete')).toBe(false);
   });
 });
 
 describe('realtime subscriptions', () => {
-  it('subscribeWearerLocation wires postgres_changes with the wearer filter and maps payloads', async () => {
+  it('subscribeWearerLocation filters on subject_user_id and maps latitude/longitude payloads', async () => {
     const f = fakeGatewayClient();
     const seen: unknown[] = [];
     const sub = subscribeWearerLocation(f.client, 'w1', (row, ev) => seen.push([row, ev]));
-    expect(f.channels).toHaveLength(1);
     const handler = f.channels[0].handlers[0];
-    expect(handler.filter).toMatchObject({ table: 'guardian_locations', filter: 'user_id=eq.w1' });
+    expect(handler.filter).toMatchObject({ table: 'guardian_locations', filter: 'subject_user_id=eq.w1' });
     (handler.cb as (p: unknown) => void)({
       eventType: 'UPDATE',
-      new: { lat: 30, lng: 31, accuracy_m: 5, recorded_at: 't1', updated_at: 't2' },
+      new: { latitude: 30, longitude: 31, accuracy_m: 5, recorded_at: 't1', updated_at: 't2' },
       old: {},
     });
     expect(seen[0]).toMatchObject([{ lat: 30, lng: 31 }, 'UPDATE']);
@@ -511,12 +501,12 @@ describe('realtime subscriptions', () => {
     expect(f.removedChannels).toHaveLength(1);
   });
 
-  it('subscribeUserLinks binds both roles on guardian_links', async () => {
+  it('subscribeUserLinks binds subject + guardian filters', async () => {
     const f = fakeGatewayClient();
     const sub = subscribeUserLinks(f.client, ME, () => undefined);
     expect(f.channels[0].handlers.map((h) => h.filter.filter)).toEqual([
-      `owner_id=eq.${ME}`,
-      `guardian_id=eq.${ME}`,
+      `subject_user_id=eq.${ME}`,
+      `guardian_user_id=eq.${ME}`,
     ]);
     await sub.unsubscribe();
     expect(f.removedChannels).toHaveLength(1);

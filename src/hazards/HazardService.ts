@@ -206,11 +206,18 @@ export async function processHazardDetections(
   return { alerts, events };
 }
 
-/** "أنا بخير" — acknowledge all outstanding alerts, stop escalation. */
+/** "أنا بخير" — acknowledge all outstanding alerts, stop escalation.
+ *  Also resolves the wearer's own ACTIVE server-side SOS alerts
+ *  (best-effort: updates are wearer-only in the deployed RLS, and
+ *  alerts cannot be deleted by clients — resolving is the terminal
+ *  state a guardian's PWA will show). */
 export async function acknowledgeHazards(): Promise<void> {
   deps.engine.acknowledge();
   await deps.store.acknowledgeAll();
   setHazardBusy(false);
+  await getGuardianService()
+    .resolveMyActiveSos()
+    .catch(() => undefined);
 }
 
 export interface SosOutcome {

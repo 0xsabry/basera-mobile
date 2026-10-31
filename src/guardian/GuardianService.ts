@@ -9,9 +9,15 @@
  *   A successful accept creates an ACTIVE link immediately — the
  *   deployed model has NO owner-approval step, and this client does
  *   not invent one.
- * - Consent lives on profiles: location_sharing_enabled and
- *   sos_sharing_enabled, both default FALSE. Turning location sharing
- *   OFF persists consent=false AND deletes the stored latest location.
+ * - Consent is PER-LINK on guardian_links (verified live):
+ *   location_sharing_enabled / sos_sharing_enabled sit on each link,
+ *   start FALSE at pairing, and only the wearer (subject) can change
+ *   them. The service's aggregate consent = "at least one of my links
+ *   grants it"; the master toggles fan out to all my links, and
+ *   turning location sharing OFF also deletes the stored latest
+ *   location. profiles carries NO consent columns (id, display_name,
+ *   preferred_language only) and has no signup trigger — sign-in/up
+ *   ensures the row client-side.
  * - guardian_locations holds ONLY the latest fix per wearer: uploads
  *   upsert the newest point; the full point history of the old design
  *   no longer exists server-side. The on-device offline queue still
@@ -72,7 +78,12 @@ export interface GuardianLink {
   id: string;
   ownerId: string;
   guardianId: string;
+  /** The deployed model has no status column; a link that exists is
+   *  paired. Kept for display compatibility ('paired'). */
   status: GuardianLinkStatus;
+  /** Per-link consent (wearer-controlled; both start FALSE). */
+  locationSharingEnabled: boolean;
+  sosSharingEnabled: boolean;
   createdAt: string | null;
   /** Display name of the OTHER party. */
   otherPartyName: string | null;
@@ -105,13 +116,19 @@ export type { ConsentState } from './supabaseGateway';
 export interface GuardianService {
   isConfigured(): boolean;
   getCurrentUser(): Promise<GuardianUser | null>;
-  signIn(email: string, password: string): Promise<GuardianUser>;
-  signUp(email: string, password: string, displayName?: string): Promise<SignUpResult>;
+  signIn(email: string, password: string, preferredLanguage?: string): Promise<GuardianUser>;
+  signUp(
+    email: string,
+    password: string,
+    displayName?: string,
+    preferredLanguage?: string,
+  ): Promise<SignUpResult>;
   signOut(): Promise<void>;
   /** Wearer: create an invite via the Edge Function. */
   createPairingCode(): Promise<PairingCode>;
-  /** Guardian: accept an invite code — success means an ACTIVE link. */
-  redeemPairingCode(code: string): Promise<{ ownerId: string | null; status: 'active' }>;
+  /** Guardian: accept an invite code — success means the link is
+   *  PAIRED immediately (consent flags still start FALSE). */
+  redeemPairingCode(code: string): Promise<{ linkId: string | null; status: 'active' }>;
   /** Links where I am the wearer (my guardians). */
   listMyGuardians(): Promise<GuardianLink[]>;
   /** Links where I am the guardian (people sharing with me). */
@@ -119,12 +136,17 @@ export interface GuardianService {
   /** Unlink: delete the link row (works for either party — RLS decides). */
   revokeLink(linkId: string): Promise<void>;
   /**
-   * Location-sharing consent. Persists profiles.location_sharing_enabled;
-   * turning it OFF also deletes the stored latest location server-side.
+   * Master location-sharing consent: sets location_sharing_enabled on
+   * ALL of my links (as wearer). Turning it OFF also deletes the
+   * stored latest location server-side.
    */
   setSharingEnabled(enabled: boolean): Promise<void>;
+  /** Aggregate consent across my links (ON = at least one link grants). */
   getConsent(): Promise<gw.ConsentState>;
+  /** Master SOS consent: sets sos_sharing_enabled on ALL of my links. */
   setSosSharingEnabled(enabled: boolean): Promise<void>;
+  /** Per-link consent change (wearer only; RLS enforces). */
+  setLinkConsent(linkId: string, patch: Partial<gw.ConsentState>): Promise<GuardianLink>;
   /**
    * Upload location points. DEPLOYED semantics: only the NEWEST point is
    * stored (guardian_locations is latest-only) and the upsert happens
@@ -134,6 +156,8 @@ export interface GuardianService {
   getLatestLocation(userId: string): Promise<LatestLocation | null>;
   /** Insert an SOS alert (caller checks SOS consent first). */
   sendSosAlert(fix: LocationPointInput | null): Promise<void>;
+  /** Mark my own active SOS alerts resolved ("I am OK"). */
+  resolveMyActiveSos(): Promise<void>;
   /** Register/refresh this device's Expo push token (delivery untested). */
   registerPushToken(token: string): Promise<void>;
   /** Remove this user's push token rows (sign-out cleanup). */
@@ -151,6 +175,7 @@ export interface GuardianService {
 function toServiceError(e: unknown): GuardianServiceError {
   if (e instanceof gw.GatewayError) {
     if (
+      e.kind === 'invalid-or-expired' ||
       e.kind === 'expired' ||
       e.kind === 'already-used' ||
       e.kind === 'self-pairing' ||
@@ -181,28 +206,37 @@ export class SupabaseGuardianService implements GuardianService {
   private async ensureProfileFor(
     user: { id: string; email?: string | null },
     displayName?: string,
+    preferredLanguage?: string,
   ): Promise<void> {
     try {
-      await gw.ensureProfile(
-        this.client,
-        { id: user.id, email: user.email ?? null },
+      await gw.ensureProfile(this.client, { id: user.id, email: user.email ?? null }, {
         displayName,
-      );
+        preferredLanguage,
+      });
     } catch {
-      // Profile creation must not block a successful sign-in: consent
-      // reads default to OFF without a row, and consent writes create
-      // the row on demand (gateway.updateConsent).
+      // Profile creation must not block a successful sign-in: the row
+      // is ensured again on the next sign-in, and nothing in the
+      // deployed schema grants access based on a profile existing.
     }
   }
 
-  async signIn(email: string, password: string): Promise<GuardianUser> {
+  async signIn(
+    email: string,
+    password: string,
+    preferredLanguage?: string,
+  ): Promise<GuardianUser> {
     const { data, error } = await this.client.auth.signInWithPassword({ email, password });
     if (error) throw new GuardianServiceError(error.message);
-    await this.ensureProfileFor(data.user);
+    await this.ensureProfileFor(data.user, undefined, preferredLanguage);
     return { id: data.user.id, email: data.user.email ?? null };
   }
 
-  async signUp(email: string, password: string, displayName?: string): Promise<SignUpResult> {
+  async signUp(
+    email: string,
+    password: string,
+    displayName?: string,
+    preferredLanguage?: string,
+  ): Promise<SignUpResult> {
     const { data, error } = await this.client.auth.signUp({ email, password });
     if (error) throw new GuardianServiceError(error.message);
     if (!data.user) return { user: null, needsConfirmation: true };
@@ -210,7 +244,7 @@ export class SupabaseGuardianService implements GuardianService {
     if (data.session) {
       // Session exists immediately: a profile can be created right
       // away under RLS.
-      await this.ensureProfileFor(data.user, displayName);
+      await this.ensureProfileFor(data.user, displayName, preferredLanguage);
       return { user, needsConfirmation: false };
     }
     // Email confirmation required (deployed setting): no session yet,
@@ -242,11 +276,11 @@ export class SupabaseGuardianService implements GuardianService {
 
   async redeemPairingCode(
     code: string,
-  ): Promise<{ ownerId: string | null; status: 'active' }> {
+  ): Promise<{ linkId: string | null; status: 'active' }> {
     await this.requireUserId();
     try {
       const res = await gw.acceptInvite(this.client, code);
-      return { ownerId: res.ownerId, status: 'active' };
+      return { linkId: res.linkId, status: 'active' };
     } catch (e) {
       throw toServiceError(e);
     }
@@ -266,7 +300,9 @@ export class SupabaseGuardianService implements GuardianService {
       id: l.id,
       ownerId: l.ownerId,
       guardianId: l.guardianId,
-      status: l.status,
+      status: 'paired',
+      locationSharingEnabled: l.locationSharingEnabled,
+      sosSharingEnabled: l.sosSharingEnabled,
       createdAt: l.createdAt,
       otherPartyName: names.get(otherParty(l)) ?? null,
     }));
@@ -300,13 +336,31 @@ export class SupabaseGuardianService implements GuardianService {
     }
   }
 
+  /** Fan a consent value out to every link where I am the wearer. */
+  private async setConsentOnAllMyLinks(patch: Partial<gw.ConsentState>): Promise<void> {
+    const uid = await this.requireUserId();
+    const links = await gw.listLinksAsOwner(this.client, uid);
+    for (const link of links) {
+      const needsLocation =
+        patch.locationSharingEnabled !== undefined &&
+        link.locationSharingEnabled !== patch.locationSharingEnabled;
+      const needsSos =
+        patch.sosSharingEnabled !== undefined &&
+        link.sosSharingEnabled !== patch.sosSharingEnabled;
+      if (needsLocation || needsSos) {
+        await gw.setLinkConsent(this.client, link.id, patch);
+      }
+    }
+  }
+
   async setSharingEnabled(enabled: boolean): Promise<void> {
     const uid = await this.requireUserId();
     try {
-      await gw.updateConsent(this.client, uid, { locationSharingEnabled: enabled });
+      await this.setConsentOnAllMyLinks({ locationSharingEnabled: enabled });
       if (!enabled) {
         // Privacy contract: consent off => the stored latest location
-        // is deleted, not merely hidden.
+        // is deleted, not merely hidden (guardian reads are flag-gated
+        // server-side too, but deletion is the stronger guarantee).
         await gw.deleteLatestLocation(this.client, uid);
       }
     } catch (e) {
@@ -317,16 +371,40 @@ export class SupabaseGuardianService implements GuardianService {
   async getConsent(): Promise<gw.ConsentState> {
     const uid = await this.requireUserId();
     try {
-      return await gw.getConsent(this.client, uid);
+      const links = await gw.listLinksAsOwner(this.client, uid);
+      return gw.aggregateConsent(links);
     } catch (e) {
       throw toServiceError(e);
     }
   }
 
   async setSosSharingEnabled(enabled: boolean): Promise<void> {
-    const uid = await this.requireUserId();
     try {
-      await gw.updateConsent(this.client, uid, { sosSharingEnabled: enabled });
+      await this.setConsentOnAllMyLinks({ sosSharingEnabled: enabled });
+    } catch (e) {
+      throw toServiceError(e);
+    }
+  }
+
+  async setLinkConsent(
+    linkId: string,
+    patch: Partial<gw.ConsentState>,
+  ): Promise<GuardianLink> {
+    try {
+      const updated = await gw.setLinkConsent(this.client, linkId, patch);
+      const names = await gw
+        .fetchDisplayNames(this.client, [updated.guardianId])
+        .catch(() => new Map<string, string | null>());
+      return {
+        id: updated.id,
+        ownerId: updated.ownerId,
+        guardianId: updated.guardianId,
+        status: 'paired',
+        locationSharingEnabled: updated.locationSharingEnabled,
+        sosSharingEnabled: updated.sosSharingEnabled,
+        createdAt: updated.createdAt,
+        otherPartyName: names.get(updated.guardianId) ?? null,
+      };
     } catch (e) {
       throw toServiceError(e);
     }
@@ -336,7 +414,7 @@ export class SupabaseGuardianService implements GuardianService {
     if (points.length === 0) return;
     const uid = await this.requireUserId();
     try {
-      const consent = await gw.getConsent(this.client, uid);
+      const consent = await this.getConsent();
       if (!consent.locationSharingEnabled) {
         throw new GuardianServiceError('location sharing consent is off');
       }
@@ -373,10 +451,19 @@ export class SupabaseGuardianService implements GuardianService {
     }
   }
 
+  async resolveMyActiveSos(): Promise<void> {
+    const uid = await this.requireUserId();
+    try {
+      await gw.resolveOwnActiveSosAlerts(this.client, uid);
+    } catch (e) {
+      throw toServiceError(e);
+    }
+  }
+
   async registerPushToken(token: string): Promise<void> {
     const uid = await this.requireUserId();
     try {
-      await gw.registerPushToken(this.client, uid, token, 'android-expo');
+      await gw.registerPushToken(this.client, uid, token, 'android');
     } catch (e) {
       throw toServiceError(e);
     }
@@ -434,6 +521,7 @@ export class NotConfiguredGuardianService implements GuardianService {
     _email: string,
     _password: string,
     _displayName?: string,
+    _preferredLanguage?: string,
   ): Promise<SignUpResult> {
     throw new GuardianNotConfiguredError();
   }
@@ -445,7 +533,7 @@ export class NotConfiguredGuardianService implements GuardianService {
   }
   async redeemPairingCode(
     _code: string,
-  ): Promise<{ ownerId: string | null; status: 'active' }> {
+  ): Promise<{ linkId: string | null; status: 'active' }> {
     throw new GuardianNotConfiguredError();
   }
   async listMyGuardians(): Promise<GuardianLink[]> {
@@ -464,6 +552,15 @@ export class NotConfiguredGuardianService implements GuardianService {
     return { locationSharingEnabled: false, sosSharingEnabled: false };
   }
   async setSosSharingEnabled(_enabled: boolean): Promise<void> {
+    throw new GuardianNotConfiguredError();
+  }
+  async setLinkConsent(
+    _linkId: string,
+    _patch: Partial<gw.ConsentState>,
+  ): Promise<GuardianLink> {
+    throw new GuardianNotConfiguredError();
+  }
+  async resolveMyActiveSos(): Promise<void> {
     throw new GuardianNotConfiguredError();
   }
   async uploadLocationPoints(_points: LocationPointInput[]): Promise<void> {
