@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-10-31',
     runtimeVersion: '1.1.0',
+    titleEn: 'BASERA 1.1.2 — Smart Assistant naming, clearer navigation, new icon, live guardian service',
+    titleAr: 'بصيرة 1.1.2 — اسم «المساعد الذكي» وتنقل أوضح وأيقونة جديدة وخدمة وصي حية',
+    bodyEn:
+      'The assistant now has one name — Smart Assistant — and the bottom navigation uses clearer icons with an unmistakable active tab. Home is a compact grid instead of a long list, all Arabic wording was reviewed and corrected, and the app icon is now the BASERA «ب» brand mark (the icon arrives with the APK, not by update). The guardian service is connected: sign in, pair with an invite code, and share your location or SOS alerts only with the guardians you choose — sharing stays off until you turn it on for each guardian.',
+    bodyAr:
+      'أصبح للمساعد اسم واحد — «المساعد الذكي» — ويستخدم شريط التنقل السفلي أيقونات أوضح مع تمييز لا لبس فيه للتبويب النشط. أصبحت الشاشة الرئيسية شبكة مدمجة بدلًا من قائمة طويلة، ورُوجعت كل النصوص العربية وصُحّحت، وأصبحت أيقونة التطبيق هي علامة «ب» الخاصة ببصيرة (تصل الأيقونة مع ملف التطبيق لا عبر التحديث). وخدمة الوصي أصبحت متصلة: سجّل الدخول، وارتبط بكود دعوة، وشارك موقعك أو تنبيهات الطوارئ فقط مع الأوصياء الذين تختارهم — والمشاركة تبقى متوقفة حتى تفعّلها لكل وصي بنفسك.',
+  },
+  {
+    date: '2026-10-31',
+    runtimeVersion: '1.1.0',
     titleEn: 'Critical fixes: addresses, language switching, images, voices, tab icons',
     titleAr: 'إصلاحات مهمة: العناوين وتبديل اللغة والصور والأصوات وأيقونات التنقل',
     bodyEn:
