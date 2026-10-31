@@ -36,6 +36,25 @@ export interface SpeechService {
   setSpeechEnabled(enabled: boolean): void;
   /** Settings: chosen TTS voice identifier (null = OS default voice). */
   setVoiceIdentifier(identifier: string | null): void;
+  /**
+   * Bug 4: speak a short sample with the GIVEN voice (null = system
+   * default) so the Settings picker can audition a voice before/instead
+   * of selecting it. Resolves true only when the utterance completes
+   * (onDone); false on engine error, a synchronous throw, interruption,
+   * or when the speech gate is off. Uses announcement semantics: it
+   * never becomes the repeat target.
+   */
+  testSpeak(voiceIdentifier: string | null, sampleLang: AppLanguage): Promise<boolean>;
+  /**
+   * Bug 4 stale-voice guard: validate the currently selected voice
+   * against the identifiers the device actually offers. A persisted
+   * identifier the device no longer has (voice data removed, engine
+   * changed) can make expo-speech fail EVERY utterance silently, so a
+   * stale selection is cleared back to the system default.
+   * Returns true when the selection is valid (null or present in
+   * `availableIds`); false when a stale identifier was cleared.
+   */
+  validateVoiceSelection(availableIds: Set<string>): boolean;
   readonly lastText: string | null;
   readonly lastAlertText: string | null;
 }
@@ -77,10 +96,54 @@ export class ExpoSpeechService implements SpeechService {
     this.voiceIdentifier = identifier;
   }
 
-  private async utter(text: string, lang: AppLanguage): Promise<void> {
+  validateVoiceSelection(availableIds: Set<string>): boolean {
+    if (this.voiceIdentifier === null) return true;
+    if (availableIds.has(this.voiceIdentifier)) return true;
+    // Stale persisted voice: the device no longer offers it. Keeping it
+    // risks silent failure of every utterance — fall back to default.
+    this.voiceIdentifier = null;
+    return false;
+  }
+
+  async testSpeak(voiceIdentifier: string | null, sampleLang: AppLanguage): Promise<boolean> {
+    if (!this.speechEnabled) return false;
+    const sample = t(sampleLang, sampleLang === 'ar' ? 'voiceSampleAr' : 'voiceSampleEn');
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const settle = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(ok);
+      };
+      // Announcement path semantics: utter() never records a repeat
+      // target (only speak()/speakAlert() do), so the audition cannot
+      // clobber what "Repeat" would replay.
+      this.utter(sample, sampleLang, {
+        hasVoiceOverride: true,
+        voiceOverride: voiceIdentifier,
+        onOutcome: settle,
+      }).catch(() => settle(false));
+    });
+  }
+
+  private async utter(
+    text: string,
+    lang: AppLanguage,
+    opts?: {
+      /** When hasVoiceOverride is set, use this voice instead of the
+       *  persisted selection (null = system default) — testSpeak only. */
+      hasVoiceOverride?: boolean;
+      voiceOverride?: string | null;
+      /** testSpeak completion: true on onDone, false otherwise. */
+      onOutcome?: (ok: boolean) => void;
+    },
+  ): Promise<void> {
     // Settings gate: speech output disabled → complete no-op (visual and
     // vibration feedback channels remain available to callers).
-    if (!this.speechEnabled) return;
+    if (!this.speechEnabled) {
+      opts?.onOutcome?.(false);
+      return;
+    }
     // Track the most recent speech language (NOT the repeat target) so the
     // "nothing to repeat" message is spoken in the user's current language.
     this._lastLang = lang;
@@ -95,20 +158,51 @@ export class ExpoSpeechService implements SpeechService {
       if (this.activeClearBusy === clearBusy) this.activeClearBusy = null;
       setAccessibilityBusy('speech', false);
     };
-    this.activeClearBusy = clearBusy;
+    // stop() releases the guard through activeClearBusy; routing it
+    // through onOutcome(false) also settles a pending testSpeak whose
+    // utterance was interrupted before any engine callback fired.
+    this.activeClearBusy = () => {
+      clearBusy();
+      opts?.onOutcome?.(false);
+    };
+    // Voice selection: a testSpeak override wins over the persisted
+    // selection. NOTE on language: when a voice is passed, expo-speech
+    // speaks with THAT voice's own language; the `language` field below
+    // (ar-EG / en-US for the requested group) is the fallback the engine
+    // uses when no voice is selected. The picker stores only the
+    // identifier, so SpeechService cannot know a selected voice's group
+    // — keeping `language` consistent with the caller's requested group
+    // is the correct contract, and the picker only ever pairs a voice
+    // with a sample of its own group.
+    const effectiveVoice = opts?.hasVoiceOverride ? opts.voiceOverride : this.voiceIdentifier;
     try {
       Speech.speak(text, {
         language: lang === 'ar' ? 'ar-EG' : 'en-US',
         rate: this.rate,
-        ...(this.voiceIdentifier ? { voice: this.voiceIdentifier } : {}),
-        onDone: clearBusy,
-        onStopped: clearBusy,
-        onError: clearBusy,
+        ...(effectiveVoice ? { voice: effectiveVoice } : {}),
+        onDone: () => {
+          clearBusy();
+          opts?.onOutcome?.(true);
+        },
+        onStopped: () => {
+          clearBusy();
+          opts?.onOutcome?.(false);
+        },
+        onError: () => {
+          clearBusy();
+          opts?.onOutcome?.(false);
+        },
       });
     } catch (e) {
       // Synchronous TTS failure: no callback will ever fire, so the
       // busy guard must be released here or OTA reload stays blocked.
       clearBusy();
+      if (opts?.onOutcome) {
+        // testSpeak contract: a failed audition RESOLVES false rather
+        // than rejecting — the picker shows fallback guidance instead.
+        opts.onOutcome(false);
+        return;
+      }
       throw e;
     }
   }
