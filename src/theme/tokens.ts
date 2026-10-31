@@ -80,17 +80,16 @@ export interface ThemeColors {
   primaryText: string;
   /**
    * Bottom tab bar tints (Bug 5; state separation reworked v1.1.2;
-   * brand-aligned v1.1.3). Dedicated tokens, NOT aliases of
-   * primary/textSecondary: the tab glyphs are thin outline forms
-   * (♡ ⌂) whose ~1px strokes wash out on device even when the raw
-   * color ratio passes AA, so both tints are held to ≥ 9:1 against
-   * `surface` (the bar background) in every palette — verified in
-   * contrast.test.ts. State separation does NOT rely on these tints
-   * alone: the ACTIVE tint is the brand navy/bright-blue, the
-   * INACTIVE tint is a neutral slate, and since v1.1.3 the active
-   * glyph sits inside a soft filled container (tabActiveContainer,
-   * glyph-on-container also locked ≥ 9:1) with 800/600 weights on
-   * top — hue family + shape + weight, never one cue.
+   * container added v1.1.3; olive identity v1.1.4). Dedicated
+   * tokens, NOT aliases of primary/textSecondary: the tab glyphs
+   * are thin outline forms (♡ ⌂) whose ~1px strokes wash out on
+   * device even when the raw color ratio passes AA, so both tints
+   * are held to ≥ 9:1 against `surface` (the bar background) in
+   * every palette — verified in contrast.test.ts. State separation
+   * does NOT rely on these tints alone: the active glyph sits
+   * inside a filled container (tabActiveContainer, glyph-on-
+   * container also locked ≥ 9:1) with 800/600 weights and the
+   * label on top — shape + weight + tint, never one cue.
    */
   tabActive: string;
   tabInactive: string;
@@ -131,84 +130,88 @@ export interface ThemeColors {
 }
 
 /**
- * v1.1.3 brand alignment (docs/BRAND_COLORS_1.1.3.md): all four
- * palettes rebuilt on the OFFICIAL logo identity — deep navy /
- * royal blue / bright blue / gold — replacing the olive-green
- * system. Anchors from the owner's spec: primary navy #071B49,
- * deep navy #061434, royal #1559C9, bright #1685F8, soft #EAF3FF,
- * gold #F2B632, light bg #F5F8FD, text #14213D, secondary #64748B.
- * Where a spec value fails a locked contrast floor it is adjusted
- * minimally and documented with its measured ratio (accent in the
- * light palette is a darkened bronze-gold: raw #F2B632 measures
- * ~1.9:1 as text on white; the dark palettes carry the raw gold).
+ * v1.1.4 visual identity (docs/IDENTITY_OLIVE_1.1.4.md): all four
+ * palettes rebuilt on the owner's olive / sage / ivory system,
+ * replacing the v1.1.3 navy/royal identity (owner-rejected). The
+ * official logo artwork is unchanged — the interface complements
+ * it instead of copying its blues. Owner anchors: deep olive
+ * #26372D, primary olive #657A4D, soft olive #788A5B, light sage
+ * #C7D5B8, warm ivory #F5F3EA, white, text #263229, secondary
+ * #687267. Two documented adjustments (measured, in the doc):
+ * light textSecondary #687267 → #5C665C (owner value is 4.09:1 on
+ * surfaceAlt; adjusted 4.88:1) and dark tabActive = the owner sage
+ * lightened one step (#C7D5B8 → #D8E4CB) so glyph-on-container
+ * reaches 9.53:1. No blue remains in any palette; the only gold is
+ * the `accent` token (bronze in light palettes, where raw #F2B632
+ * measures ~1.9:1 as text; raw gold in the dark palettes).
  */
 export const lightColors: ThemeColors = {
-  background: '#F5F8FD',
+  background: '#F5F3EA',
   surface: '#FFFFFF',
-  surfaceAlt: '#E3EEFD',
-  text: '#14213D',
-  textSecondary: '#51637C',
-  primary: '#1559C9',
+  surfaceAlt: '#E6EAD9',
+  text: '#263229',
+  textSecondary: '#5C665C',
+  primary: '#657A4D',
   primaryText: '#FFFFFF',
-  tabActive: '#0A2F73',
-  tabInactive: '#323C48',
-  tabActiveContainer: '#EAF3FF',
+  tabActive: '#26372D',
+  tabInactive: '#3D443C',
+  tabActiveContainer: '#E9EFE0',
   accent: '#7A5800',
   danger: '#B3261E',
   dangerText: '#FFFFFF',
-  success: '#137547',
+  success: '#1E6B34',
   warning: '#9A4A00',
-  info: '#1559C9',
-  border: '#71809A',
-  overlayBox: '#1559C9',
-  primarySoft: '#EAF3FF',
-  onPrimarySoft: '#0A3A8C',
+  info: '#3D5C43',
+  border: '#7E8A76',
+  overlayBox: '#657A4D',
+  primarySoft: '#E9EFE0',
+  onPrimarySoft: '#2E4429',
   dangerSoft: '#F9DEDC',
   onDangerSoft: '#7A1A14',
-  successSoft: '#D9EBDF',
-  onSuccessSoft: '#0B4A26',
+  successSoft: '#DFEDD8',
+  onSuccessSoft: '#174D24',
   warningSoft: '#FBEEDB',
   onWarningSoft: '#7A3E00',
-  infoSoft: '#DCE9FD',
-  onInfoSoft: '#0B3D91',
-  heroBackground: '#071B49',
+  infoSoft: '#E6EAD9',
+  onInfoSoft: '#2C4430',
+  heroBackground: '#26372D',
   heroText: '#FFFFFF',
-  heroTextSecondary: '#B9D2F5',
-  shadow: 'rgba(7, 27, 73, 0.16)',
+  heroTextSecondary: '#C7D5B8',
+  shadow: 'rgba(38, 55, 45, 0.16)',
 };
 
 export const darkColors: ThemeColors = {
-  background: '#061434',
-  surface: '#0A1F44',
-  surfaceAlt: '#12295A',
-  text: '#F2F7FF',
-  textSecondary: '#A9BBD6',
-  primary: '#4E9DF0',
-  primaryText: '#041633',
-  tabActive: '#BAD4FF',
-  tabInactive: '#D3DCE8',
-  tabActiveContainer: '#122954',
+  background: '#131A15',
+  surface: '#1D2820',
+  surfaceAlt: '#28362B',
+  text: '#F1F2E7',
+  textSecondary: '#ACBAA2',
+  primary: '#9DB47E',
+  primaryText: '#17220F',
+  tabActive: '#D8E4CB',
+  tabInactive: '#D3DCC6',
+  tabActiveContainer: '#26372D',
   accent: '#F2B632',
   danger: '#FF8A80',
   dangerText: '#2B0703',
-  success: '#40C48E',
+  success: '#4CC47E',
   warning: '#FF9E57',
-  info: '#6FA8FF',
-  border: '#3A5A8C',
-  overlayBox: '#1685F8',
-  primarySoft: '#12294F',
-  onPrimarySoft: '#A9CCFF',
+  info: '#A9C29B',
+  border: '#4A5A46',
+  overlayBox: '#B7CBA3',
+  primarySoft: '#22301F',
+  onPrimarySoft: '#C4D8AB',
   dangerSoft: '#3D1A16',
   onDangerSoft: '#FFB4A8',
-  successSoft: '#0E2E22',
-  onSuccessSoft: '#7FE0A8',
+  successSoft: '#142A1A',
+  onSuccessSoft: '#8FE0A8',
   warningSoft: '#38260E',
   onWarningSoft: '#FFC98A',
-  infoSoft: '#10294D',
-  onInfoSoft: '#9CC2FF',
-  heroBackground: '#1559C9',
+  infoSoft: '#1E2E22',
+  onInfoSoft: '#BCDBAC',
+  heroBackground: '#2E4034',
   heroText: '#FFFFFF',
-  heroTextSecondary: '#D6E6FD',
+  heroTextSecondary: '#C7D5B8',
   shadow: 'rgba(0, 0, 0, 0.5)',
 };
 
@@ -218,16 +221,17 @@ export const lightHighContrast: ThemeColors = {
   text: '#000000',
   textSecondary: '#1A1A1A',
   border: '#000000',
-  primary: '#0A3A8C',
-  tabActive: '#08306B',
+  primary: '#3E5228',
+  tabActive: '#1E2E20',
   tabInactive: '#000000',
+  tabActiveContainer: '#DCE5CF',
   success: '#00511F',
   warning: '#7A3400',
-  info: '#06377A',
+  info: '#243B26',
   danger: '#8F130C',
   accent: '#5C3F00',
   primarySoft: '#FFFFFF',
-  onPrimarySoft: '#0A3A8C',
+  onPrimarySoft: '#3E5228',
   dangerSoft: '#FFFFFF',
   onDangerSoft: '#8F130C',
   successSoft: '#FFFFFF',
@@ -235,42 +239,42 @@ export const lightHighContrast: ThemeColors = {
   warningSoft: '#FFFFFF',
   onWarningSoft: '#7A3400',
   infoSoft: '#FFFFFF',
-  onInfoSoft: '#06377A',
-  heroBackground: '#071B49',
+  onInfoSoft: '#243B26',
+  heroBackground: '#26372D',
   heroText: '#FFFFFF',
-  heroTextSecondary: '#D6E6FD',
+  heroTextSecondary: '#E4EDD6',
 };
 
 export const darkHighContrast: ThemeColors = {
   ...darkColors,
   background: '#000000',
-  surface: '#0A1428',
-  surfaceAlt: '#14213D',
+  surface: '#0C120D',
+  surfaceAlt: '#1A241C',
   text: '#FFFFFF',
   textSecondary: '#FFFFFF',
   border: '#FFFFFF',
-  primary: '#7FB8FF',
-  primaryText: '#04122B',
-  tabActive: '#A9D1FF',
+  primary: '#B9D69A',
+  primaryText: '#0E1A0A',
+  tabActive: '#D6E5C3',
   tabInactive: '#FFFFFF',
-  tabActiveContainer: '#0E2148',
+  tabActiveContainer: '#22331F',
   success: '#00FF9D',
   warning: '#FFB26B',
-  info: '#7FC4FF',
+  info: '#CFE3B8',
   danger: '#FF6D60',
   accent: '#FFE14D',
-  overlayBox: '#7FC4FF',
-  primarySoft: '#0A1428',
-  onPrimarySoft: '#8FC2FF',
-  dangerSoft: '#0A1428',
+  overlayBox: '#CFE3B8',
+  primarySoft: '#0C120D',
+  onPrimarySoft: '#CDEBB2',
+  dangerSoft: '#0C120D',
   onDangerSoft: '#FF8A75',
-  successSoft: '#0A1428',
+  successSoft: '#0C120D',
   onSuccessSoft: '#00FF9D',
-  warningSoft: '#0A1428',
+  warningSoft: '#0C120D',
   onWarningSoft: '#FFB26B',
-  infoSoft: '#0A1428',
-  onInfoSoft: '#7FC4FF',
-  heroBackground: '#7FB8FF',
-  heroText: '#04122B',
-  heroTextSecondary: '#0A2E6E',
+  infoSoft: '#0C120D',
+  onInfoSoft: '#CFE3B8',
+  heroBackground: '#B9D69A',
+  heroText: '#101C0A',
+  heroTextSecondary: '#22331A',
 };

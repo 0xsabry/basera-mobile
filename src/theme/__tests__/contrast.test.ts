@@ -130,6 +130,17 @@ describe('design-system contrast (WCAG AA ≥ 4.5:1)', () => {
  *   dark              inactive 11.74   active 10.79   container  9.48
  *   lightHighContrast inactive 21.00   active 12.76   container 11.40
  *   darkHighContrast  inactive 18.36   active 11.59   container  9.96
+ *
+ * v1.1.4 olive identity (docs/IDENTITY_OLIVE_1.1.4.md): palettes
+ * rebuilt on olive/sage/ivory. The ≥ 9:1 floor is KEPT — the shaped
+ * container + 600/800 weights did not require relaxing it. The one
+ * tight pair was dark tabActive on its deep-olive container: the
+ * owner sage #C7D5B8 measured 8.18:1 there, so the dark tabActive
+ * is that sage lightened one step (#D8E4CB, 9.53:1). Measured:
+ *   light             inactive 10.05   active 12.60   container 10.73
+ *   dark              inactive 10.77   active 11.54   container  9.53
+ *   lightHighContrast inactive 21.00   active 14.32   container 11.01
+ *   darkHighContrast  inactive 18.95   active 14.31   container 10.15
  */
 const TAB_BAR_MIN = 9;
 
@@ -148,7 +159,7 @@ describe('tab bar contrast (Bug 5: icon + label ≥ 9:1 on surface)', () => {
       it('tabActive on surface (label text)', () => {
         expect(contrastRatio(colors.tabActive, colors.surface)).toBeGreaterThanOrEqual(TAB_BAR_MIN);
       });
-      it('tabActive on tabActiveContainer (glyph on its soft container, v1.1.3)', () => {
+      it('tabActive on tabActiveContainer (glyph on its soft container, v1.1.3+)', () => {
         expect(contrastRatio(colors.tabActive, colors.tabActiveContainer)).toBeGreaterThanOrEqual(TAB_BAR_MIN);
       });
     });
