@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { ThemedStatusBar } from '../components/ThemedStatusBar';
 import { SettingsProvider, useSettings } from '../state/SettingsContext';
+import { updateService } from '../update/UpdateService';
 import { getLocationSharingService } from '../guardian/LocationSharingService';
 import '../guardian/backgroundTask';
 import { configureHazardRuntime } from '../hazards/HazardService';
@@ -18,6 +19,19 @@ function RootStack() {
   // server confirms. No-op when nothing is pending.
   useEffect(() => {
     void getLocationSharingService().initDeletion();
+  }, []);
+
+  // Launch update check (owner/team update from inside the app from
+  // now on): every cold start checks for a compatible OTA and downloads
+  // it in the background. Per the UpdateService safety contract this
+  // NEVER reloads and never interrupts speech/camera/OCR/hazard work —
+  // a downloaded update applies on the next natural cold start, or
+  // immediately only via the guarded "Restart to apply" on the Updates
+  // screen, whose state (and the Settings updates row) reflects the
+  // result through the service subscription. Before this effect the
+  // only check in the app was the manual button on the Updates screen.
+  useEffect(() => {
+    void updateService.checkAndDownload();
   }, []);
 
   // Hazard events may attach location server-side ONLY while sharing is

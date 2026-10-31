@@ -23,7 +23,7 @@ import { Camera } from 'expo-camera';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
 import { router, useFocusEffect } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, StyleSheet, Switch, Text, View } from 'react-native';
 import { speechService } from '../../ai/SpeechService';
 import { curateVoices, type CuratedVoices } from '../../ai/voiceCatalog';
@@ -47,7 +47,7 @@ import { syncPlaces, type PlacesSyncOutcome } from '../../places/placesSync';
 import { useSettings } from '../../state/SettingsContext';
 import { GLYPHS } from '../../theme/glyphs';
 import { MIN_TOUCH, spacing } from '../../theme/tokens';
-import { updateService } from '../../update/UpdateService';
+import { updateService, type UpdateStatus } from '../../update/UpdateService';
 
 type PermState = 'granted' | 'denied' | 'undetermined' | 'unknown';
 interface PermInfo {
@@ -78,7 +78,12 @@ export default function SettingsScreen() {
     camera: UNKNOWN, mic: UNKNOWN, locFg: UNKNOWN, locBg: UNKNOWN, notif: UNKNOWN,
   });
   const [syncMessage, setSyncMessage] = useState('');
-  const updateStatus = updateService.getStatus();
+  // Reactive update status (launch check runs in the root layout):
+  // subscribing keeps this screen's updates row truthful — including
+  // the "update ready" state — instead of a one-shot snapshot that
+  // went stale the moment the launch download finished.
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>(() => updateService.getStatus());
+  useEffect(() => updateService.subscribe(() => setUpdateStatus(updateService.getStatus())), []);
 
   const refresh = useCallback(async () => {
     if (configured) {
@@ -521,7 +526,7 @@ export default function SettingsScreen() {
           variant="quiet"
           glyph={GLYPHS.updates}
           title={t(lang, 'updates')}
-          subtitle={`${t(lang, 'runtimeLabel')}: ${updateStatus.runtimeVersion ?? '—'} · ${t(lang, 'channelLabel')}: ${updateStatus.channel ?? '—'}`}
+          subtitle={`${t(lang, 'runtimeLabel')}: ${updateStatus.runtimeVersion ?? '—'} · ${t(lang, 'channelLabel')}: ${updateStatus.channel ?? '—'}${updateStatus.phase === 'ready' ? ` · ${t(lang, 'updateReady')}` : ''}`}
           accessibilityHint={t(lang, 'updatesHint')}
           onPress={() => router.push('/updates')}
         />

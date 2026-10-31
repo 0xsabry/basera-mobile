@@ -231,3 +231,32 @@ describe('OTA native auto-check configuration (audit)', () => {
     expect(appJson.expo.updates?.checkAutomatically).toBe('ON_ERROR_RECOVERY');
   });
 });
+
+describe('launch check + in-app surfacing (wiring guards)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { readFileSync } = require('fs') as typeof import('fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { join } = require('path') as typeof import('path');
+  const layout = readFileSync(join(__dirname, '..', '..', 'app', '_layout.tsx'), 'utf8');
+  const settings = readFileSync(join(__dirname, '..', '..', 'app', '(tabs)', 'settings.tsx'), 'utf8');
+  const updates = readFileSync(join(__dirname, '..', '..', 'app', 'updates.tsx'), 'utf8');
+
+  it('the root layout checks for updates on app launch', () => {
+    expect(layout).toContain("from '../update/UpdateService'");
+    // The check runs in an effect (mount), not behind a user action.
+    expect(layout).toMatch(/useEffect\(\(\) => \{\s*void updateService\.checkAndDownload\(\);\s*\}, \[\]\);/);
+  });
+
+  it('the launch path never applies/reloads directly (safe path only)', () => {
+    // restartToApply must stay exclusive to the Updates screen's
+    // explicit, busy-guarded button.
+    expect(layout).not.toContain('restartToApply');
+    expect(updates).toContain('restartToApply');
+  });
+
+  it('Settings surfaces the live update state (subscribed, update-ready visible)', () => {
+    expect(settings).toContain('updateService.subscribe');
+    expect(settings).toContain("updateStatus.phase === 'ready'");
+    expect(settings).toContain("t(lang, 'updateReady')");
+  });
+});
