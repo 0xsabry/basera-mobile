@@ -9,6 +9,11 @@
  * so it cannot race or duplicate this flow.
  *
  * Safety contract (owner-approved):
+ * - A server rollback directive (check result with
+ *   `isRollBackToEmbedded: true`) is staged through fetchUpdateAsync
+ *   like any other update and applies through the same guarded paths —
+ *   it is the server's emergency brake for a bad OTA and must never be
+ *   silently dropped.
  * - Checks and downloads NEVER reload the app by themselves.
  * - A downloaded update applies (a) automatically at the NEXT cold
  *   start through checkAndApplyOnLaunch() — the launch flow checks,
@@ -26,7 +31,36 @@
  * The native module is lazy-required and injectable so unit tests run
  * against a fake (jest maps every `expo-*` import to a shared stub).
  */
+import type * as ExpoUpdatesSdk from 'expo-updates';
+
 import { isAccessibilityBusy } from '../state/accessibilityBusy';
+
+/**
+ * Native result shapes — mirrored from expo-updates SDK 58,
+ * node_modules/expo-updates/build/Updates.types.d.ts:
+ * `UpdateCheckResult` (the Available / NotAvailable / RollBack union)
+ * and `UpdateFetchResult` (Success / Failure / RollBackToEmbedded).
+ * The manifest is narrowed to the only field this service reads (`id`,
+ * present on both manifest kinds in expo-manifests). Field names are
+ * the contract: the check result's availability flag is `isAvailable`.
+ * The compile-time assertion below fails `tsc` if the installed SDK
+ * module ever stops satisfying this facade, so the mirror cannot
+ * silently drift from the SDK again.
+ */
+export type UpdateCheckResult =
+  | { isAvailable: true; manifest: { id: string }; isRollBackToEmbedded: false }
+  | { isAvailable: false; manifest: undefined; isRollBackToEmbedded: true }
+  | {
+      isAvailable: false;
+      manifest: undefined;
+      isRollBackToEmbedded: false;
+      reason: ExpoUpdatesSdk.UpdateCheckResultNotAvailableReason;
+    };
+
+export type UpdateFetchResult =
+  | { isNew: true; manifest: { id: string }; isRollBackToEmbedded: false }
+  | { isNew: false; manifest: undefined; isRollBackToEmbedded: false }
+  | { isNew: false; manifest: undefined; isRollBackToEmbedded: true };
 
 export interface UpdatesNativeModule {
   isEnabled: boolean;
@@ -37,10 +71,16 @@ export interface UpdatesNativeModule {
   /** Creation time of the currently running update (expo-updates
    *  `createdAt`); absent/null on embedded launches and older builds. */
   createdAt?: Date | string | null;
-  checkForUpdateAsync: () => Promise<{ isUpdateAvailable: boolean; manifest?: { id?: string } }>;
-  fetchUpdateAsync: () => Promise<{ isNew: boolean; manifest?: { id?: string } }>;
+  checkForUpdateAsync: () => Promise<UpdateCheckResult>;
+  fetchUpdateAsync: () => Promise<UpdateFetchResult>;
   reloadAsync: () => Promise<void>;
 }
+
+type ExpectTrue<T extends true> = T;
+/** Tripwire: the real expo-updates module must satisfy the facade. */
+export type UpdatesFacadeMatchesSdk = ExpectTrue<
+  typeof ExpoUpdatesSdk extends UpdatesNativeModule ? true : false
+>;
 
 export type UpdatePhase =
   | 'idle' // no check yet, or checked and up to date
@@ -169,13 +209,20 @@ export class UpdateService {
     try {
       const check = await this.native.checkForUpdateAsync();
       this.lastCheckAt = new Date().toISOString();
-      if (!check.isUpdateAvailable) {
+      if (!check.isAvailable && !check.isRollBackToEmbedded) {
         this.setPhase(this.pendingUpdateId ? 'ready' : 'idle');
         return this.getStatus();
       }
+      // An update is available, OR the server sent a rollback-to-
+      // embedded directive: both are staged through fetchUpdateAsync.
       this.setPhase('downloading');
       const fetched = await this.native.fetchUpdateAsync();
-      if (fetched.isNew) {
+      if (fetched.isRollBackToEmbedded) {
+        // The embedded bundle is now the staged update; it becomes
+        // active through the guarded restart / next cold start.
+        this.pendingUpdateId = 'rollback-to-embedded';
+        this.setPhase('ready');
+      } else if (fetched.isNew) {
         this.pendingUpdateId = fetched.manifest?.id ?? check.manifest?.id ?? 'downloaded';
         this.setPhase('ready');
       } else {

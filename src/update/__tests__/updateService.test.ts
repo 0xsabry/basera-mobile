@@ -3,8 +3,48 @@
  * injected as a fake so the safety contract is testable in Node:
  * downloads never reload; reload is blocked while accessibility is busy;
  * unavailable builds report honestly.
+ *
+ * Every fake below returns ONLY the result shapes documented in
+ * expo-updates SDK 58 (Updates.types.d.ts) — see updateContract.test.ts
+ * for the contract suite that pins those shapes against the service.
  */
-import { UpdateService, type UpdatesNativeModule } from '../UpdateService';
+import type { UpdateCheckResultNotAvailableReason } from 'expo-updates';
+
+import {
+  UpdateService,
+  type UpdateCheckResult,
+  type UpdateFetchResult,
+  type UpdatesNativeModule,
+} from '../UpdateService';
+
+/** Documented "no update on server" check result. */
+const NO_UPDATE: UpdateCheckResult = {
+  isAvailable: false,
+  manifest: undefined,
+  isRollBackToEmbedded: false,
+  reason: 'noUpdateAvailableOnServer' as UpdateCheckResultNotAvailableReason,
+};
+
+/** Documented "a new update exists" check result. */
+const availableCheck = (id: string): UpdateCheckResult => ({
+  isAvailable: true,
+  manifest: { id },
+  isRollBackToEmbedded: false,
+});
+
+/** Documented successful fetch result. */
+const newFetch = (id: string): UpdateFetchResult => ({
+  isNew: true,
+  manifest: { id },
+  isRollBackToEmbedded: false,
+});
+
+/** Documented failed fetch result (nothing new staged). */
+const FAILED_FETCH: UpdateFetchResult = {
+  isNew: false,
+  manifest: undefined,
+  isRollBackToEmbedded: false,
+};
 
 function fakeNative(overrides: Partial<UpdatesNativeModule> = {}): UpdatesNativeModule {
   return {
@@ -13,8 +53,8 @@ function fakeNative(overrides: Partial<UpdatesNativeModule> = {}): UpdatesNative
     channel: 'preview',
     runtimeVersion: '1.1.0',
     isEmbeddedLaunch: true,
-    checkForUpdateAsync: async () => ({ isUpdateAvailable: false }),
-    fetchUpdateAsync: async () => ({ isNew: false }),
+    checkForUpdateAsync: async () => NO_UPDATE,
+    fetchUpdateAsync: async () => FAILED_FETCH,
     reloadAsync: async () => undefined,
     ...overrides,
   };
@@ -68,8 +108,8 @@ describe('UpdateService checkAndDownload', () => {
     const reload = jest.fn(async () => undefined);
     const svc = new UpdateService(
       fakeNative({
-        checkForUpdateAsync: async () => ({ isUpdateAvailable: true, manifest: { id: 'upd-42' } }),
-        fetchUpdateAsync: async () => ({ isNew: true, manifest: { id: 'upd-42' } }),
+        checkForUpdateAsync: async () => availableCheck('upd-42'),
+        fetchUpdateAsync: async () => newFetch('upd-42'),
         reloadAsync: reload,
       }),
     );
@@ -98,8 +138,8 @@ describe('UpdateService restartToApply (the only reload path)', () => {
     const reload = jest.fn(async () => undefined);
     const svc = new UpdateService(
       fakeNative({
-        checkForUpdateAsync: async () => ({ isUpdateAvailable: true }),
-        fetchUpdateAsync: async () => ({ isNew: true, manifest: { id: 'u1' } }),
+        checkForUpdateAsync: async () => availableCheck('u1'),
+        fetchUpdateAsync: async () => newFetch('u1'),
         reloadAsync: reload,
       }),
       () => true, // busy guard: speech/processing in progress
@@ -114,8 +154,8 @@ describe('UpdateService restartToApply (the only reload path)', () => {
     const reload = jest.fn(async () => undefined);
     const svc = new UpdateService(
       fakeNative({
-        checkForUpdateAsync: async () => ({ isUpdateAvailable: true }),
-        fetchUpdateAsync: async () => ({ isNew: true, manifest: { id: 'u1' } }),
+        checkForUpdateAsync: async () => availableCheck('u1'),
+        fetchUpdateAsync: async () => newFetch('u1'),
         reloadAsync: reload,
       }),
       () => false,
@@ -143,14 +183,14 @@ describe('UpdateService restartToApply (the only reload path)', () => {
 
 describe('UpdateService single authoritative flow (OTA audit hardening)', () => {
   it('concurrent checkAndDownload calls share ONE native check + fetch', async () => {
-    let releaseCheck!: (v: { isUpdateAvailable: boolean; manifest?: { id?: string } }) => void;
+    let releaseCheck!: (v: UpdateCheckResult) => void;
     const check = jest.fn(
       () =>
-        new Promise<{ isUpdateAvailable: boolean; manifest?: { id?: string } }>((resolve) => {
+        new Promise<UpdateCheckResult>((resolve) => {
           releaseCheck = resolve;
         }),
     );
-    const fetch = jest.fn(async () => ({ isNew: true, manifest: { id: 'upd-7' } }));
+    const fetch = jest.fn(async () => newFetch('upd-7'));
     const svc = new UpdateService(
       fakeNative({ checkForUpdateAsync: check, fetchUpdateAsync: fetch }),
       () => false,
@@ -159,7 +199,7 @@ describe('UpdateService single authoritative flow (OTA audit hardening)', () => 
     const p2 = svc.checkAndDownload();
     const p3 = svc.checkAndDownload();
     expect(svc.isCheckInFlight).toBe(true);
-    releaseCheck({ isUpdateAvailable: true, manifest: { id: 'upd-7' } });
+    releaseCheck(availableCheck('upd-7'));
     const [s1, s2, s3] = await Promise.all([p1, p2, p3]);
     expect(check).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -170,16 +210,16 @@ describe('UpdateService single authoritative flow (OTA audit hardening)', () => 
   });
 
   it('a call during the downloading phase joins the in-flight run (fetch never runs twice)', async () => {
-    let releaseFetch!: (v: { isNew: boolean; manifest?: { id?: string } }) => void;
+    let releaseFetch!: (v: UpdateFetchResult) => void;
     const fetch = jest.fn(
       () =>
-        new Promise<{ isNew: boolean; manifest?: { id?: string } }>((resolve) => {
+        new Promise<UpdateFetchResult>((resolve) => {
           releaseFetch = resolve;
         }),
     );
     const svc = new UpdateService(
       fakeNative({
-        checkForUpdateAsync: async () => ({ isUpdateAvailable: true, manifest: { id: 'upd-9' } }),
+        checkForUpdateAsync: async () => availableCheck('upd-9'),
         fetchUpdateAsync: fetch,
       }),
       () => false,
@@ -189,7 +229,7 @@ describe('UpdateService single authoritative flow (OTA audit hardening)', () => 
     await new Promise((r) => setImmediate(r));
     expect(svc.getStatus().phase).toBe('downloading');
     const p2 = svc.checkAndDownload();
-    releaseFetch({ isNew: true, manifest: { id: 'upd-9' } });
+    releaseFetch(newFetch('upd-9'));
     const [s1, s2] = await Promise.all([p1, p2]);
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(s1.phase).toBe('ready');
@@ -201,12 +241,12 @@ describe('UpdateService single authoritative flow (OTA audit hardening)', () => 
 
   it('restartToApply refuses while a check/download is in flight', async () => {
     const reload = jest.fn(async () => undefined);
-    let releaseFetch!: (v: { isNew: boolean; manifest?: { id?: string } }) => void;
+    let releaseFetch!: (v: UpdateFetchResult) => void;
     const svc = new UpdateService(
       fakeNative({
-        checkForUpdateAsync: async () => ({ isUpdateAvailable: true }),
+        checkForUpdateAsync: async () => availableCheck('upd-11'),
         fetchUpdateAsync: () =>
-          new Promise<{ isNew: boolean; manifest?: { id?: string } }>((resolve) => {
+          new Promise<UpdateFetchResult>((resolve) => {
             releaseFetch = resolve;
           }),
         reloadAsync: reload,
@@ -219,7 +259,7 @@ describe('UpdateService single authoritative flow (OTA audit hardening)', () => 
     const refused = await svc.restartToApply();
     expect(refused).toEqual({ applied: false, reason: 'in-progress' });
     expect(reload).not.toHaveBeenCalled();
-    releaseFetch({ isNew: true, manifest: { id: 'upd-11' } });
+    releaseFetch(newFetch('upd-11'));
     await run;
     // Once the download settled, the safe restart path works again.
     const applied = await svc.restartToApply();
@@ -244,8 +284,8 @@ describe('OTA native auto-check configuration (audit)', () => {
 describe('UpdateService checkAndApplyOnLaunch (cold-start flow)', () => {
   const downloadable = (reload: jest.Mock) =>
     fakeNative({
-      checkForUpdateAsync: async () => ({ isUpdateAvailable: true, manifest: { id: 'upd-L' } }),
-      fetchUpdateAsync: async () => ({ isNew: true, manifest: { id: 'upd-L' } }),
+      checkForUpdateAsync: async () => availableCheck('upd-L'),
+      fetchUpdateAsync: async () => newFetch('upd-L'),
       reloadAsync: reload,
     });
 
