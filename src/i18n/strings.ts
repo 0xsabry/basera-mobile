@@ -1,6 +1,6 @@
 const en = {
   appName: 'BASERA',
-  tagline: 'Smart assistance',
+  tagline: 'Smart Assistant',
   onboardingTitle: 'Welcome to BASERA',
   onboardingBody:
     'BASERA describes your surroundings, reads text aloud, and answers voice commands. Core features run on your phone, with no internet needed.',
@@ -10,7 +10,7 @@ const en = {
   start: 'Start',
   skip: 'Skip',
   home: 'Home',
-  assistance: 'Assistance',
+  assistance: 'Smart Assistant',
   family: 'Family',
   homeGreeting: 'What do you need?',
   glassesCardTitle: 'Smart glasses',
@@ -26,7 +26,7 @@ const en = {
   familySubtitle: 'Sharing, guardians and SOS',
   startVoiceAssistant: 'Start voice assistant',
   identifyObjects: 'Identify objects',
-  identifyObjectsHint: 'Hear the objects in a photo and their positions',
+  identifyObjectsHint: 'Hear the objects in a photo and where they are',
   assistantStatus: 'Assistant status',
   statusReady: 'Ready',
   familySafety: 'Family safety',
@@ -54,7 +54,7 @@ const en = {
   readText: 'Read text',
   readTextHint: 'Photograph text to hear it read aloud',
   voice: 'Voice assistant',
-  voiceAssistance: 'Voice assistance',
+  voiceAssistance: 'Voice assistant',
   voiceHint: 'Give BASERA a voice command',
   history: 'History',
   settings: 'Settings',
@@ -103,7 +103,7 @@ const en = {
   voiceErrGeneric: 'Speech recognition failed. Please try again.',
   nothingToRepeat: 'Nothing to repeat yet.',
   arabicOcrUnsupported:
-    'Arabic text reading is not supported yet. English and other Latin-script text works.',
+    'This Arabic text could not be read this time. A clearer, straight photo may work.',
   yourCommand: 'You said',
   supportedCommands: 'Supported commands',
   implemented: 'Available',
@@ -153,7 +153,7 @@ const en = {
   updateReady: 'An update was downloaded. It applies at the next app start, or restart now.',
   updateRestart: 'Restart to apply update',
   updateUnavailable:
-    'Over-the-air updates are not available in this build. They work in the full BASERA 1.1.0 build.',
+    'Over-the-air updates are not available in this build. They work in the full BASERA app.',
   updateError: 'Update check failed. Your current version still works; try again later.',
   updateBusyBlocked:
     'An update is ready, but BASERA is speaking or processing. Restart will be available when it finishes.',
@@ -161,7 +161,7 @@ const en = {
   guardian: 'Guardian location sharing',
   guardianHint: 'Share your location with linked guardians',
   guardianNotConfigured:
-    'Guardian service is not configured. The owner must connect the BASERA server (Supabase) first. Sharing is off and nothing is uploaded.',
+    'Guardian service is not set up in this build. Sharing is off and nothing is uploaded.',
   guardianSignInNeeded: 'Sign in to use guardian sharing.',
   guardianOpenSignIn: 'Sign in or create account',
   guardianEmail: 'Email',
@@ -174,7 +174,7 @@ const en = {
   guardianSharing: 'Location sharing',
   guardianSharingExpl:
     'When sharing is on, your phone location is uploaded as a single latest location. Each guardian sees it only if you enabled location sharing for them. Turning sharing off stops uploads and deletes your stored location from the server.',
-  guardianSharingOn: 'Sharing is on (foreground only)',
+  guardianSharingOn: 'Sharing is on (while the app is open)',
   guardianSharingOff: 'Sharing is off',
   guardianPermissionExpl:
     'BASERA needs location permission to share your location with your guardians, only while sharing is on. If you deny it, nothing is shared.',
@@ -405,7 +405,7 @@ export type StringKey = keyof typeof en;
 
 const ar: Record<StringKey, string> = {
   appName: 'بصيرة',
-  tagline: 'المساعدة الذكية',
+  tagline: 'المساعد الذكي',
   onboardingTitle: 'مرحبًا بك في بصيرة',
   onboardingBody:
     'يصف التطبيق ما حولك، ويقرأ النصوص بصوت عالٍ، ويستجيب لأوامرك الصوتية. تعمل المزايا الأساسية على هاتفك دون حاجة إلى الإنترنت.',
@@ -415,7 +415,7 @@ const ar: Record<StringKey, string> = {
   start: 'ابدأ',
   skip: 'تخطي',
   home: 'الرئيسية',
-  assistance: 'المساعدة',
+  assistance: 'المساعد الذكي',
   family: 'العائلة',
   homeGreeting: 'ما الذي تحتاج إليه؟',
   glassesCardTitle: 'النظارة الذكية',
@@ -431,13 +431,13 @@ const ar: Record<StringKey, string> = {
   familySubtitle: 'المشاركة والأوصياء والاستغاثة',
   startVoiceAssistant: 'بدء المساعد الصوتي',
   identifyObjects: 'التعرف على الأشياء',
-  identifyObjectsHint: 'الاستماع إلى الأشياء في الصورة ومواضعها',
+  identifyObjectsHint: 'سماع الأشياء الموجودة في الصورة ومواضعها',
   assistantStatus: 'حالة المساعد',
   statusReady: 'جاهز',
   familySafety: 'سلامة العائلة',
   sharingStateOff: 'مشاركة الموقع متوقفة',
   sharingStateOn: 'مشاركة الموقع مفعّلة',
-  sharingStateUnconfigured: 'خدمة الوصي غير مهيأة بعد',
+  sharingStateUnconfigured: 'خدمة الوصي غير جاهزة بعد',
   serviceNoteTitle: 'ملاحظة الخدمة',
   alertsLatest: 'أحدث تنبيه للسلامة',
   viewAlerts: 'تنبيهات السلامة',
@@ -459,7 +459,7 @@ const ar: Record<StringKey, string> = {
   readText: 'قراءة النص',
   readTextHint: 'صوّر نصًا لسماعه بصوت عالٍ',
   voice: 'المساعد الصوتي',
-  voiceAssistance: 'المساعدة الصوتية',
+  voiceAssistance: 'المساعد الصوتي',
   voiceHint: 'وجّه أمرًا صوتيًا إلى بصيرة',
   history: 'السجل',
   settings: 'الإعدادات',
@@ -483,7 +483,7 @@ const ar: Record<StringKey, string> = {
   stopSpeaking: 'إيقاف النطق',
   obstacleSummary: 'الوعي بالعوائق (إرشاد تقريبي، وليس قياسًا للمسافة)',
   proximityNear: 'يبدو قريبًا',
-  proximityMedium: 'حجم متوسط في الإطار',
+  proximityMedium: 'حجمه متوسط في الصورة',
   proximityFar: 'يبدو بعيدًا',
   positionLeft: 'يسار',
   positionCenter: 'المنتصف',
@@ -505,7 +505,7 @@ const ar: Record<StringKey, string> = {
   voiceErrNoMatch: 'لم أتمكن من سماع الأمر. حاول مجددًا في مكان أكثر هدوءًا.',
   voiceErrGeneric: 'فشل التعرف على الصوت. حاول مجددًا.',
   nothingToRepeat: 'لا يوجد ما يمكن تكراره بعد.',
-  arabicOcrUnsupported: 'قراءة النصوص العربية غير مدعومة بعد. تعمل النصوص الإنجليزية وغيرها من النصوص اللاتينية.',
+  arabicOcrUnsupported: 'تعذّرت قراءة هذا النص العربي هذه المرة. قد تنجح صورة أوضح ومستقيمة.',
   yourCommand: 'ما قلته',
   supportedCommands: 'الأوامر المدعومة',
   implemented: 'متاح',
@@ -525,7 +525,7 @@ const ar: Record<StringKey, string> = {
   themeSystem: 'النظام',
   speechRate: 'سرعة النطق',
   highContrast: 'تباين عالٍ',
-  announcements: 'الإعلانات الصوتية',
+  announcements: 'التنبيهات الصوتية',
   privacy: 'الخصوصية',
   privacyBody:
     'يُحفظ السجل والصور على هذا الجهاز فقط ولا تُرفع إلى أي جهة. يعمل الذكاء الاصطناعي الأساسي بالكامل على الجهاز.',
@@ -554,14 +554,14 @@ const ar: Record<StringKey, string> = {
   updateUpToDate: 'تطبيقك محدّث إلى أحدث إصدار.',
   updateReady: 'تم تنزيل تحديث. سيُطبّق عند بدء التطبيق التالي، أو أعد التشغيل الآن.',
   updateRestart: 'إعادة التشغيل الآن',
-  updateUnavailable: 'التحديثات عن بُعد غير متاحة في هذه النسخة. تعمل في النسخة الكاملة من بصيرة 1.1.0.',
+  updateUnavailable: 'التحديثات عن بُعد غير متاحة في هذه النسخة. تعمل في النسخة الكاملة من التطبيق.',
   updateError: 'فشل التحقق من التحديثات. نسختك الحالية تعمل؛ حاول مجددًا لاحقًا.',
   updateBusyBlocked: 'يوجد تحديث جاهز، لكن بصيرة تنطق أو تعالج حاليًا. ستتاح إعادة التشغيل عند الانتهاء.',
   updateReleaseNotes: 'ما الجديد',
   guardian: 'مشاركة الموقع مع الوصي',
   guardianHint: 'مشاركة موقعك مع الأوصياء المرتبطين بك',
   guardianNotConfigured:
-    'خدمة الوصي غير مهيأة. يجب على مالك المشروع ربط خادم بصيرة (Supabase) أولًا. المشاركة متوقفة ولا يُرفع أي شيء.',
+    'خدمة الوصي غير مُعدّة في هذه النسخة. المشاركة متوقفة ولا يُرفع أي شيء.',
   guardianSignInNeeded: 'سجّل الدخول لاستخدام مشاركة الوصي.',
   guardianOpenSignIn: 'تسجيل الدخول أو إنشاء حساب',
   guardianEmail: 'البريد الإلكتروني',
@@ -574,7 +574,7 @@ const ar: Record<StringKey, string> = {
   guardianSharing: 'مشاركة الموقع',
   guardianSharingExpl:
     'عند تفعيل المشاركة، يُرفع موقع هاتفك كموقع أحدث واحد. ولا يراه أي وصي إلا إذا فعّلت مشاركة الموقع له تحديدًا. إيقاف المشاركة يوقف الرفع ويحذف موقعك المخزّن من الخادم.',
-  guardianSharingOn: 'المشاركة مفعّلة (في الواجهة فقط)',
+  guardianSharingOn: 'المشاركة مفعّلة (أثناء فتح التطبيق)',
   guardianSharingOff: 'المشاركة متوقفة',
   guardianPermissionExpl:
     'تحتاج بصيرة إلى إذن الموقع لمشاركة موقعك مع الأوصياء المرتبطين بحسابك، أثناء تفعيل المشاركة فقط. عند الرفض، لا يُشارك أي شيء.',
@@ -768,7 +768,7 @@ const ar: Record<StringKey, string> = {
   lowAccuracyNote: 'دقة الموقع منخفضة حاليًا.',
   fixAgeNow: 'الآن',
   fixAgeOneMinute: 'قبل دقيقة',
-  fixAgeFewMinutes: 'قبل دقائق',
+  fixAgeFewMinutes: 'قبل بضع دقائق',
   minutesWord: 'دقائق',
   minutesAgoSuffix: 'دقائق',
   mapPreview: 'الخريطة',
@@ -794,9 +794,9 @@ const ar: Record<StringKey, string> = {
   voiceNoneAvailable:
     'لا يوجد صوت مثبّت صالح لهذه اللغة. ثبّت بيانات الصوت من إعدادات أندرويد ← إمكانية الوصول ← تحويل النص إلى كلام، ثم عُد إلى هنا.',
   voiceTestFailed: 'تعذّر تشغيل هذا الصوت. سيُستخدم صوت النظام الافتراضي بدلًا منه.',
-  backToHistory: 'ارجع للسجل',
-  ocrSpokenPrefix: 'النص بيقول:',
-  welcomeSpoken: 'أهلاً بك في بصيرة. اختار اللي تحب تعمله من الشاشة الرئيسية.',
+  backToHistory: 'العودة إلى السجل',
+  ocrSpokenPrefix: 'يقول النص:',
+  welcomeSpoken: 'مرحبًا بك في بصيرة. اختر ما تريد من الشاشة الرئيسية.',
   languageChangedConfirm: 'تم تغيير اللغة إلى العربية',
 };
 

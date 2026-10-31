@@ -79,3 +79,17 @@ describe('registry honesty', () => {
     expect(COMMAND_REGISTRY.some((c) => !c.implemented)).toBe(true);
   });
 });
+
+describe('registry examples are truthful (v1.1.2 copy overhaul)', () => {
+  // The Supported-commands screen shows exampleAr/exampleEn as phrases
+  // the user can say — every displayed example must actually parse to
+  // its own action, in both languages. (Dialect input stays accepted by
+  // the matcher; the DISPLAYED canonical examples are MSA.)
+  it.each(COMMAND_REGISTRY.map((c) => [c.action, c.exampleAr, c.exampleEn] as const))(
+    '%s: the shown AR and EN examples parse to this action',
+    (action, exampleAr, exampleEn) => {
+      expect(parseVoiceCommand(exampleAr).action).toBe(action);
+      expect(parseVoiceCommand(exampleEn).action).toBe(action);
+    },
+  );
+});

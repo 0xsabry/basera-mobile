@@ -30,7 +30,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     bodyEn:
       'Location now shows a real address for your position (or honest coordinates when no address exists), marked approximate when GPS accuracy is low. Switching between Arabic and English now restarts the app safely so the whole layout flips correctly. Choosing any photo — PNG, JPEG or camera — is normalized before analysis, and failures now explain exactly what went wrong. The voice picker lists readable voices with a test button, and a voice that no longer exists can no longer silence the app. Bottom navigation icons are bolder and higher-contrast in every theme. This bundle ships in app version 1.1.1 (runtime stays 1.1.0).',
     bodyAr:
-      'يعرض الموقع الآن عنوانًا حقيقيًا لموضعك (أو الإحداثيات بصراحة عند غياب العنوان)، ويُوصف بالتقريبي عند ضعف دقة GPS. أصبح التبديل بين العربية والإنجليزية يعيد تشغيل التطبيق بأمان حتى ينعكس اتجاه الواجهة كاملًا وبشكل صحيح. أي صورة تختارها — PNG أو JPEG أو من الكاميرا — تُجهَّز قبل التحليل، والأخطاء تشرح الآن سببها بالضبط. قائمة الأصوات تعرض أسماء مقروءة مع زر اختبار، والصوت الذي لم يعد موجودًا لا يستطيع إسكات التطبيق بعد الآن. أيقونات شريط التنقل أصبحت أوضح وأعلى تباينًا في كل السمات. تصل هذه الحزمة في إصدار التطبيق 1.1.1 (يبقى الـ runtime 1.1.0).',
+      'يعرض الموقع الآن عنوانًا حقيقيًا لموضعك (أو الإحداثيات بصراحة عند غياب العنوان)، ويُسمّى تقريبيًا عند ضعف دقة GPS. أصبح التبديل بين العربية والإنجليزية يعيد تشغيل التطبيق بأمان حتى ينعكس اتجاه الواجهة كاملًا وبشكل صحيح. أي صورة تختارها — PNG أو JPEG أو من الكاميرا — تُجهَّز قبل التحليل، والأخطاء تشرح الآن سببها بالضبط. قائمة الأصوات تعرض أسماء مقروءة مع زر اختبار، والصوت الذي لم يعد موجودًا لا يستطيع إسكات التطبيق بعد الآن. أيقونات شريط التنقل أصبحت أوضح وأعلى تباينًا في كل السمات. تصل هذه الحزمة في إصدار التطبيق 1.1.1 (يبقى إصدار وقت التشغيل 1.1.0).',
   },
   {
     date: '2026-10-31',
@@ -50,7 +50,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     bodyEn:
       'A calmer, more distinctive interface on every screen, and shorter, clearer text in Arabic and English. Family gains a My Location view with your real phone GPS fix and an OpenStreetMap preview; the guardian web map now shows location accuracy and freshness. Guardian sharing still needs the one-time server setup by the owner — until then, the app says so honestly.',
     bodyAr:
-      'واجهة أهدأ وأكثر تميزًا في كل الشاشات، ونصوص أقصر وأوضح بالعربية والإنجليزية. أضيف إلى العائلة قسم «موقعي» الذي يعرض موقع هاتفك الحقيقي مع خريطة OpenStreetMap، وأصبحت خريطة الوصي على الويب تعرض دقة الموقع وحداثته. مشاركة الوصي ما تزال تحتاج إعداد الخادم لمرة واحدة من المالك، وحتى يتم ذلك يوضح التطبيق الأمر بصراحة.',
+      'واجهة أهدأ وأكثر تميزًا في كل الشاشات، ونصوص أقصر وأوضح بالعربية والإنجليزية. أضيف إلى العائلة قسم «موقعي» الذي يعرض موقع هاتفك الحقيقي مع خريطة OpenStreetMap، وأصبحت خريطة الوصي على الويب تعرض دقة الموقع وحداثته. وما تزال مشاركة الوصي تحتاج إعداد الخادم لمرة واحدة؛ وحتى يتم ذلك يوضح التطبيق الأمر بصراحة.',
   },
   {
     date: '2026-10-31',
@@ -60,7 +60,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     bodyEn:
       'A complete visual redesign of every screen: a new design system with refined light, dark and high-contrast themes, a clearer home (brand header, one voice hero, an honest smart-glasses status card, and a feature grid), segmented settings controls, grouped history, severity cards for alerts, and a mic-hero voice screen. No features changed and nothing was removed — everything works exactly as before, and all status information is still announced with text, never color alone.',
     bodyAr:
-      'إعادة تصميم بصرية كاملة لكل الشاشات: نظام تصميم جديد بمظاهر فاتحة وداكنة وعالية التباين أرقى، رئيسية أوضح (ترويسة بالعلامة، زر صوتي رئيسي واحد، بطاقة حالة صادقة للنظارة الذكية، وشبكة مميزات)، عناصر تحكم مجزأة في الإعدادات، سجل مجمع حسب اليوم، بطاقات خطورة للتنبيهات، وشاشة صوت بقرص ميكروفون. مفيش مميزات اتغيرت ولا حاجة اتشالت — كل حاجة شغالة زي ما هي بالضبط، وكل معلومات الحالة لسه بتتقال بنص، مش بلون لوحده أبدًا.',
+      'إعادة تصميم بصرية كاملة لكل الشاشات: نظام تصميم جديد بسمات فاتحة وداكنة وعالية التباين أكثر رقّة، وشاشة رئيسية أوضح (ترويسة بالعلامة، وزر صوتي رئيسي واحد، وبطاقة حالة صادقة للنظارة الذكية، وشبكة ميزات)، وعناصر تحكم مجزأة في الإعدادات، وسجل مجمع حسب اليوم، وبطاقات خطورة للتنبيهات، وشاشة صوت بقرص ميكروفون. لم تتغير أي ميزة ولم تُحذف أي وظيفة؛ كل شيء يعمل كما كان تمامًا، وكل معلومات الحالة تُعرض بنص، ولا يُعتمد على اللون وحده أبدًا.',
   },
   {
     date: '2026-10-30',
@@ -70,7 +70,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     bodyEn:
       'A major over-the-air update: new bottom navigation (Home, Assistance, History, Family, Settings), a redesigned home and settings, Smart Place Memory with voice commands, scan-based danger alerts with SOS, and background location sharing with an offline queue. No reinstall was needed. Everything marked unavailable in the app still needs its external setup (for example the guardian service).',
     bodyAr:
-      'تحديث هوائي كبير: تنقل سفلي جديد (الرئيسية، المساعدة، السجل، العائلة، الإعدادات)، إعادة تصميم للرئيسية والإعدادات، ذاكرة أماكن ذكية بأوامر صوتية، تنبيهات خطر على اللقطات مع استغاثة SOS، ومشاركة موقع في الخلفية مع قائمة انتظار دون اتصال. من غير إعادة تثبيت. أي حاجة مكتوب عليها غير متاحة في التطبيق لسه محتاجة إعدادها الخارجي (زي خدمة الوصي).',
+      'تحديث هوائي كبير: شريط تنقل سفلي جديد (الرئيسية، المساعد الذكي، السجل، العائلة، الإعدادات)، وإعادة تصميم للشاشتين الرئيسية والإعدادات، وذاكرة أماكن ذكية بأوامر صوتية، وتنبيهات خطر مبنية على الفحص مع استغاثة SOS، ومشاركة موقع في الخلفية مع قائمة انتظار عند عدم الاتصال. وصل التحديث دون إعادة تثبيت. وكل ما يظهر في التطبيق بصفة «غير متاح» ما يزال يحتاج إعداده الخارجي (مثل خدمة الوصي).',
   },
   {
     date: '2026-10-30',
@@ -80,7 +80,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     bodyEn:
       'This note arrived over the air, without reinstalling the app. If you can read it in the update screen, the OTA pipeline (runtime 1.1.0, preview channel) works end to end. No features changed in this update.',
     bodyAr:
-      'الملحوظة دي وصلت عبر الهواء، من غير إعادة تثبيت التطبيق. لو قادر تقراها في شاشة التحديثات، يبقى خط التحديثات الهوائية (runtime 1.1.0، قناة preview) شغال من الطرف للطرف. مفيش مزايا اتغيرت في التحديث ده.',
+      'وصلت هذه الملحوظة عبر الهواء دون إعادة تثبيت التطبيق. إذا استطعت قراءتها في شاشة التحديثات، فخط التحديثات الهوائية (إصدار وقت التشغيل 1.1.0، قناة preview) يعمل من الطرف إلى الطرف. لم تتغير أي ميزات في هذا التحديث.',
   },
   {
     date: '2026-10-30',
@@ -90,7 +90,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     bodyEn:
       'This app build adds the over-the-air update system (future fixes arrive without reinstalling) and guardian location sharing (foreground only, with your explicit approval for every guardian). Background tracking and live hazard alerts are NOT in this build.',
     bodyAr:
-      'النسخة دي بتضيف نظام التحديثات الهوائية (الإصلاحات الجاية توصلك من غير إعادة تثبيت) ومشاركة الموقع مع الوصي (في الواجهة بس، وبموافقتك الصريحة على كل وصي). التتبع في الخلفية وتنبيهات الخطر المباشرة مش موجودة في النسخة دي.',
+      'تضيف هذه النسخة نظام التحديثات الهوائية (تصل الإصلاحات القادمة دون إعادة تثبيت) ومشاركة الموقع مع الوصي (في الواجهة فقط، وبموافقتك الصريحة على كل وصي). في هذه النسخة تحديدًا، لم يكن التتبع في الخلفية وتنبيهات الخطر المباشرة متاحين بعد.',
   },
 ];
 

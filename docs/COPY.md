@@ -38,6 +38,8 @@ One concept, one term — everywhere, in labels, body text, and speech.
 
 | Concept | Arabic | English |
 | --- | --- | --- |
+| AI assistant (the feature) | المساعد الذكي | Smart Assistant |
+| Voice assistant (voice mode) | المساعد الصوتي | Voice assistant |
 | Detect (action) | وصف المشهد | Describe surroundings |
 | Detection (noun) | وصف المحيط | Surroundings description |
 | Read text | قراءة النص | Read text |
@@ -67,12 +69,61 @@ Notes:
 - Map attribution is identical in both languages:
   `© OpenStreetMap contributors`.
 
-## Before / after — the most-changed strings
+## v1.1.2 overhaul — terminology decision + before/after
+
+**Owner order:** the AI assistant is named **«المساعد الذكي» / "Smart
+Assistant"** everywhere it is named as a feature. Decisions per
+occurrence of the retired word «المساعدة»:
+
+| Key / surface | Before | After | Decision |
+| --- | --- | --- | --- |
+| `assistance` (tab + screen) | المساعدة / Assistance | **المساعد الذكي / Smart Assistant** | It IS the assistant feature → renamed |
+| `tagline` (brand line) | المساعدة الذكية / Smart assistance | **المساعد الذكي / Smart Assistant** | The tagline names the assistant → renamed (overrides the polish-phase canonical pair) |
+| `voiceAssistance` (voice screen title) | المساعدة الصوتية / Voice assistance | المساعد الصوتي / Voice assistant | The voice mode of the assistant → aligned to the existing `voice` term (one term per feature) |
+| release note 2026-10-30 (tab list) | (…، المساعدة، …) | (…، المساعد الذكي، …) | Names the tab → renamed |
+| Generic "help/support" senses | — | — | **None exist** in the current copy; the guard test keeps an (empty) allowlist so a future legitimate generic use must be justified explicitly, never by reviving the feature label |
+
+Further corrections in the same pass (all user-facing surfaces, incl.
+spoken strings, voice-command examples, and release notes):
+
+| # | Surface | Before | After | Why |
+| --- | --- | --- | --- | --- |
+| 1 | `welcomeSpoken` (first-run speech) | «أهلاً بك في بصيرة. اختار اللي تحب تعمله من الشاشة الرئيسية.» | «مرحبًا بك في بصيرة. اختر ما تريد من الشاشة الرئيسية.» | Full dialect sentence in the app's first spoken line |
+| 2 | `ocrSpokenPrefix` (speech) | «النص بيقول:» | «يقول النص:» | Dialect verb «بيقول» |
+| 3 | `backToHistory` | «ارجع للسجل» | «العودة إلى السجل» | UI labels are noun phrases |
+| 4 | `announcements` (settings row) | «الإعلانات الصوتية» | «التنبيهات الصوتية» | «إعلانات» reads as *advertisements* |
+| 5 | `guardianSharingOn` | «المشاركة مفعّلة (في الواجهة فقط)» | «المشاركة مفعّلة (أثناء فتح التطبيق)» | Literal calque of "foreground only" |
+| 6 | `sharingStateUnconfigured` | «خدمة الوصي غير مهيأة بعد» | «خدمة الوصي غير جاهزة بعد» | «مهيأة» is not a word users say |
+| 7 | `guardianNotConfigured` | «…يجب على مالك المشروع ربط خادم بصيرة (Supabase) أولًا…» | «خدمة الوصي غير مُعدّة في هذه النسخة. المشاركة متوقفة ولا يُرفع أي شيء.» | Developer instructions addressed to the end user |
+| 8 | `proximityMedium` | «حجم متوسط في الإطار» | «حجمه متوسط في الصورة» | «الإطار» (frame) is translator-speak |
+| 9 | `fixAgeFewMinutes` | «قبل دقائق» | «قبل بضع دقائق» | Incomplete phrase |
+| 10 | `updateUnavailable` | «…تعمل في النسخة الكاملة من بصيرة 1.1.0» | «…تعمل في النسخة الكاملة من التطبيق» | Stale hard-coded version in user text |
+| 11 | `arabicOcrUnsupported` | «قراءة النصوص العربية غير مدعومة بعد…» | «تعذّرت قراءة هذا النص العربي هذه المرة. قد تنجح صورة أوضح ومستقيمة.» | Was a false claim — Arabic OCR ships (PP-OCR); the state means this attempt failed |
+| 12 | `identifyObjectsHint` | «الاستماع إلى الأشياء في الصورة ومواضعها» | «سماع الأشياء الموجودة في الصورة ومواضعها» | Stiff nominalization |
+| 13 | Voice example `describe` | «ايه اللي قدامي؟» | «ما الذي أمامي؟» | Dialect; matcher gained the MSA pattern |
+| 14 | Voice example `find-place` | «فين الجامعة؟» | «أين الجامعة؟» | Dialect «فين»; matcher gained «أين» |
+| 15 | Voice example `list-places` | «إيه الأماكن اللي حفظتها؟» | «ما الأماكن التي حفظتها؟» | Dialect question |
+| 16 | Voice examples `save-place` ×2, `add-place-note` | «احفظ المكان ده…»، «ضيف ملاحظة للمكان ده» | «احفظ هذا المكان…»، «أضف ملاحظة إلى هذا المكان» | «ده» dialect deictic in displayed phrases |
+| 17 | Voice example `stop` | «اسكت / توقف» | «توقّف» | «اسكت» is rude as the canonical phrase |
+| 18 | Voice example `obstacle-check` | «هل الطريق فاضي؟ (مخطط)» | «هل الطريق خالٍ؟ (مخطط له)» | Dialect + aligns with the `planned` term «مخطط له» |
+| 19 | Release-note bodies ×4 (2026-10-30/31) | «مفيش مميزات اتغيرت ولا حاجة اتشالت…» etc. | Full MSA rewrites, same facts | The updates screen showed heavy dialect; the oldest note also carried the «مش موجودة في النسخة دي» shape |
+| 20 | Release note 2026-10-31 (fixes) | «ويُوصف بالتقريبي… (يبقى الـ runtime 1.1.0)» | «ويُسمّى تقريبيًا… (يبقى إصدار وقت التشغيل 1.1.0)» | Awkward passive + English word inside Arabic prose |
+
+Guards added with this pass: the dialect ban list grew (the terms
+above), the release notes are now scanned by the same rules, a
+terminology test pins the assistant's one name, and a voice-registry
+test proves every displayed example phrase parses to its own command.
+Dialect **input** remains accepted by the voice matcher — users may
+speak as they like; only displayed/spoken product copy is MSA.
+
+## Before / after — the most-changed strings (earlier passes)
 
 ### Tagline
 - Before: AR «عينك الذكية — شوف العالم من خلال الصوت» / EN "Your AI eyes — see the world through sound"
-- After: AR «المساعدة الذكية» / EN "Smart assistance"
+- After (quality pass): AR «المساعدة الذكية» / EN "Smart assistance"
 - Why: promotional exaggeration and dialect («شوف») removed.
+- **Superseded in v1.1.2** by the owner's naming order: AR «المساعد الذكي» /
+  EN "Smart Assistant" (see the v1.1.2 table above).
 
 ### Home greeting
 - Before: AR «تحب تعمل إيه؟» / EN "What would you like to do?"

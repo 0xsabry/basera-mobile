@@ -50,24 +50,24 @@ export interface VoiceCommand {
 }
 
 export const COMMAND_REGISTRY: VoiceCommand[] = [
-  { action: 'describe', implemented: true, exampleEn: 'What is in front of me?', exampleAr: 'ايه اللي قدامي؟' },
+  { action: 'describe', implemented: true, exampleEn: 'What is in front of me?', exampleAr: 'ما الذي أمامي؟' },
   { action: 'read-text', implemented: true, exampleEn: 'Read this text', exampleAr: 'اقرأ النص' },
   { action: 'repeat', implemented: true, exampleEn: 'Repeat', exampleAr: 'كرر' },
-  { action: 'stop', implemented: true, exampleEn: 'Stop speaking', exampleAr: 'اسكت / توقف' },
+  { action: 'stop', implemented: true, exampleEn: 'Stop speaking', exampleAr: 'توقّف' },
   { action: 'change-language', implemented: true, exampleEn: 'Change language', exampleAr: 'غير اللغة' },
   { action: 'open-settings', implemented: true, exampleEn: 'Open settings', exampleAr: 'افتح الإعدادات' },
   { action: 'go-home', implemented: true, exampleEn: 'Go home', exampleAr: 'ارجع للرئيسية' },
   { action: 'sos', implemented: true, exampleEn: 'SOS / Help me', exampleAr: 'استغاثة' },
   { action: 'acknowledge-ok', implemented: true, exampleEn: "I'm okay", exampleAr: 'أنا بخير' },
-  { action: 'save-place', implemented: true, exampleEn: 'Save this place as Home', exampleAr: 'احفظ المكان ده باسم البيت' },
-  { action: 'save-place-unnamed', implemented: true, exampleEn: 'Save this place', exampleAr: 'احفظ المكان ده' },
-  { action: 'add-place-note', implemented: true, exampleEn: 'Add a note to the place Home', exampleAr: 'ضيف ملاحظة للمكان ده' },
-  { action: 'list-places', implemented: true, exampleEn: 'What places have I saved?', exampleAr: 'إيه الأماكن اللي حفظتها؟' },
-  { action: 'find-place', implemented: true, exampleEn: 'Where is the university?', exampleAr: 'فين الجامعة؟' },
+  { action: 'save-place', implemented: true, exampleEn: 'Save this place as Home', exampleAr: 'احفظ هذا المكان باسم المنزل' },
+  { action: 'save-place-unnamed', implemented: true, exampleEn: 'Save this place', exampleAr: 'احفظ هذا المكان' },
+  { action: 'add-place-note', implemented: true, exampleEn: 'Add a note to the place Home', exampleAr: 'أضف ملاحظة إلى هذا المكان' },
+  { action: 'list-places', implemented: true, exampleEn: 'What places have I saved?', exampleAr: 'ما الأماكن التي حفظتها؟' },
+  { action: 'find-place', implemented: true, exampleEn: 'Where is the university?', exampleAr: 'أين الجامعة؟' },
   { action: 'near-place', implemented: true, exampleEn: 'Am I near home?', exampleAr: 'أنا قريب من البيت؟' },
-  { action: 'delete-place', implemented: true, exampleEn: 'Delete the saved place Club', exampleAr: 'امسح المكان المحفوظ باسم النادي' },
+  { action: 'delete-place', implemented: true, exampleEn: 'Delete the saved place Club', exampleAr: 'احذف المكان المحفوظ باسم النادي' },
   { action: 'describe-place', implemented: true, exampleEn: 'Repeat the place description', exampleAr: 'كرر وصف المكان' },
-  { action: 'obstacle-check', implemented: false, exampleEn: 'Is the path clear? (planned)', exampleAr: 'هل الطريق فاضي؟ (مخطط)' },
+  { action: 'obstacle-check', implemented: false, exampleEn: 'Is the path clear? (planned)', exampleAr: 'هل الطريق خالٍ؟ (مخطط له)' },
 ];
 
 function normalize(input: string): string {
@@ -107,17 +107,17 @@ const PATTERNS: PatternEntry[] = [
   {
     action: 'save-place',
     patterns: [
-      'احفظ المكان ده باسم', 'احفظ المكان باسم', 'سمي المكان ده', 'سمي المكان',
+      'احفظ المكان ده باسم', 'احفظ المكان باسم', 'احفظ هذا المكان باسم', 'سمي المكان ده', 'سمي المكان',
       'save this place as', 'save place as', 'name this place',
     ],
     argFrom: [
-      'احفظ المكان ده باسم', 'احفظ المكان باسم', 'سمي المكان ده', 'سمي المكان',
+      'احفظ المكان ده باسم', 'احفظ المكان باسم', 'احفظ هذا المكان باسم', 'سمي المكان ده', 'سمي المكان',
       'save this place as', 'save place as', 'name this place',
     ],
   },
   {
     action: 'save-place-unnamed',
-    patterns: ['احفظ المكان ده', 'احفظ المكان', 'save this place', 'save place'],
+    patterns: ['احفظ المكان ده', 'احفظ المكان', 'احفظ هذا المكان', 'save this place', 'save place'],
   },
   {
     action: 'delete-place',
@@ -126,13 +126,13 @@ const PATTERNS: PatternEntry[] = [
   },
   {
     action: 'add-place-note',
-    patterns: ['ضيف ملاحظة للمكان', 'اضف ملاحظة للمكان', 'أضف ملاحظة للمكان', 'ضيف ملاحظة', 'add a note to the place', 'add note to the place', 'add a note'],
-    argFrom: ['ضيف ملاحظة للمكان', 'اضف ملاحظة للمكان', 'أضف ملاحظة للمكان', 'add a note to the place', 'add note to the place'],
+    patterns: ['ضيف ملاحظة للمكان', 'اضف ملاحظة للمكان', 'أضف ملاحظة للمكان', 'أضف ملاحظة إلى هذا المكان', 'أضف ملاحظة لهذا المكان', 'ضيف ملاحظة', 'add a note to the place', 'add note to the place', 'add a note'],
+    argFrom: ['ضيف ملاحظة للمكان', 'اضف ملاحظة للمكان', 'أضف ملاحظة للمكان', 'أضف ملاحظة إلى هذا المكان', 'أضف ملاحظة لهذا المكان', 'add a note to the place', 'add note to the place'],
   },
   {
     action: 'list-places',
     patterns: [
-      'ايه الاماكن اللي حفظتها', 'إيه الأماكن اللي حفظتها', 'الاماكن المحفوظة', 'الأماكن المحفوظة',
+      'ايه الاماكن اللي حفظتها', 'إيه الأماكن اللي حفظتها', 'ما الاماكن التي حفظتها', 'ما الأماكن التي حفظتها', 'الاماكن المحفوظة', 'الأماكن المحفوظة',
       'اماكني', 'what places have i saved', 'my places', 'list places', 'saved places',
     ],
   },
@@ -143,14 +143,14 @@ const PATTERNS: PatternEntry[] = [
   },
   {
     action: 'find-place',
-    patterns: ['فين', 'where is'],
-    argFrom: ['فين', 'where is'],
+    patterns: ['فين', 'أين', 'اين', 'where is'],
+    argFrom: ['فين', 'أين', 'اين', 'where is'],
   },
   {
     action: 'describe',
     patterns: [
       'what is in front of me', 'what do you see', 'describe', 'describe surroundings',
-      'ايه اللي قدامي', 'إيه اللي قدامي', 'صف ما حولي', 'صف اللي حولي', 'اوصف',
+      'ايه اللي قدامي', 'إيه اللي قدامي', 'ما الذي أمامي', 'ما الذي امامي', 'صف ما حولي', 'صف اللي حولي', 'اوصف',
     ],
   },
   {
@@ -164,7 +164,7 @@ const PATTERNS: PatternEntry[] = [
   { action: 'go-home', patterns: ['go home', 'home', 'back', 'ارجع للرئيسية', 'الرئيسية', 'ارجع'] },
   {
     action: 'obstacle-check',
-    patterns: ['is the path clear', 'any obstacles', 'هل الطريق فاضي', 'في عوائق', 'هل يوجد عوائق'],
+    patterns: ['is the path clear', 'any obstacles', 'هل الطريق فاضي', 'هل الطريق خال', 'في عوائق', 'هل يوجد عوائق'],
   },
 ];
 

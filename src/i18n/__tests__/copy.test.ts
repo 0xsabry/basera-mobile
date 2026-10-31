@@ -6,6 +6,7 @@
  * Arabic UI, consistent terminology, no known-false claims, and a length
  * budget for the long explanation strings.
  */
+import { RELEASE_NOTES } from '../../update/releaseNotes';
 import { STRINGS, type StringKey } from '../strings';
 
 const en = STRINGS.en;
@@ -81,6 +82,20 @@ const FORBIDDEN_AR_TERMS = [
   'عشان',
   'أوي',
   'يلا',
+  // v1.1.2 overhaul: strings that shipped in dialect before this pass
+  // (spoken welcome/OCR prefix, old release-note bodies, voice examples).
+  'بيقول',
+  'مفيش',
+  'اختار اللي',
+  'اللي تحب',
+  'اتشالت',
+  'اتغيرت',
+  'زي ما هي',
+  'شغالة',
+  'المكان ده',
+  'فين الجامعة',
+  'إيه الأماكن',
+  'ايه اللي قدامي',
 ];
 
 /** Standalone dialect negation «مش» as its own word. */
@@ -161,8 +176,8 @@ describe('copy: terminology spot checks', () => {
     expect(ar.readText).toContain('النص');
     expect(ar.places).toBe('أماكني المحفوظة');
     expect(ar.guardian).toContain('الوصي');
-    expect(ar.tagline).toBe('المساعدة الذكية');
-    expect(en.tagline).toBe('Smart assistance');
+    expect(ar.tagline).toBe('المساعد الذكي');
+    expect(en.tagline).toBe('Smart Assistant');
     expect(ar.homeGreeting).toBe('ما الذي تحتاج إليه؟');
     expect(en.homeGreeting).toBe('What do you need?');
     expect(ar.glassesCardStatus).toBe('النظارة غير متصلة');
@@ -179,7 +194,7 @@ describe('copy: terminology spot checks', () => {
     expect(en.fixAgeOneMinute).toBe('1 minute ago');
     expect(ar.fixAgeOneMinute).toBe('قبل دقيقة');
     expect(en.fixAgeFewMinutes).toBe('a few minutes ago');
-    expect(ar.fixAgeFewMinutes).toBe('قبل دقائق');
+    expect(ar.fixAgeFewMinutes).toBe('قبل بضع دقائق');
     expect(en.mapAttribution).toBe('© OpenStreetMap contributors');
     expect(ar.mapAttribution).toBe('© OpenStreetMap contributors');
     expect(en.phoneLocationSource).toBe('Phone location');
@@ -190,7 +205,7 @@ describe('copy: terminology spot checks', () => {
 describe('copy: canonical strings (owner-mandated exact wording)', () => {
   it('the 7 canonical Arabic strings match exactly', () => {
     expect(ar.homeGreeting).toBe('ما الذي تحتاج إليه؟');
-    expect(ar.voiceAssistance).toBe('المساعدة الصوتية');
+    expect(ar.voiceAssistance).toBe('المساعد الصوتي');
     expect(ar.detect).toBe('وصف المشهد');
     expect(ar.readText).toBe('قراءة النص');
     expect(ar.places).toBe('أماكني المحفوظة');
@@ -199,12 +214,58 @@ describe('copy: canonical strings (owner-mandated exact wording)', () => {
   });
 
   it('canonical English counterparts stay as agreed', () => {
-    expect(en.voiceAssistance).toBe('Voice assistance');
+    expect(en.voiceAssistance).toBe('Voice assistant');
     expect(en.detect).toBe('Describe surroundings');
     expect(en.places).toBe('Saved places');
     // Persona/action labels are distinct from the feature noun and stay.
     expect(ar.voice).toBe('المساعد الصوتي');
     expect(en.voice).toBe('Voice assistant');
+  });
+});
+
+describe('copy: the assistant has ONE name (owner order, v1.1.2)', () => {
+  it('the AI assistant feature is named «المساعد الذكي» / "Smart Assistant"', () => {
+    expect(ar.assistance).toBe('المساعد الذكي');
+    expect(en.assistance).toBe('Smart Assistant');
+    expect(ar.tagline).toBe('المساعد الذكي');
+    expect(en.tagline).toBe('Smart Assistant');
+  });
+
+  it('no Arabic string uses the retired feature label «المساعدة»', () => {
+    // The word was retired as the assistant's name. Generic help/support
+    // uses may return ONLY by adding the key to this allowlist with a
+    // justification — never by re-naming the feature.
+    const ALLOWLIST: StringKey[] = [];
+    const hits: string[] = [];
+    for (const [key, value] of Object.entries(ar)) {
+      if (value.includes('المساعدة') && !ALLOWLIST.includes(key as StringKey)) {
+        hits.push(`ar.${key}: ${value}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it('spoken strings are MSA and short', () => {
+    expect(ar.welcomeSpoken).toBe('مرحبًا بك في بصيرة. اختر ما تريد من الشاشة الرئيسية.');
+    expect(ar.ocrSpokenPrefix).toBe('يقول النص:');
+    expect(ar.backToHistory).toBe('العودة إلى السجل');
+  });
+});
+
+describe('copy: release notes obey the same language rules', () => {
+  it('no release-note Arabic field contains banned dialect or the retired label', () => {
+    const hits: string[] = [];
+    for (const note of RELEASE_NOTES) {
+      for (const field of ['titleAr', 'bodyAr'] as const) {
+        const value = note[field];
+        for (const term of FORBIDDEN_AR_TERMS) {
+          if (value.includes(term)) hits.push(`${note.date}.${field} contains "${term}"`);
+        }
+        if (DIALECT_NEGATION.test(value)) hits.push(`${note.date}.${field} uses «مش»`);
+        if (value.includes('المساعدة')) hits.push(`${note.date}.${field} uses «المساعدة»`);
+      }
+    }
+    expect(hits).toEqual([]);
   });
 });
 
