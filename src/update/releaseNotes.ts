@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-10-31',
     runtimeVersion: '1.1.0',
+    titleEn: 'BASERA 1.1.3 — Official logo and brand colors',
+    titleAr: 'بصيرة 1.1.3 — الشعار الرسمي وألوان العلامة',
+    bodyEn:
+      'BASERA now carries its official logo — on the app icon, the splash screen, and the Home header (the logo arrives with the APK, not by update). The whole app follows the logo\u2019s colors: deep navy, royal blue, and gold highlights, in light and dark themes. The active bottom tab now sits in a soft rounded container so the selected destination is unmistakable. Nothing else changed: same screens, same features, same wording.',
+    bodyAr:
+      'أصبح لبصيرة شعارها الرسمي — على أيقونة التطبيق وشاشة البداية وترويسة الشاشة الرئيسية (يصل الشعار مع ملف التطبيق لا عبر التحديث). وأصبحت ألوان التطبيق كلها من ألوان الشعار: الكحلي الغامق والأزرق الملكي ولمسات ذهبية، في السمتين الفاتحة والداكنة. وأصبح التبويب النشط في الشريط السفلي داخل حاوية مستديرة ناعمة حتى تعرف وجهتك المختارة بلا لبس. ولم يتغير شيء آخر: نفس الشاشات والمزايا والنصوص.',
+  },
+  {
+    date: '2026-10-31',
+    runtimeVersion: '1.1.0',
     titleEn: 'BASERA 1.1.2 — Smart Assistant naming, clearer navigation, new icon, live guardian service',
     titleAr: 'بصيرة 1.1.2 — اسم «المساعد الذكي» وتنقل أوضح وأيقونة جديدة وخدمة وصي حية',
     bodyEn:
