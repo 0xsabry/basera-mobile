@@ -123,7 +123,7 @@ export default function SettingsScreen() {
     } catch {
       /* keep unknown states — the UI shows them honestly */
     }
-  }, [configured]);
+  }, [configured, update]);
 
   useFocusEffect(
     useCallback(() => {

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { I18nManager } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import type { AppLanguage } from '../ai/types';
@@ -220,14 +220,16 @@ export function SettingsProvider({
       .finally(() => setLoaded(true));
   }, []);
 
-  const update = async (patch: Partial<Settings>) => {
+  // Stable identity (bug-fix release): consumers legitimately depend on
+  // `update` in hook dependency arrays; it only uses stable setters.
+  const update = useCallback(async (patch: Partial<Settings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
       AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => undefined);
       if (patch.language) applyLayoutDirection(patch.language);
       return next;
     });
-  };
+  }, []);
 
   const switchLanguage = async (lang: AppLanguage) => {
     const prevLang = settings.language;

@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-10-31',
     runtimeVersion: '1.1.0',
+    titleEn: 'Critical fixes: addresses, language switching, images, voices, tab icons',
+    titleAr: 'إصلاحات مهمة: العناوين وتبديل اللغة والصور والأصوات وأيقونات التنقل',
+    bodyEn:
+      'Location now shows a real address for your position (or honest coordinates when no address exists), marked approximate when GPS accuracy is low. Switching between Arabic and English now restarts the app safely so the whole layout flips correctly. Choosing any photo — PNG, JPEG or camera — is normalized before analysis, and failures now explain exactly what went wrong. The voice picker lists readable voices with a test button, and a voice that no longer exists can no longer silence the app. Bottom navigation icons are bolder and higher-contrast in every theme. This bundle ships in app version 1.1.1 (runtime stays 1.1.0).',
+    bodyAr:
+      'يعرض الموقع الآن عنوانًا حقيقيًا لموضعك (أو الإحداثيات بصراحة عند غياب العنوان)، ويُوصف بالتقريبي عند ضعف دقة GPS. أصبح التبديل بين العربية والإنجليزية يعيد تشغيل التطبيق بأمان حتى ينعكس اتجاه الواجهة كاملًا وبشكل صحيح. أي صورة تختارها — PNG أو JPEG أو من الكاميرا — تُجهَّز قبل التحليل، والأخطاء تشرح الآن سببها بالضبط. قائمة الأصوات تعرض أسماء مقروءة مع زر اختبار، والصوت الذي لم يعد موجودًا لا يستطيع إسكات التطبيق بعد الآن. أيقونات شريط التنقل أصبحت أوضح وأعلى تباينًا في كل السمات. تصل هذه الحزمة في إصدار التطبيق 1.1.1 (يبقى الـ runtime 1.1.0).',
+  },
+  {
+    date: '2026-10-31',
+    runtimeVersion: '1.1.0',
     titleEn: 'Final polish: quiet icons, calmer Home, reliability fixes',
     titleAr: 'لمسة أخيرة: أيقونات هادئة ورئيسية أبسط وإصلاحات موثوقية',
     bodyEn:
