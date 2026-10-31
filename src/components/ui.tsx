@@ -249,7 +249,7 @@ export function AppHeader({
   return (
     <View style={styles.appHeader}>
       <View style={styles.brandRow}>
-        <BrandLogo height={40} label={brandName} />
+        <BrandLogo height={36} label={brandName} />
         <View style={styles.brandText}>
           <Text accessibilityRole="header" style={[styles.brandName, { color: colors.text, fontSize: type.body }]}>
             {brandName}
@@ -474,7 +474,10 @@ export function FeatureTile({
         {subtitle ? (
           <Text
             style={{ color: colors.textSecondary, fontSize: type.caption, lineHeight: type.caption * 1.35 }}
-            numberOfLines={2}
+            // v1.1.4: grid tiles carry ONE short subtitle line (the
+            // full text stays available via the tile's a11y hint);
+            // row layouts keep two lines.
+            numberOfLines={layout === 'grid' ? 1 : 2}
           >
             {subtitle}
           </Text>
@@ -612,6 +615,7 @@ export function StatusStrip({
   onPress,
   accessibilityLabel,
   accessibilityHint,
+  compact = false,
 }: {
   glyph: string;
   glyphTone?: Tone;
@@ -622,6 +626,11 @@ export function StatusStrip({
   onPress?: () => void;
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  /**
+   * v1.1.4: slimmer chip-row form (48dp) for status lines on dense
+   * screens (Home). Same content, same ≥48dp target.
+   */
+  compact?: boolean;
 }) {
   const { colors, type, settings } = useSettings();
   const isRTL = settings.language === 'ar';
@@ -639,6 +648,7 @@ export function StatusStrip({
     </>
   );
   const label = accessibilityLabel ?? `${title}. ${pillLabel}`;
+  const stripStyle = compact ? styles.statusStripCompact : styles.statusStrip;
   if (onPress) {
     return (
       <Pressable
@@ -647,7 +657,7 @@ export function StatusStrip({
         accessibilityHint={accessibilityHint}
         onPress={onPress}
         style={({ pressed }) => [
-          styles.statusStrip,
+          stripStyle,
           { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? pressOpacity : 1 },
         ]}
       >
@@ -659,10 +669,76 @@ export function StatusStrip({
     <View
       accessible
       accessibilityLabel={label}
-      style={[styles.statusStrip, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      style={[stripStyle, { backgroundColor: colors.surface, borderColor: colors.border }]}
     >
       {inner}
     </View>
+  );
+}
+
+/**
+ * SosStrip — the Home safety action (v1.1.4): one full-width strip
+ * in the danger treatment (soft danger fill, danger border, danger
+ * glyph + title, solid-danger action label). Pressing it triggers
+ * the same SOS flow as the Assistance/Alerts buttons — there is no
+ * second step, matching the other surfaces. The outcome message,
+ * when present, renders under the strip as an assertive live region.
+ */
+export function SosStrip({
+  glyph,
+  title,
+  actionLabel,
+  message,
+  onPress,
+}: {
+  glyph: string;
+  title: string;
+  actionLabel: string;
+  message?: string;
+  onPress: () => void;
+}) {
+  const { colors, type, settings } = useSettings();
+  const pressOpacity = settings.reducedMotion ? 1 : 0.88;
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${title}. ${actionLabel}`}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.sosStrip,
+          {
+            backgroundColor: colors.dangerSoft,
+            borderColor: colors.danger,
+            opacity: pressed ? pressOpacity : 1,
+          },
+        ]}
+      >
+        <Icon glyph={glyph} size={iconSize.lg} tone="danger" />
+        <Text
+          style={{
+            color: colors.onDangerSoft,
+            fontSize: type.body,
+            fontWeight: '700',
+            lineHeight: type.body * 1.3,
+            flex: 1,
+          }}
+        >
+          {title}
+        </Text>
+        <Text style={{ color: colors.danger, fontSize: type.body, fontWeight: '800', lineHeight: type.body * 1.3 }}>
+          {actionLabel}
+        </Text>
+      </Pressable>
+      {!!message && (
+        <Text
+          accessibilityLiveRegion="assertive"
+          style={{ color: colors.text, fontSize: type.body, lineHeight: type.body * 1.45 }}
+        >
+          {message}
+        </Text>
+      )}
+    </>
   );
 }
 
@@ -852,7 +928,7 @@ const styles = StyleSheet.create({
   grow: { flexGrow: 1 },
   screenContent: { padding: spacing.lg, gap: spacing.md },
   appHeader: { gap: spacing.xs, marginBottom: spacing.xs },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   brandMark: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -864,7 +940,7 @@ const styles = StyleSheet.create({
   },
   brandText: { flex: 1, gap: 2 },
   brandName: { fontWeight: '800' },
-  greeting: { fontWeight: '700', marginTop: spacing.md },
+  greeting: { fontWeight: '700', marginTop: spacing.sm },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
   sectionTitle: { fontWeight: '800', flex: 1 },
   card: {
@@ -909,10 +985,11 @@ const styles = StyleSheet.create({
     flexBasis: '46%',
     flexGrow: 1,
     gap: spacing.sm,
-    minHeight: 118,
+    minHeight: 102,
     borderWidth: 1,
     borderRadius: radius.row,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     elevation: elevation.flat,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0,
@@ -946,6 +1023,28 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     elevation: elevation.flat,
   },
+  statusStripCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 48,
+    borderWidth: 1,
+    borderRadius: radius.row,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xxs,
+    elevation: elevation.flat,
+  },
+  sosStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 56,
+    borderWidth: 1.5,
+    borderRadius: radius.row,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    elevation: elevation.flat,
+  },
   timelineRow: { flexDirection: 'row', gap: spacing.md },
   timelineRail: { width: 18, alignItems: 'center' },
   timelineDot: { width: 13, height: 13, borderRadius: radius.pill, borderWidth: 2, marginTop: spacing.sm },
@@ -955,9 +1054,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    minHeight: 80,
+    minHeight: 68,
     borderRadius: radius.hero,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     elevation: elevation.hero,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,

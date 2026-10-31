@@ -1,23 +1,25 @@
 /**
- * Home — the command center, polish pass (docs/POLISH.md).
+ * Home — the command center, v1.1.4 recomposition
+ * (docs/IDENTITY_OLIVE_1.1.4.md).
  *
- * Exact structure, nothing else: (1) compact brand header, (2) the
- * greeting as page title, (3) one refined voice activation control
- * (typography-led, small mic icon), (4) the four core features,
- * (5) the compact glasses status strip («النظارة غير متصلة»), (6) the
- * family strip carrying the REAL sharing state, (7) the active-alert
- * banner and the last result with Repeat, when present. No slogans,
- * no paragraphs, no badges; whitespace does the work.
- *
- * v1.1.2 recomposition: step (4) is now a balanced 2×2 GRID of
- * compact feature tiles instead of four full-width list rows — the
- * stacked oversized-row list was the owner's core complaint. Same
- * four destinations, same order (TalkBack order = visual order),
- * same labels/hints; tiles keep ≥48dp targets and 24dp glyphs.
+ * The owner's defect list for the old Home: excessive vertical
+ * stacking, oversized repetitive cards, unbalanced spacing, weak
+ * hierarchy, too much text inside cards. The recomposition keeps
+ * every destination and every datum the old screen showed, in a
+ * compact order: (1) compact brand header (logo + name/tagline,
+ * one-line greeting, date), (2) the «المساعد الذكي» hero, (3) the
+ * four core features as a 2×2 grid with ONE-line subtitles, (4) the
+ * SOS safety strip (danger treatment; same trigger flow as the
+ * Assistance/Alerts SOS buttons), (5) the glasses status as a
+ * compact chip row, (6) ONE combined «الموقع والأماكن» section —
+ * the family/guardian strip (real sharing state) as its status
+ * line, then the last result with Repeat — and the active-alert
+ * banner when one is present. TalkBack order = visual order;
+ * every target ≥ 48dp.
  */
 import { Redirect, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../../ai/SpeechService';
 import { AccessibleButton } from '../../components/AccessibleButton';
 import {
@@ -26,25 +28,28 @@ import {
   FeatureGrid,
   FeatureTile,
   HeroAction,
-  QuietGroup,
   Screen,
   SectionHeader,
+  SosStrip,
   StatusStrip,
 } from '../../components/ui';
 import { historyStore, type HistoryItem } from '../../data/HistoryStore';
 import { getGuardianService } from '../../guardian/GuardianService';
 import { alertHistoryStore, type AlertEvent } from '../../hazards/AlertHistoryStore';
+import { triggerSos } from '../../hazards/HazardService';
 import { t } from '../../i18n/strings';
 import { announceNearbyPlaces } from '../../places/proximity';
 import { pushOnce } from '../../state/navGuard';
 import { useSettings } from '../../state/SettingsContext';
 import { GLYPHS } from '../../theme/glyphs';
+import { spacing } from '../../theme/tokens';
 
 export default function HomeScreen() {
   const { settings, colors, type, loaded } = useSettings();
   const lang = settings.language;
   const [last, setLast] = useState<HistoryItem | null>(null);
   const [activeAlert, setActiveAlert] = useState<AlertEvent | null>(null);
+  const [sosMessage, setSosMessage] = useState('');
 
   const refresh = useCallback(async () => {
     const items = await historyStore.list();
@@ -90,6 +95,17 @@ export default function HomeScreen() {
     }
   };
 
+  // Same SOS flow as Assistance/Alerts: triggerSos records the
+  // event, notifies guardians when SOS sharing is on, and speaks
+  // the honest outcome; the strip also surfaces it as live text.
+  const onSos = async () => {
+    const outcome = await triggerSos(lang);
+    setSosMessage(outcome.message);
+    if (settings.announcements) {
+      void speechService.speakAnnouncement(outcome.message, lang);
+    }
+  };
+
   const dateLine = new Date().toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US', {
     weekday: 'long',
     day: 'numeric',
@@ -97,7 +113,7 @@ export default function HomeScreen() {
   });
 
   return (
-    <Screen>
+    <Screen style={{ paddingHorizontal: spacing.md, paddingTop: spacing.md, gap: spacing.sm }}>
       <AppHeader
         brandName={t(lang, 'appName')}
         tagline={t(lang, 'tagline')}
@@ -113,7 +129,7 @@ export default function HomeScreen() {
         onPress={() => pushOnce('/voice')}
       />
 
-      {/* Core features — a balanced 2×2 grid of compact tiles. */}
+      {/* Core features — a balanced 2×2 grid, one-line subtitles. */}
       <FeatureGrid>
         <FeatureTile
           layout="grid"
@@ -144,12 +160,23 @@ export default function HomeScreen() {
           glyph={GLYPHS.alerts}
           title={t(lang, 'viewAlerts')}
           subtitle={t(lang, 'alertsSubtitle')}
+          hint={t(lang, 'alertsSubtitle')}
           onPress={() => pushOnce('/alerts')}
         />
       </FeatureGrid>
 
-      {/* Smart glasses — honest NotAvailable state, one compact line. */}
+      {/* SOS — one distinguished full-width safety strip. */}
+      <SosStrip
+        glyph={GLYPHS.sos}
+        title={t(lang, 'sosTitle')}
+        actionLabel={t(lang, 'sosButton')}
+        message={sosMessage}
+        onPress={() => void onSos()}
+      />
+
+      {/* Smart glasses — honest NotAvailable state, one compact row. */}
       <StatusStrip
+        compact
         glyph={GLYPHS.glasses}
         title={t(lang, 'glassesCardTitle')}
         pillLabel={t(lang, 'glassesCardStatus')}
@@ -157,8 +184,12 @@ export default function HomeScreen() {
         pillGlyph={GLYPHS.glasses}
       />
 
-      {/* Family safety — the REAL sharing state, one tappable row. */}
+      {/* Location & places — ONE combined section: the family strip
+          carries the real location-sharing state as its status
+          line; the last result (with Repeat) closes the section. */}
+      <SectionHeader title={t(lang, 'locationAndPlaces')} glyph={GLYPHS.location} />
       <StatusStrip
+        compact
         glyph={GLYPHS.family}
         glyphTone="primary"
         title={t(lang, 'familySafety')}
@@ -177,20 +208,22 @@ export default function HomeScreen() {
         </Banner>
       )}
 
-      <SectionHeader title={t(lang, 'lastResult')} glyph={GLYPHS.history} />
-      <QuietGroup>
+      <View style={styles.lastResult}>
+        <Text style={{ color: colors.textSecondary, fontSize: type.caption, fontWeight: '700' }}>
+          {t(lang, 'lastResult')}
+        </Text>
         <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
           {lastSummary || t(lang, 'noResultYet')}
         </Text>
         {last ? (
           <AccessibleButton label={t(lang, 'repeat')} glyph={GLYPHS.repeat} onPress={repeatLastResult} variant="secondary" />
         ) : null}
-      </QuietGroup>
-
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   body: { lineHeight: 29 },
+  lastResult: { gap: spacing.xs },
 });

@@ -252,6 +252,25 @@ describe('copy: the assistant has ONE name (owner order, v1.1.2)', () => {
   });
 });
 
+describe('copy: owner tile subtitles + home section (v1.1.4)', () => {
+  it('the four feature tiles carry the owner-mandated subtitles', () => {
+    expect(ar.identifyObjectsHint).toBe('استمع إلى وصف ما حولك');
+    expect(ar.readTextHint).toBe('التقط النص واستمع إليه');
+    expect(ar.placesHint).toBe('اعثر على الأماكن التي حفظتها');
+    // Scan-based truth: alerts come from scans, never continuous watch.
+    expect(ar.alertsSubtitle).toBe('تنبيهات عند رصد مخاطر محتملة');
+    expect(en.identifyObjectsHint).toBe('Listen to a description of your surroundings');
+    expect(en.readTextHint).toBe('Capture text and listen to it');
+    expect(en.placesHint).toBe('Find your saved places');
+    expect(en.alertsSubtitle).toBe('Alerts when a scan spots possible hazards');
+  });
+
+  it('the combined home section has one name in both languages', () => {
+    expect(ar.locationAndPlaces).toBe('الموقع والأماكن');
+    expect(en.locationAndPlaces).toBe('Location and places');
+  });
+});
+
 describe('copy: release notes obey the same language rules', () => {
   it('no release-note Arabic field contains banned dialect or the retired label', () => {
     const hits: string[] = [];
