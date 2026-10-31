@@ -153,7 +153,10 @@ export default function TabsLayout() {
           paddingBottom: insets.bottom + 6,
           paddingTop: 6,
         },
-        tabBarItemStyle: { minHeight: 58 },
+        // paddingHorizontal 0 reclaims the library's built-in 5px
+        // item padding so the label box spans the full tab width —
+        // the fit-size derivation below assumes tabWidth − 2.
+        tabBarItemStyle: { minHeight: 58, paddingHorizontal: 0 },
         sceneStyle: { backgroundColor: colors.background },
       }}
     >
