@@ -97,7 +97,8 @@ export default function GuardianScreen() {
   const [acceptError, setAcceptError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [, setNowTick] = useState(0);
+  // Current time as STATE (set from an effect) so render stays pure.
+  const [nowTs, setNowTs] = useState(0);
 
   // Background tracking + derived sharing state (real signal reads).
   const [bgStarted, setBgStarted] = useState(false);
@@ -253,10 +254,11 @@ export default function GuardianScreen() {
     };
   }, [sharing]);
 
-  // Expiry display for a created invite (re-render every 30 s).
+  // Expiry display for a created invite (refresh the clock every 30 s).
   useEffect(() => {
     if (!code?.expiresAt) return;
-    const timer = setInterval(() => setNowTick((n) => n + 1), 30_000);
+    setNowTs(Date.now());
+    const timer = setInterval(() => setNowTs(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, [code]);
 
@@ -528,7 +530,7 @@ export default function GuardianScreen() {
     );
   }
 
-  const codeExpired = code?.expiresAt ? Date.now() > Date.parse(code.expiresAt) : false;
+  const codeExpired = code?.expiresAt ? nowTs > 0 && nowTs > Date.parse(code.expiresAt) : false;
 
   return (
     <Screen>

@@ -77,14 +77,14 @@ export interface GatewayQueryResult {
 }
 
 export interface GatewayClient {
-  from(table: string): any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  from(table: string): any;
   functions: {
     invoke(
       name: string,
       options?: { body?: Record<string, unknown> },
     ): Promise<{ data: unknown; error: unknown }>;
   };
-  channel(name: string): any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  channel(name: string): any;
   removeChannel(channel: unknown): Promise<unknown>;
 }
 
