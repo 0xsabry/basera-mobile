@@ -123,6 +123,19 @@ export function Icon({
 /* Screen scaffold                                                     */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Tablet / large-screen cap (device-compat fix): on wide screens the
+ * content column stops at 600dp and centers, instead of stretching
+ * phone layouts edge-to-edge across a tablet. The screen background
+ * stays full-bleed (the outer ScrollView/View still paints the whole
+ * window); only the content View is capped. On phones (< 600dp wide)
+ * nothing changes. Every absolute-positioned element in the app is
+ * anchored inside its own relative container (detect overlay boxes,
+ * map tiles, QR corners, brand dot), never to the window, so the cap
+ * cannot misplace them.
+ */
+export const SCREEN_MAX_WIDTH = 600;
+
 export function Screen({
   children,
   scroll = true,
@@ -135,7 +148,18 @@ export function Screen({
   const { colors } = useSettings();
   const insets = useSafeAreaInsets();
   const content = (
-    <View style={[styles.screenContent, { paddingBottom: spacing.xl + insets.bottom }, style]}>
+    <View
+      style={[
+        styles.screenContent,
+        {
+          paddingBottom: spacing.xl + insets.bottom,
+          width: '100%',
+          maxWidth: SCREEN_MAX_WIDTH,
+          alignSelf: 'center',
+        },
+        style,
+      ]}
+    >
       {children}
     </View>
   );
