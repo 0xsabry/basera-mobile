@@ -157,28 +157,49 @@ result block (caption label + summary + Repeat). Every datum and
 destination from the old screen is preserved; TalkBack order =
 visual order; all targets ≥ 48dp.
 
-**Measured height (web preview, 390×844, AR dark, no alert, no
-last result):** see the sprint report — content height vs the
-844dp viewport, target ≈ 1.2×.
+**Measured height (web preview, AR dark, empty states):** full
+content height **865px vs the 844 viewport = 1.02×** at 390×844,
+and **890 vs 740 = 1.20×** at 360×740 — at or under the ≈1.2
+target on both sizes (measured as the ScrollView's scrollHeight
+in the preview DOM).
 
 ## 6. Bottom navigation — single-line derivation
 
 The two-line zone (bar 88dp) is reverted; the bar is 70dp. Label
-size is derived, not fixed: browser text measurement of the
-longest labels (weight 800) gave advance ratios of **7.19 px per
-1px font size** for «المساعد الذكي» and **8.04** for "Smart
-Assistant" (DOM + canvas agreed). With safety margins (7.3 / 8.1)
-the layout computes `size = clamp(8.5, floor((tabWidth − 2) /
-ratio × 2) / 2, 13)` from `useWindowDimensions`, so at 360dp the
-labels render at AR 9.5 / EN 8.5, at 390dp AR 10 / EN 9 — always
-one line. `adjustsFontSizeToFit` + `minimumFontScale 0.8` remain
-as the on-device net for font-metric differences (Android's
-Roboto/Noto advances are narrower than the preview stack's, so
-the preview is the binding case). Proof: in the 360×740 and
-390×844 previews every tab label's `scrollWidth ≤ clientWidth`
-(measured in the DOM) and the crops show no ellipsis. Bar labels
-do not follow the app text scale (fixed bar geometry; TalkBack
-reads the full label) — the same cap the previous design applied.
+size is derived, not fixed. Two measured facts drive it:
+
+1. Advance ratios of the longest labels: «المساعد الذكي» ≈ **7.2
+   px per 1px font size** (DOM-measured at weights 600 AND 800 —
+   Arabic advances barely change with weight here), "Smart
+   Assistant" ≈ **8.05** at weight 800 (canvas) / 7.65 at 600
+   (DOM). Working ratios carry a margin: **AR 7.4, EN 8.2**.
+2. The label box is NOT the tab width: the vendored bottom-tabs
+   library hardcodes `padding: 5` on the item button, and
+   `tabBarItemStyle` styles only the wrapper — it cannot override
+   that padding (confirmed in the library source and the preview
+   DOM: the label's clientWidth was 62 inside a 72px tab). The
+   derivation therefore uses `tabWidth − 12` (10 padding + 2
+   safety). An earlier revision of this sprint assumed the
+   padding away and the preview caught the overflow (scrollWidth
+   68 > clientWidth 62) — exactly why the proof below is DOM
+   measurement, not arithmetic.
+
+`size = clamp(7, floor((tabWidth − 12) / ratio × 2) / 2, 13)`
+from `useWindowDimensions`: at 360dp → AR 8.0 / EN 7.0; at 390dp
+→ AR 8.5 / EN 8.0. `adjustsFontSizeToFit` + `minimumFontScale
+0.8` remain as the on-device net (Android's Roboto/Noto advances
+are narrower than the preview stack's, so the preview is the
+binding case).
+
+**Proof (preview DOM, final build):** every tab label measures
+`scrollWidth == clientWidth` (fits, shrink-wrapped) — AR 390:
+«المساعد الذكي» 61/61 · AR 360: 58/58 · AR 360 on the Assistance
+tab (active, weight 800): 61/61 · EN 360: "Smart Assistant"
+53/53; all other labels fit with room. The 360dp crops
+(`tabbar-v6-*.png`) show complete single-line labels, no
+ellipsis. Bar labels do not follow the app text scale (fixed bar
+geometry; TalkBack reads the full label) — the same cap the
+previous design applied.
 
 ## 7. Per-screen consistency findings (§5 sweep)
 
