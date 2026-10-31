@@ -1,24 +1,32 @@
+/**
+ * Invite-code input handling — DEPLOYED contract. (Updated from the old
+ * 6-digit-only tests: the deployed Edge Function chooses the code
+ * format, so the client accepts plausible tokens instead of enforcing
+ * exactly 6 digits. See docs/SUPABASE_INTEGRATION.md.)
+ */
 import { formatPairingCode, isPairingCodeFormat, normalizePairingCodeInput } from '../pairing';
 
-describe('pairing code input handling', () => {
-  it('accepts plain, spaced, and dashed 6-digit codes', () => {
+describe('invite code input handling', () => {
+  it('accepts numeric and alphanumeric codes, strips grouping spaces', () => {
     expect(normalizePairingCodeInput('123456')).toBe('123456');
     expect(normalizePairingCodeInput('123 456')).toBe('123456');
-    expect(normalizePairingCodeInput('123-456')).toBe('123456');
-    expect(isPairingCodeFormat(' 123 456 ')).toBe(true);
+    expect(normalizePairingCodeInput('  XY29-KD  ')).toBe('XY29-KD');
+    expect(normalizePairingCodeInput('aB3dEf9')).toBe('aB3dEf9'); // case preserved
+    expect(isPairingCodeFormat('1234')).toBe(true);
   });
 
-  it('rejects wrong lengths and non-codes', () => {
-    expect(normalizePairingCodeInput('12345')).toBeNull();
-    expect(normalizePairingCodeInput('1234567')).toBeNull();
-    expect(normalizePairingCodeInput('abcdef')).toBeNull();
+  it('rejects empty, too short, and non-token input', () => {
     expect(normalizePairingCodeInput('')).toBeNull();
-    expect(isPairingCodeFormat('12')).toBe(false);
+    expect(normalizePairingCodeInput('ab1')).toBeNull();
+    expect(normalizePairingCodeInput('code with spaces!')).toBeNull();
+    expect(normalizePairingCodeInput('x'.repeat(65))).toBeNull();
+    expect(isPairingCodeFormat('!!')).toBe(false);
   });
 
-  it('formats for display as two groups of three', () => {
+  it('formats only pure 6-digit codes for display; others pass through', () => {
     expect(formatPairingCode('123456')).toBe('123 456');
     expect(formatPairingCode('000001')).toBe('000 001');
-    expect(formatPairingCode('xyz')).toBe('xyz');
+    expect(formatPairingCode('XY29-KD')).toBe('XY29-KD');
+    expect(formatPairingCode('1234567')).toBe('1234567');
   });
 });
