@@ -1,9 +1,24 @@
+/**
+ * Family & guardian — pairing, sharing consent, background tracking,
+ * SOS. V1.1 redesign: design-system cards/pills/section headers; every
+ * service call, consent flow and honest status derivation is unchanged
+ * (see git history — presentation only).
+ */
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, StyleSheet, Switch, Text, View } from 'react-native';
 import { speechService } from '../../ai/SpeechService';
 import { AccessibleButton } from '../../components/AccessibleButton';
 import { QrCodeView } from '../../components/QrCodeView';
+import {
+  Card,
+  EmptyState,
+  ListRow,
+  Screen,
+  SectionHeader,
+  StatusPill,
+  type Tone,
+} from '../../components/ui';
 import {
   getGuardianService,
   type GuardianLink,
@@ -24,7 +39,8 @@ import { getLastSuccessfulUploadAt } from '../../guardian/uploadMeta';
 import { triggerSos } from '../../hazards/HazardService';
 import { t, type StringKey } from '../../i18n/strings';
 import { useSettings } from '../../state/SettingsContext';
-import { MIN_TOUCH, spacing, typeScale } from '../../theme/tokens';
+import { GLYPHS } from '../../theme/glyphs';
+import { spacing } from '../../theme/tokens';
 
 const SHARING_STATE_KEY: Record<SharingState, StringKey> = {
   off: 'sharingStateOff',
@@ -36,8 +52,18 @@ const SHARING_STATE_KEY: Record<SharingState, StringKey> = {
   'sync-pending': 'sharingStateSyncPending',
 };
 
+const SHARING_STATE_TONE: Record<SharingState, Tone> = {
+  off: 'neutral',
+  'foreground-only': 'success',
+  'background-active': 'success',
+  'permission-denied': 'danger',
+  'gps-unavailable': 'warning',
+  'offline-queueing': 'warning',
+  'sync-pending': 'info',
+};
+
 export default function GuardianScreen() {
-  const { settings, colors, update } = useSettings();
+  const { settings, colors, type, update } = useSettings();
   const lang = settings.language;
   const service = getGuardianService();
   const [sharing] = useState(() => getLocationSharingService());
@@ -267,248 +293,247 @@ export default function GuardianScreen() {
     ]);
   };
 
+  const body = (extra?: object) => [styles.body, { color: colors.text, fontSize: type.body }, extra];
+  const bodySecondary = () => [styles.body, { color: colors.textSecondary, fontSize: type.body }];
+
   if (!service.isConfigured()) {
     return (
-      <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-        <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-          {t(lang, 'guardian')}
-        </Text>
-        <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
-          {t(lang, 'guardianNotConfigured')}
-        </Text>
-      </ScrollView>
+      <Screen>
+        <SectionHeader title={t(lang, 'guardian')} glyph={GLYPHS.family} />
+        <EmptyState glyph={GLYPHS.family} title={t(lang, 'guardian')} body={t(lang, 'guardianNotConfigured')} />
+      </Screen>
     );
   }
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-        {t(lang, 'guardian')}
-      </Text>
-      <Text style={[styles.body, { color: colors.textSecondary }]}>{t(lang, 'guardianLocationNote')}</Text>
+    <Screen>
+      <SectionHeader title={t(lang, 'guardian')} glyph={GLYPHS.family} />
+      <Text style={bodySecondary()}>{t(lang, 'guardianLocationNote')}</Text>
 
       {loaded && !user && (
-        <View>
-          <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'guardianSignInNeeded')}</Text>
+        <Card>
+          <Text style={body()}>{t(lang, 'guardianSignInNeeded')}</Text>
           <AccessibleButton label={t(lang, 'guardianOpenSignIn')} onPress={() => router.push('/guardian-auth')} />
-        </View>
+        </Card>
       )}
 
       {user && (
-        <View>
-          <Text style={[styles.body, { color: colors.text }]}>
-            {t(lang, 'guardianSignedInAs')}: {user.email ?? user.id}
-          </Text>
-          <AccessibleButton
-            label={t(lang, 'guardianSignOut')}
-            variant="secondary"
-            onPress={() => {
-              void (async () => {
-                // Purge first (needs the session), then sign out.
-                if (settings.guardianSharingEnabled) {
-                  await sharingRef.current?.disableSharing().catch(() => undefined);
-                  await update({ guardianSharingEnabled: false });
-                } else {
-                  await sharingRef.current?.stopWatching();
-                }
-                await service.signOut().catch(() => undefined);
-                await refresh();
-              })();
-            }}
-          />
-
-          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-            {t(lang, 'guardianSharing')}
-          </Text>
-          <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'guardianSharingExpl')}</Text>
-          <Text style={[styles.body, { color: colors.textSecondary }]}>{t(lang, 'guardianPermissionExpl')}</Text>
-          <View
-            style={[styles.row, { borderColor: colors.border, backgroundColor: colors.surface }]}
-            accessible
-            accessibilityLabel={t(lang, 'guardianSharing')}
-          >
-            <Text style={[styles.body, { color: colors.text, flex: 1 }]}>
-              {settings.guardianSharingEnabled ? t(lang, 'guardianSharingOn') : t(lang, 'guardianSharingOff')}
+        <>
+          <Card>
+            <Text style={body()}>
+              {t(lang, 'guardianSignedInAs')}: {user.email ?? user.id}
             </Text>
-            <Switch
-              accessibilityLabel={t(lang, 'guardianSharing')}
-              value={settings.guardianSharingEnabled}
-              onValueChange={(v) => void toggleSharing(v)}
-              trackColor={{ true: colors.primary }}
-            />
-          </View>
-
-          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-            {t(lang, 'guardianPrivacyTitle')}
-          </Text>
-          {/* Local truth — always exact, works offline. */}
-          <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
-            {settings.guardianSharingEnabled ? t(lang, 'guardianSharingOn') : t(lang, 'guardianLocalOff')}
-          </Text>
-          {/* Server truth — 'confirmed' renders only after the purge RPC
-              actually succeeded (see PendingDeletion success branch). */}
-          {deletionServerMessageKey(deletion) !== null && (
-            <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
-              {t(lang, deletionServerMessageKey(deletion)!)}
-              {deletion.state === 'confirmed' && deletion.confirmedAt
-                ? ` — ${new Date(deletion.confirmedAt).toLocaleString()}`
-                : ''}
-            </Text>
-          )}
-          {deletion.state === 'pending' && settings.guardianSharingEnabled && (
-            <Text style={[styles.body, { color: colors.textSecondary }]}>
-              {t(lang, 'guardianDeletionPendingNote')}
-            </Text>
-          )}
-          {deletion.state === 'pending' && (
             <AccessibleButton
-              label={t(lang, 'guardianDeletionRetry')}
+              label={t(lang, 'guardianSignOut')}
               variant="secondary"
-              onPress={() => void sharingRef.current?.retryPendingDeletion()}
+              onPress={() => {
+                void (async () => {
+                  // Purge first (needs the session), then sign out.
+                  if (settings.guardianSharingEnabled) {
+                    await sharingRef.current?.disableSharing().catch(() => undefined);
+                    await update({ guardianSharingEnabled: false });
+                  } else {
+                    await sharingRef.current?.stopWatching();
+                  }
+                  await service.signOut().catch(() => undefined);
+                  await refresh();
+                })();
+              }}
             />
-          )}
+          </Card>
+
+          <SectionHeader title={t(lang, 'guardianSharing')} glyph={GLYPHS.location} />
+          <Card>
+            <Text style={body()}>{t(lang, 'guardianSharingExpl')}</Text>
+            <Text style={bodySecondary()}>{t(lang, 'guardianPermissionExpl')}</Text>
+            <ListRow
+              glyph={GLYPHS.location}
+              title={settings.guardianSharingEnabled ? t(lang, 'guardianSharingOn') : t(lang, 'guardianSharingOff')}
+              accessibilityLabel={t(lang, 'guardianSharing')}
+              right={
+                <Switch
+                  accessibilityLabel={t(lang, 'guardianSharing')}
+                  value={settings.guardianSharingEnabled}
+                  onValueChange={(v) => void toggleSharing(v)}
+                  trackColor={{ true: colors.primary }}
+                />
+              }
+            />
+          </Card>
+
+          <SectionHeader title={t(lang, 'guardianPrivacyTitle')} glyph={GLYPHS.privacy} />
+          <Card>
+            {/* Local truth — always exact, works offline. */}
+            <View style={styles.pillRow}>
+              <Text style={[body(), styles.flex1]}>
+                {settings.guardianSharingEnabled ? t(lang, 'guardianSharingOn') : t(lang, 'guardianLocalOff')}
+              </Text>
+              <StatusPill
+                tone={settings.guardianSharingEnabled ? 'success' : 'neutral'}
+                label={settings.guardianSharingEnabled ? t(lang, 'guardianSharingOn') : t(lang, 'guardianLocalOff')}
+              />
+            </View>
+            {/* Server truth — 'confirmed' renders only after the purge RPC
+                actually succeeded (see PendingDeletion success branch). */}
+            {deletionServerMessageKey(deletion) !== null && (
+              <Text accessibilityLiveRegion="polite" style={body()}>
+                {t(lang, deletionServerMessageKey(deletion)!)}
+                {deletion.state === 'confirmed' && deletion.confirmedAt
+                  ? ` — ${new Date(deletion.confirmedAt).toLocaleString()}`
+                  : ''}
+              </Text>
+            )}
+            {deletion.state === 'pending' && settings.guardianSharingEnabled && (
+              <Text style={bodySecondary()}>{t(lang, 'guardianDeletionPendingNote')}</Text>
+            )}
+            {deletion.state === 'pending' && (
+              <AccessibleButton
+                label={t(lang, 'guardianDeletionRetry')}
+                variant="secondary"
+                onPress={() => void sharingRef.current?.retryPendingDeletion()}
+              />
+            )}
+          </Card>
 
           {/* Sharing status — derived from REAL signals only. */}
-          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-            {t(lang, 'sharingStateLabel')}
-          </Text>
-          <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
-            {t(lang, SHARING_STATE_KEY[sharingState])}
-          </Text>
-          <Text style={[styles.body, { color: colors.text }]}>
-            {t(lang, 'lastUpdateLabel')}:{' '}
-            {lastUploadAt
-              ? new Date(lastUploadAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')
-              : t(lang, 'lastUpdateNever')}
-          </Text>
-          {queueLen > 0 && (
-            <Text style={[styles.body, { color: colors.text }]}>
-              {t(lang, 'queuedPointsLabel')}: {queueLen}
+          <SectionHeader title={t(lang, 'sharingStateLabel')} glyph={GLYPHS.updates} />
+          <Card>
+            <View style={styles.pillRow}>
+              <Text accessibilityLiveRegion="polite" style={[body(), styles.flex1]}>
+                {t(lang, SHARING_STATE_KEY[sharingState])}
+              </Text>
+              <StatusPill tone={SHARING_STATE_TONE[sharingState]} label={t(lang, SHARING_STATE_KEY[sharingState])} />
+            </View>
+            <Text style={body()}>
+              {t(lang, 'lastUpdateLabel')}:{' '}
+              {lastUploadAt
+                ? new Date(lastUploadAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')
+                : t(lang, 'lastUpdateNever')}
             </Text>
-          )}
+            {queueLen > 0 && (
+              <Text style={body()}>
+                {t(lang, 'queuedPointsLabel')}: {queueLen}
+              </Text>
+            )}
+          </Card>
 
           {/* Background tracking — separate, explained opt-in. */}
-          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-            {t(lang, 'bgTrackingTitle')}
-          </Text>
-          <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'bgTrackingExpl')}</Text>
-          <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
-            {bgStarted ? t(lang, 'bgTrackingActive') : t(lang, 'bgTrackingInactive')}
-          </Text>
-          {!!bgMessage && (
-            <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
-              {bgMessage}
-            </Text>
-          )}
-          {bgStarted ? (
-            <AccessibleButton
-              label={t(lang, 'bgTrackingDisable')}
-              variant="danger"
-              onPress={() => void disableBackground()}
-            />
-          ) : (
-            <AccessibleButton label={t(lang, 'bgTrackingEnable')} onPress={() => void enableBackground()} />
-          )}
-          {bgDenied && (
-            <AccessibleButton
-              label={t(lang, 'openSystemSettings')}
-              variant="secondary"
-              onPress={() => void Linking.openSettings()}
-            />
-          )}
+          <SectionHeader title={t(lang, 'bgTrackingTitle')} glyph={GLYPHS.location} tone="info" />
+          <Card>
+            <Text style={body()}>{t(lang, 'bgTrackingExpl')}</Text>
+            <View style={styles.pillRow}>
+              <Text accessibilityLiveRegion="polite" style={[body(), styles.flex1]}>
+                {bgStarted ? t(lang, 'bgTrackingActive') : t(lang, 'bgTrackingInactive')}
+              </Text>
+              <StatusPill
+                tone={bgStarted ? 'success' : 'neutral'}
+                label={bgStarted ? t(lang, 'bgTrackingActive') : t(lang, 'bgTrackingInactive')}
+              />
+            </View>
+            {!!bgMessage && (
+              <Text accessibilityLiveRegion="polite" style={body()}>
+                {bgMessage}
+              </Text>
+            )}
+            {bgStarted ? (
+              <AccessibleButton
+                label={t(lang, 'bgTrackingDisable')}
+                variant="danger"
+                onPress={() => void disableBackground()}
+              />
+            ) : (
+              <AccessibleButton label={t(lang, 'bgTrackingEnable')} onPress={() => void enableBackground()} />
+            )}
+            {bgDenied && (
+              <AccessibleButton
+                label={t(lang, 'openSystemSettings')}
+                variant="secondary"
+                onPress={() => void Linking.openSettings()}
+              />
+            )}
+          </Card>
 
           {/* SOS — stored locally; guardian notification attempted only
               when configured, and the outcome is stated honestly. */}
-          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-            {t(lang, 'sosTitle')}
-          </Text>
-          <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'sosExpl')}</Text>
-          <AccessibleButton
-            label={t(lang, 'sosButton')}
-            variant="danger"
-            onPress={() => {
-              void (async () => {
-                const outcome = await triggerSos(lang);
-                setBgMessage(outcome.message);
-              })();
-            }}
-          />
+          <SectionHeader title={t(lang, 'sosTitle')} glyph={GLYPHS.sos} tone="danger" />
+          <Card tone="danger">
+            <Text style={body()}>{t(lang, 'sosExpl')}</Text>
+            <AccessibleButton
+              label={t(lang, 'sosButton')}
+              glyph={GLYPHS.sos}
+              variant="danger"
+              onPress={() => {
+                void (async () => {
+                  const outcome = await triggerSos(lang);
+                  setBgMessage(outcome.message);
+                })();
+              }}
+            />
+          </Card>
 
-          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-            {t(lang, 'guardianPairingTitle')}
-          </Text>
-          <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'guardianPairingExpl')}</Text>
-          <AccessibleButton label={t(lang, 'guardianCreateCode')} onPress={() => void createCode()} disabled={busy} />
-          {code && (
-            <View style={styles.codeBox}>
-              <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'guardianYourCode')}</Text>
-              <Text
-                accessibilityLabel={`${t(lang, 'guardianYourCode')}: ${code.code}`}
-                style={[styles.codeText, { color: colors.text }]}
-              >
-                {formatPairingCode(code.code)}
-              </Text>
-              <QrCodeView value={code.code} accessibilityLabel={`${t(lang, 'guardianYourCode')}: ${code.code}`} />
-              <Text style={[styles.body, { color: colors.textSecondary }]}>{t(lang, 'guardianCodeExpires')}</Text>
-            </View>
-          )}
+          <SectionHeader title={t(lang, 'guardianPairingTitle')} glyph={GLYPHS.family} />
+          <Card>
+            <Text style={body()}>{t(lang, 'guardianPairingExpl')}</Text>
+            <AccessibleButton label={t(lang, 'guardianCreateCode')} onPress={() => void createCode()} disabled={busy} />
+            {code && (
+              <View style={styles.codeBox}>
+                <Text style={body()}>{t(lang, 'guardianYourCode')}</Text>
+                <Text
+                  accessibilityLabel={`${t(lang, 'guardianYourCode')}: ${code.code}`}
+                  style={[styles.codeText, { color: colors.text }]}
+                >
+                  {formatPairingCode(code.code)}
+                </Text>
+                <View style={[styles.qrFrame, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
+                  <QrCodeView value={code.code} accessibilityLabel={`${t(lang, 'guardianYourCode')}: ${code.code}`} />
+                </View>
+                <Text style={bodySecondary()}>{t(lang, 'guardianCodeExpires')}</Text>
+              </View>
+            )}
+          </Card>
 
-          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-            {t(lang, 'guardianRequestsTitle')}
-          </Text>
+          <SectionHeader title={t(lang, 'guardianRequestsTitle')} glyph={GLYPHS.notifications} />
           {requests.length === 0 && (
-            <Text style={[styles.body, { color: colors.textSecondary }]}>{t(lang, 'guardianNoRequests')}</Text>
+            <Text style={bodySecondary()}>{t(lang, 'guardianNoRequests')}</Text>
           )}
           {requests.map((link) => (
-            <View key={link.id} style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-              <Text style={[styles.body, { color: colors.text }]}>
-                {link.otherPartyName ?? link.guardianId}
-              </Text>
+            <Card key={link.id}>
+              <Text style={body()}>{link.otherPartyName ?? link.guardianId}</Text>
               <AccessibleButton label={t(lang, 'guardianApprove')} onPress={() => void actOnRequest(link, true)} />
               <AccessibleButton label={t(lang, 'guardianDeny')} variant="danger" onPress={() => void actOnRequest(link, false)} />
-            </View>
+            </Card>
           ))}
 
-          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-            {t(lang, 'guardianMyGuardians')}
-          </Text>
+          <SectionHeader title={t(lang, 'guardianMyGuardians')} glyph={GLYPHS.family} tone="success" />
           {guardians.length === 0 && (
-            <Text style={[styles.body, { color: colors.textSecondary }]}>{t(lang, 'guardianNoGuardians')}</Text>
+            <Text style={bodySecondary()}>{t(lang, 'guardianNoGuardians')}</Text>
           )}
           {guardians.map((link) => (
-            <View key={link.id} style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-              <Text style={[styles.body, { color: colors.text }]}>
-                {link.otherPartyName ?? link.guardianId} — {t(lang, 'guardianStatusApproved')}
-              </Text>
+            <Card key={link.id}>
+              <View style={styles.pillRow}>
+                <Text style={[body(), styles.flex1]}>{link.otherPartyName ?? link.guardianId}</Text>
+                <StatusPill tone="success" label={t(lang, 'guardianStatusApproved')} />
+              </View>
               <AccessibleButton label={t(lang, 'guardianRevoke')} variant="danger" onPress={() => revoke(link)} />
-            </View>
+            </Card>
           ))}
-        </View>
+        </>
       )}
 
       {!!message && (
-        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger }]}>
+        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger, fontSize: type.body }]}>
           {message}
         </Text>
       )}
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.md },
-  heading: { fontSize: typeScale.heading, fontWeight: '700', marginTop: spacing.sm },
-  body: { fontSize: typeScale.body, lineHeight: 29 },
+  body: { lineHeight: 29 },
+  flex1: { flex: 1 },
+  pillRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   codeText: { fontSize: 40, fontWeight: '800', textAlign: 'center', letterSpacing: 4 },
   codeBox: { gap: spacing.sm, alignItems: 'center' },
-  card: { borderWidth: 1.5, borderRadius: 14, padding: spacing.md, gap: 4 },
-  row: {
-    borderWidth: 1.5,
-    borderRadius: 14,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: MIN_TOUCH,
-    gap: spacing.sm,
-  },
+  qrFrame: { padding: spacing.md, borderRadius: 16, borderWidth: 1 },
 });

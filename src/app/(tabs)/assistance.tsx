@@ -4,19 +4,34 @@
  * wired to the real services, and REAL permission statuses for camera
  * and microphone (read from the native modules on every focus — never
  * assumed). SOS lives here too (hazard system).
+ *
+ * V1.1 redesign: composed from the design system (hero + feature
+ * tiles + status rows) — all handlers and permission logic unchanged.
  */
 import { useFocusEffect } from 'expo-router';
 import { Camera } from 'expo-camera';
 import React, { useCallback, useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text } from 'react-native';
 import { speechService } from '../../ai/SpeechService';
 import { voiceCommandService } from '../../ai/voiceSingleton';
 import { AccessibleButton } from '../../components/AccessibleButton';
+import {
+  ActionGrid,
+  Card,
+  CompactAction,
+  FeatureTile,
+  HeroAction,
+  ListRow,
+  Screen,
+  SectionHeader,
+  StatusPill,
+  type Tone,
+} from '../../components/ui';
 import { triggerSos } from '../../hazards/HazardService';
 import { t, type StringKey } from '../../i18n/strings';
 import { pushOnce } from '../../state/navGuard';
 import { useSettings } from '../../state/SettingsContext';
-import { radius, spacing } from '../../theme/tokens';
+import { GLYPHS } from '../../theme/glyphs';
 
 type PermState = 'granted' | 'denied' | 'undetermined' | 'unknown';
 
@@ -24,6 +39,10 @@ function permLabel(lang: 'ar' | 'en', state: PermState): string {
   const key: StringKey =
     state === 'granted' ? 'permGranted' : state === 'denied' ? 'permDenied' : 'permUndetermined';
   return t(lang, key);
+}
+
+function permTone(state: PermState): Tone {
+  return state === 'granted' ? 'success' : state === 'denied' ? 'danger' : 'neutral';
 }
 
 export default function AssistanceScreen() {
@@ -62,53 +81,68 @@ export default function AssistanceScreen() {
     }
   };
 
-  const permRow = (label: string, state: PermState) => (
-    <View
-      style={[styles.row, { borderColor: colors.border, backgroundColor: colors.surface }]}
-      accessible
-      accessibilityLabel={`${label}: ${permLabel(lang, state)}`}
-    >
-      <Text style={[styles.body, { color: colors.text, flex: 1, fontSize: type.body }]}>{label}</Text>
-      <Text
-        style={[
-          styles.body,
-          {
-            fontSize: type.body,
-            fontWeight: '700',
-            color: state === 'granted' ? colors.success : state === 'denied' ? colors.danger : colors.textSecondary,
-          },
-        ]}
-      >
-        {permLabel(lang, state)}
-      </Text>
-    </View>
-  );
-
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <AccessibleButton
+    <Screen>
+      <HeroAction
         label={t(lang, 'startVoiceAssistant')}
         hint={t(lang, 'voiceHint')}
+        stateLabel={t(lang, 'voiceHeroState')}
+        glyph={GLYPHS.voice}
         onPress={() => pushOnce('/voice')}
       />
-      <AccessibleButton label={t(lang, 'detect')} hint={t(lang, 'detectHint')} onPress={() => pushOnce('/detect')} variant="secondary" />
-      <AccessibleButton label={t(lang, 'readText')} hint={t(lang, 'readTextHint')} onPress={() => pushOnce('/read')} variant="secondary" />
-      <AccessibleButton label={t(lang, 'identifyObjects')} hint={t(lang, 'identifyObjectsHint')} onPress={() => pushOnce('/detect')} variant="secondary" />
-      <AccessibleButton label={t(lang, 'places')} hint={t(lang, 'placesHint')} onPress={() => pushOnce('/places')} variant="secondary" />
-      <AccessibleButton label={t(lang, 'viewAlerts')} onPress={() => pushOnce('/alerts')} variant="secondary" />
+      <FeatureTile
+        glyph={GLYPHS.detect}
+        title={t(lang, 'detect')}
+        subtitle={t(lang, 'identifyObjectsHint')}
+        hint={t(lang, 'detectHint')}
+        onPress={() => pushOnce('/detect')}
+      />
+      <FeatureTile
+        glyph={GLYPHS.read}
+        tone="info"
+        title={t(lang, 'readText')}
+        subtitle={t(lang, 'readTextHint')}
+        hint={t(lang, 'readTextHint')}
+        onPress={() => pushOnce('/read')}
+      />
+      <FeatureTile
+        glyph={GLYPHS.places}
+        tone="info"
+        title={t(lang, 'places')}
+        subtitle={t(lang, 'placesHint')}
+        hint={t(lang, 'placesHint')}
+        onPress={() => pushOnce('/places')}
+      />
+      <FeatureTile
+        glyph={GLYPHS.alerts}
+        tone="warning"
+        title={t(lang, 'viewAlerts')}
+        subtitle={t(lang, 'alertsSubtitle')}
+        onPress={() => pushOnce('/alerts')}
+      />
 
-      <Text accessibilityRole="header" style={[styles.heading, { color: colors.text, fontSize: type.heading }]}>
-        {t(lang, 'speak')}
-      </Text>
-      <AccessibleButton label={t(lang, 'repeat')} onPress={() => void speechService.repeatLast()} variant="secondary" />
-      <AccessibleButton label={t(lang, 'stopSpeaking')} onPress={() => void speechService.stop()} variant="secondary" />
-      <AccessibleButton label={t(lang, 'stopListening')} onPress={() => void voiceCommandService.stopListening()} variant="secondary" />
+      <SectionHeader title={t(lang, 'speak')} glyph={GLYPHS.speak} />
+      <ActionGrid>
+        <CompactAction label={t(lang, 'repeat')} glyph={GLYPHS.repeat} onPress={() => void speechService.repeatLast()} />
+        <CompactAction label={t(lang, 'stopSpeaking')} glyph={GLYPHS.stop} onPress={() => void speechService.stop()} />
+        <CompactAction
+          label={t(lang, 'stopListening')}
+          glyph={GLYPHS.stop}
+          onPress={() => void voiceCommandService.stopListening()}
+        />
+      </ActionGrid>
 
-      <Text accessibilityRole="header" style={[styles.heading, { color: colors.text, fontSize: type.heading }]}>
-        {t(lang, 'permissionsTitle')}
-      </Text>
-      {permRow(t(lang, 'cameraPermission'), cameraPerm)}
-      {permRow(t(lang, 'micPermission'), micPerm)}
+      <SectionHeader title={t(lang, 'permissionsTitle')} glyph={GLYPHS.shield} />
+      <ListRow
+        glyph={GLYPHS.camera}
+        title={t(lang, 'cameraPermission')}
+        right={<StatusPill tone={permTone(cameraPerm)} label={permLabel(lang, cameraPerm)} />}
+      />
+      <ListRow
+        glyph={GLYPHS.mic}
+        title={t(lang, 'micPermission')}
+        right={<StatusPill tone={permTone(micPerm)} label={permLabel(lang, micPerm)} />}
+      />
       {(cameraPerm === 'denied' || micPerm === 'denied') && (
         <AccessibleButton
           label={t(lang, 'openSystemSettings')}
@@ -117,31 +151,20 @@ export default function AssistanceScreen() {
         />
       )}
 
-      <Text accessibilityRole="header" style={[styles.heading, { color: colors.text, fontSize: type.heading }]}>
-        {t(lang, 'sosTitle')}
-      </Text>
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'sosExpl')}</Text>
-      <AccessibleButton label={t(lang, 'sosButton')} variant="danger" onPress={() => void onSos()} />
-      {!!sosMessage && (
-        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-          {sosMessage}
-        </Text>
-      )}
-    </ScrollView>
+      <SectionHeader title={t(lang, 'sosTitle')} glyph={GLYPHS.sos} tone="danger" />
+      <Card tone="danger">
+        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'sosExpl')}</Text>
+        <AccessibleButton label={t(lang, 'sosButton')} glyph={GLYPHS.sos} variant="danger" onPress={() => void onSos()} />
+        {!!sosMessage && (
+          <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+            {sosMessage}
+          </Text>
+        )}
+      </Card>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.sm },
-  heading: { fontWeight: '700', marginTop: spacing.md },
   body: { lineHeight: 29 },
-  row: {
-    borderWidth: 1.5,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 60,
-    gap: spacing.sm,
-  },
 });

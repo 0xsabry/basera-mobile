@@ -1,5 +1,5 @@
 /**
- * Settings — rebuilt in groups; EVERY control here is real:
+ * Settings — grouped A–G; EVERY control here is real:
  * A) Account & Family (real auth state when Supabase is configured,
  *    honest unconfigured note otherwise), B) Language & Appearance
  *    (language/theme/high-contrast/text-scale/reduced-motion — the
@@ -12,6 +12,11 @@
  * Anything the platform cannot do is omitted, not faked — e.g. there
  * is deliberately NO "follow device language" option (it would need
  * a native localization module; noted in docs as a future option).
+ *
+ * V1.1 redesign: the same controls, presented with the design system —
+ * segmented controls (with a ✓ on the selected option, never color
+ * alone) instead of stacks of identical full-width buttons, grouped
+ * cards, and status pills for permission states.
  */
 import Slider from '@react-native-community/slider';
 import { Camera } from 'expo-camera';
@@ -19,9 +24,18 @@ import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, StyleSheet, Switch, Text, View } from 'react-native';
 import { speechService } from '../../ai/SpeechService';
 import { AccessibleButton } from '../../components/AccessibleButton';
+import {
+  Card,
+  ListRow,
+  Screen,
+  SectionHeader,
+  SegmentedControl,
+  StatusPill,
+  type Tone,
+} from '../../components/ui';
 import { historyStore } from '../../data/HistoryStore';
 import { getGuardianService, type GuardianUser } from '../../guardian/GuardianService';
 import { getSupabaseClient } from '../../guardian/supabaseClient';
@@ -29,7 +43,8 @@ import { t, type StringKey } from '../../i18n/strings';
 import { placesStore } from '../../places/PlacesStore';
 import { syncPlaces, type PlacesSyncOutcome } from '../../places/placesSync';
 import { useSettings } from '../../state/SettingsContext';
-import { MIN_TOUCH, radius, spacing } from '../../theme/tokens';
+import { GLYPHS } from '../../theme/glyphs';
+import { MIN_TOUCH, spacing } from '../../theme/tokens';
 import { updateService } from '../../update/UpdateService';
 
 type PermState = 'granted' | 'denied' | 'undetermined' | 'unknown';
@@ -43,6 +58,10 @@ const RADII = [50, 100, 150, 200, 500];
 
 function permKey(state: PermState): StringKey {
   return state === 'granted' ? 'permGranted' : state === 'denied' ? 'permDenied' : 'permUndetermined';
+}
+
+function permTone(state: PermState): Tone {
+  return state === 'granted' ? 'success' : state === 'denied' ? 'danger' : 'neutral';
 }
 
 export default function SettingsScreen() {
@@ -99,33 +118,28 @@ export default function SettingsScreen() {
     }, [refresh]),
   );
 
-  const row = (label: string, control: React.ReactNode, hint?: string) => (
-    <View
-      style={[styles.row, { borderColor: colors.border, backgroundColor: colors.surface }]}
-      accessible
-      accessibilityLabel={label}
-      accessibilityHint={hint}
-    >
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body, flex: 1 }]}>{label}</Text>
-      {control}
-    </View>
-  );
-
-  const heading = (key: StringKey) => (
-    <Text accessibilityRole="header" style={[styles.heading, { color: colors.text, fontSize: type.heading }]}>
-      {t(lang, key)}
-    </Text>
-  );
-
-  const permRow = (titleKey: StringKey, whyKey: StringKey, info: PermInfo, onRequest: () => void, customAction?: React.ReactNode) => (
-    <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-        {t(lang, titleKey)}: {info.state === 'unknown' ? '—' : t(lang, permKey(info.state))}
-      </Text>
+  const permRow = (
+    glyph: string,
+    titleKey: StringKey,
+    whyKey: StringKey,
+    info: PermInfo,
+    onRequest: () => void,
+    customAction?: React.ReactNode,
+  ) => (
+    <Card>
+      <View style={styles.permHead}>
+        <Text style={[styles.body, { color: colors.text, fontSize: type.body, flex: 1, fontWeight: '700' }]}>
+          {t(lang, titleKey)}
+        </Text>
+        <StatusPill
+          tone={permTone(info.state)}
+          label={info.state === 'unknown' ? '—' : t(lang, permKey(info.state))}
+        />
+      </View>
       <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>{t(lang, whyKey)}</Text>
       {customAction ??
         (info.state === 'undetermined' ? (
-          <AccessibleButton label={t(lang, 'requestPermission')} variant="secondary" onPress={onRequest} />
+          <AccessibleButton label={t(lang, 'requestPermission')} variant="secondary" glyph={glyph} onPress={onRequest} />
         ) : info.state === 'denied' ? (
           <AccessibleButton
             label={t(lang, 'openSystemSettings')}
@@ -133,7 +147,7 @@ export default function SettingsScreen() {
             onPress={() => void Linking.openSettings()}
           />
         ) : null)}
-    </View>
+    </Card>
   );
 
   const doSync = async () => {
@@ -160,131 +174,176 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const switchRow = (
+    glyph: string,
+    label: string,
+    value: boolean,
+    onValueChange: (v: boolean) => void,
+    hint?: string,
+  ) => (
+    <ListRow
+      glyph={glyph}
+      title={label}
+      subtitle={hint}
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+      right={
+        <Switch
+          accessibilityLabel={label}
+          value={value}
+          onValueChange={onValueChange}
+          trackColor={{ true: colors.primary }}
+        />
+      }
+    />
+  );
+
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+    <Screen>
       {/* ---------- A) Account & Family ---------- */}
-      {heading('accountTitle')}
-      {!configured ? (
-        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'guardianNotConfigured')}</Text>
-      ) : user ? (
-        <>
-          <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-            {t(lang, 'signedInAs')}: {user.email ?? user.id}
-          </Text>
-          <AccessibleButton
-            label={t(lang, 'guardianSignOut')}
-            variant="secondary"
-            onPress={() => {
-              void (async () => {
-                await getGuardianService().signOut().catch(() => undefined);
-                setUser(null);
-              })();
-            }}
-          />
-        </>
-      ) : (
-        <>
-          <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'notSignedIn')}</Text>
-          <AccessibleButton label={t(lang, 'guardianOpenSignIn')} onPress={() => router.push('/guardian-auth')} />
-        </>
-      )}
-      <AccessibleButton
-        label={t(lang, 'familyManage')}
-        variant="secondary"
-        onPress={() => router.push('/(tabs)/family')}
-      />
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-        {t(lang, 'sharingConsentLabel')}:{' '}
-        {settings.guardianSharingEnabled ? t(lang, 'sharingStateOn') : t(lang, 'sharingStateOff')}
-      </Text>
+      <SectionHeader title={t(lang, 'accountTitle')} glyph={GLYPHS.account} />
+      <Card>
+        {!configured ? (
+          <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'guardianNotConfigured')}</Text>
+        ) : user ? (
+          <>
+            <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+              {t(lang, 'signedInAs')}: {user.email ?? user.id}
+            </Text>
+            <AccessibleButton
+              label={t(lang, 'guardianSignOut')}
+              variant="secondary"
+              onPress={() => {
+                void (async () => {
+                  await getGuardianService().signOut().catch(() => undefined);
+                  setUser(null);
+                })();
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'notSignedIn')}</Text>
+            <AccessibleButton label={t(lang, 'guardianOpenSignIn')} onPress={() => router.push('/guardian-auth')} />
+          </>
+        )}
+        <ListRow
+          glyph={GLYPHS.family}
+          title={t(lang, 'familyManage')}
+          subtitle={`${t(lang, 'sharingConsentLabel')}: ${settings.guardianSharingEnabled ? t(lang, 'sharingStateOn') : t(lang, 'sharingStateOff')}`}
+          onPress={() => router.push('/(tabs)/family')}
+        />
+      </Card>
 
       {/* ---------- B) Language & Appearance ---------- */}
-      {heading('language')}
-      <AccessibleButton label="العربية" onPress={() => update({ language: 'ar' })} variant={lang === 'ar' ? 'primary' : 'secondary'} />
-      <AccessibleButton label="English" onPress={() => update({ language: 'en' })} variant={lang === 'en' ? 'primary' : 'secondary'} />
-      {heading('theme')}
-      <AccessibleButton label={t(lang, 'themeLight')} onPress={() => update({ theme: 'light' })} variant={settings.theme === 'light' ? 'primary' : 'secondary'} />
-      <AccessibleButton label={t(lang, 'themeDark')} onPress={() => update({ theme: 'dark' })} variant={settings.theme === 'dark' ? 'primary' : 'secondary'} />
-      <AccessibleButton label={t(lang, 'themeSystem')} onPress={() => update({ theme: 'system' })} variant={settings.theme === 'system' ? 'primary' : 'secondary'} />
-      {row(
-        t(lang, 'highContrast'),
-        <Switch accessibilityLabel={t(lang, 'highContrast')} value={settings.highContrast} onValueChange={(v) => update({ highContrast: v })} trackColor={{ true: colors.primary }} />,
-      )}
+      <SectionHeader title={t(lang, 'language')} glyph={GLYPHS.language} />
+      <SegmentedControl
+        accessibilityLabel={t(lang, 'language')}
+        value={lang}
+        onChange={(v) => void update({ language: v })}
+        options={[
+          { value: 'ar' as const, label: 'العربية' },
+          { value: 'en' as const, label: 'English' },
+        ]}
+      />
+      <SectionHeader title={t(lang, 'theme')} glyph={GLYPHS.glasses} />
+      <SegmentedControl
+        accessibilityLabel={t(lang, 'theme')}
+        value={settings.theme}
+        onChange={(v) => void update({ theme: v })}
+        options={[
+          { value: 'light' as const, label: t(lang, 'themeLight') },
+          { value: 'dark' as const, label: t(lang, 'themeDark') },
+          { value: 'system' as const, label: t(lang, 'themeSystem') },
+        ]}
+      />
+      {switchRow(GLYPHS.check, t(lang, 'highContrast'), settings.highContrast, (v) => void update({ highContrast: v }))}
       <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>{t(lang, 'textSize')}</Text>
-      <AccessibleButton label={t(lang, 'textSizeNormal')} onPress={() => update({ textScale: 1 })} variant={settings.textScale === 1 ? 'primary' : 'secondary'} />
-      <AccessibleButton label={t(lang, 'textSizeLarge')} onPress={() => update({ textScale: 1.15 })} variant={settings.textScale === 1.15 ? 'primary' : 'secondary'} />
-      <AccessibleButton label={t(lang, 'textSizeXL')} onPress={() => update({ textScale: 1.3 })} variant={settings.textScale === 1.3 ? 'primary' : 'secondary'} />
-      {row(
+      <SegmentedControl
+        accessibilityLabel={t(lang, 'textSize')}
+        value={String(settings.textScale)}
+        onChange={(v) => void update({ textScale: Number(v) as 1 | 1.15 | 1.3 })}
+        options={[
+          { value: '1', label: t(lang, 'textSizeNormal') },
+          { value: '1.15', label: t(lang, 'textSizeLarge') },
+          { value: '1.3', label: t(lang, 'textSizeXL') },
+        ]}
+      />
+      {switchRow(
+        GLYPHS.stop,
         t(lang, 'reducedMotion'),
-        <Switch accessibilityLabel={t(lang, 'reducedMotion')} value={settings.reducedMotion} onValueChange={(v) => update({ reducedMotion: v })} trackColor={{ true: colors.primary }} />,
+        settings.reducedMotion,
+        (v) => void update({ reducedMotion: v }),
         t(lang, 'reducedMotionExpl'),
       )}
 
       {/* ---------- C) Voice & Accessibility ---------- */}
-      {heading('voicePickerTitle')}
-      {row(
+      <SectionHeader title={t(lang, 'voicePickerTitle')} glyph={GLYPHS.voice} />
+      {switchRow(
+        GLYPHS.speak,
         t(lang, 'speechTitle'),
-        <Switch accessibilityLabel={t(lang, 'speechTitle')} value={settings.speechEnabled} onValueChange={(v) => update({ speechEnabled: v })} trackColor={{ true: colors.primary }} />,
+        settings.speechEnabled,
+        (v) => void update({ speechEnabled: v }),
         t(lang, 'speechExpl'),
       )}
-      <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
-        {t(lang, 'speechRate')}: {settings.speechRate.toFixed(2)}x
-      </Text>
-      <Slider
-        accessibilityLabel={t(lang, 'speechRate')}
-        minimumValue={0.5}
-        maximumValue={2}
-        step={0.25}
-        value={settings.speechRate}
-        minimumTrackTintColor={colors.primary}
-        thumbTintColor={colors.primary}
-        style={{ minHeight: MIN_TOUCH }}
-        onValueChange={(v) => {
-          speechService.setRate(v);
-          void update({ speechRate: v });
-        }}
-      />
+      <Card>
+        <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
+          {t(lang, 'speechRate')}: {settings.speechRate.toFixed(2)}x
+        </Text>
+        <Slider
+          accessibilityLabel={t(lang, 'speechRate')}
+          minimumValue={0.5}
+          maximumValue={2}
+          step={0.25}
+          value={settings.speechRate}
+          minimumTrackTintColor={colors.primary}
+          thumbTintColor={colors.primary}
+          style={{ minHeight: MIN_TOUCH }}
+          onValueChange={(v) => {
+            speechService.setRate(v);
+            void update({ speechRate: v });
+          }}
+        />
+      </Card>
       {voices !== null && voices.length > 0 && (
-        <>
-          <AccessibleButton
-            label={t(lang, 'voiceDefault')}
-            variant={settings.voiceIdentifier === null ? 'primary' : 'secondary'}
-            onPress={() => update({ voiceIdentifier: null })}
-          />
-          {voices.map((v) => (
-            <AccessibleButton
-              key={v.identifier}
-              label={`${v.name} — ${v.language}`}
-              variant={settings.voiceIdentifier === v.identifier ? 'primary' : 'secondary'}
-              onPress={() => update({ voiceIdentifier: v.identifier })}
-            />
-          ))}
-        </>
+        <SegmentedControl
+          accessibilityLabel={t(lang, 'voicePickerTitle')}
+          value={settings.voiceIdentifier ?? ''}
+          onChange={(v) => void update({ voiceIdentifier: v === '' ? null : v })}
+          options={[
+            { value: '', label: t(lang, 'voiceDefault') },
+            ...voices.map((v) => ({ value: v.identifier, label: `${v.name} — ${v.language}` })),
+          ]}
+        />
       )}
-      {row(
-        t(lang, 'announcements'),
-        <Switch accessibilityLabel={t(lang, 'announcements')} value={settings.announcements} onValueChange={(v) => update({ announcements: v })} trackColor={{ true: colors.primary }} />,
+      {switchRow(GLYPHS.notifications, t(lang, 'announcements'), settings.announcements, (v) =>
+        void update({ announcements: v }),
       )}
-      {row(
+      {switchRow(
+        GLYPHS.alerts,
         t(lang, 'hapticsTitle'),
-        <Switch accessibilityLabel={t(lang, 'hapticsTitle')} value={settings.hapticsEnabled} onValueChange={(v) => update({ hapticsEnabled: v })} trackColor={{ true: colors.primary }} />,
+        settings.hapticsEnabled,
+        (v) => void update({ hapticsEnabled: v }),
         t(lang, 'hapticsExpl'),
       )}
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'repeatExpl')}</Text>
-      <AccessibleButton label={t(lang, 'repeat')} variant="secondary" onPress={() => void speechService.repeatLast()} />
+      <Card>
+        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'repeatExpl')}</Text>
+        <AccessibleButton label={t(lang, 'repeat')} glyph={GLYPHS.repeat} variant="secondary" onPress={() => void speechService.repeatLast()} />
+      </Card>
 
       {/* ---------- D) Privacy & Permissions ---------- */}
-      {heading('permissionsTitle')}
-      {permRow('cameraPermission', 'permWhyCamera', perms.camera, () => {
+      <SectionHeader title={t(lang, 'permissionsTitle')} glyph={GLYPHS.shield} />
+      {permRow(GLYPHS.camera, 'cameraPermission', 'permWhyCamera', perms.camera, () => {
         void Camera.requestCameraPermissionsAsync().then(refresh);
       })}
-      {permRow('micPermission', 'permWhyMic', perms.mic, () => {
+      {permRow(GLYPHS.mic, 'micPermission', 'permWhyMic', perms.mic, () => {
         void Camera.requestMicrophonePermissionsAsync().then(refresh);
       })}
-      {permRow('locationPermission', 'permWhyLocationFg', perms.locFg, () => {
+      {permRow(GLYPHS.location, 'locationPermission', 'permWhyLocationFg', perms.locFg, () => {
         void Location.requestForegroundPermissionsAsync().then(refresh);
       })}
       {permRow(
+        GLYPHS.location,
         'locationPermissionBg',
         'permWhyLocationBg',
         perms.locBg,
@@ -293,7 +352,7 @@ export default function SettingsScreen() {
           <AccessibleButton label={t(lang, 'manageInFamily')} variant="secondary" onPress={() => router.push('/(tabs)/family')} />
         ) : undefined,
       )}
-      {permRow('notifPermission', 'permWhyNotifications', perms.notif, () => {
+      {permRow(GLYPHS.notifications, 'notifPermission', 'permWhyNotifications', perms.notif, () => {
         void (async () => {
           try {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -305,28 +364,30 @@ export default function SettingsScreen() {
           await refresh();
         })();
       })}
-      {heading('privacy')}
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'privacyBody')}</Text>
-      <AccessibleButton label={t(lang, 'clearAll')} variant="danger" onPress={confirmClearHistory} />
+      <SectionHeader title={t(lang, 'privacy')} glyph={GLYPHS.privacy} />
+      <Card>
+        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'privacyBody')}</Text>
+        <AccessibleButton label={t(lang, 'clearAll')} variant="danger" onPress={confirmClearHistory} />
+      </Card>
 
       {/* ---------- E) Places ---------- */}
-      {heading('placesProximityTitle')}
+      <SectionHeader title={t(lang, 'placesProximityTitle')} glyph={GLYPHS.places} />
       <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'placesProximityExpl')}</Text>
       <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
         {t(lang, 'placesRadiusLabel')}
       </Text>
-      {RADII.map((r) => (
-        <AccessibleButton
-          key={r}
-          label={`${r} m`}
-          variant={settings.proximityRadiusM === r ? 'primary' : 'secondary'}
-          onPress={() => update({ proximityRadiusM: r })}
-        />
-      ))}
-      <AccessibleButton label={t(lang, 'places')} variant="secondary" onPress={() => router.push('/places')} />
-      {row(
+      <SegmentedControl
+        accessibilityLabel={t(lang, 'placesRadiusLabel')}
+        value={String(settings.proximityRadiusM)}
+        onChange={(v) => void update({ proximityRadiusM: Number(v) })}
+        options={RADII.map((r) => ({ value: String(r), label: `${r} m` }))}
+      />
+      <ListRow glyph={GLYPHS.places} title={t(lang, 'places')} subtitle={t(lang, 'placesHint')} onPress={() => router.push('/places')} />
+      {switchRow(
+        GLYPHS.updates,
         t(lang, 'placesSyncTitle'),
-        <Switch accessibilityLabel={t(lang, 'placesSyncTitle')} value={settings.placesSyncEnabled} onValueChange={(v) => update({ placesSyncEnabled: v })} trackColor={{ true: colors.primary }} />,
+        settings.placesSyncEnabled,
+        (v) => void update({ placesSyncEnabled: v }),
         t(lang, 'placesSyncExpl'),
       )}
       {settings.placesSyncEnabled && (
@@ -339,38 +400,31 @@ export default function SettingsScreen() {
       )}
 
       {/* ---------- F) Updates ---------- */}
-      {heading('updates')}
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-        {t(lang, 'runtimeLabel')}: {updateStatus.runtimeVersion ?? '—'} · {t(lang, 'channelLabel')}:{' '}
-        {updateStatus.channel ?? '—'}
-      </Text>
-      <AccessibleButton label={t(lang, 'updates')} hint={t(lang, 'updatesHint')} variant="secondary" onPress={() => router.push('/updates')} />
+      <SectionHeader title={t(lang, 'updates')} glyph={GLYPHS.updates} />
+      <ListRow
+        glyph={GLYPHS.updates}
+        title={t(lang, 'updates')}
+        subtitle={`${t(lang, 'runtimeLabel')}: ${updateStatus.runtimeVersion ?? '—'} · ${t(lang, 'channelLabel')}: ${updateStatus.channel ?? '—'}`}
+        accessibilityHint={t(lang, 'updatesHint')}
+        onPress={() => router.push('/updates')}
+      />
 
       {/* ---------- G) About ---------- */}
-      {heading('about')}
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-        {t(lang, 'appName')} — {t(lang, 'versionLabel')}: {updateStatus.runtimeVersion ?? '1.1.0'} · me.auramarketing.basera
-      </Text>
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'aboutModels')}</Text>
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'hardwareStatus')}</Text>
-      <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>{t(lang, 'onboardingGlassesNote')}</Text>
-    </ScrollView>
+      <SectionHeader title={t(lang, 'about')} glyph={GLYPHS.info} />
+      <Card>
+        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+          {t(lang, 'appName')} — {t(lang, 'versionLabel')}: {updateStatus.runtimeVersion ?? '1.1.0'} · me.auramarketing.basera
+        </Text>
+        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'aboutModels')}</Text>
+        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'hardwareStatus')}</Text>
+        <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>{t(lang, 'onboardingGlassesNote')}</Text>
+      </Card>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.sm },
-  heading: { fontWeight: '700', marginTop: spacing.md },
   body: { lineHeight: 29 },
   label: { fontWeight: '600' },
-  row: {
-    borderWidth: 1.5,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: MIN_TOUCH,
-    gap: spacing.sm,
-  },
-  card: { borderWidth: 1.5, borderRadius: radius.lg, padding: spacing.md, gap: 6 },
+  permHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });
