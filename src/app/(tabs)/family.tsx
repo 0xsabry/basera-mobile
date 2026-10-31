@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Linking, StyleSheet, Switch, Text, View } from 'react-native';
 import { speechService } from '../../ai/SpeechService';
 import { AccessibleButton } from '../../components/AccessibleButton';
+import { MyLocationCard } from '../../components/MyLocationCard';
 import { QrCodeView } from '../../components/QrCodeView';
 import {
   Card,
@@ -300,6 +301,7 @@ export default function GuardianScreen() {
     return (
       <Screen>
         <SectionHeader title={t(lang, 'guardian')} glyph={GLYPHS.family} />
+        <MyLocationCard />
         <EmptyState glyph={GLYPHS.family} title={t(lang, 'guardian')} body={t(lang, 'guardianNotConfigured')} />
       </Screen>
     );
@@ -309,6 +311,7 @@ export default function GuardianScreen() {
     <Screen>
       <SectionHeader title={t(lang, 'guardian')} glyph={GLYPHS.family} />
       <Text style={bodySecondary()}>{t(lang, 'guardianLocationNote')}</Text>
+      <MyLocationCard />
 
       {loaded && !user && (
         <Card>
