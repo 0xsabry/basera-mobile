@@ -16,12 +16,15 @@ crops, scales and composites it into the platform surfaces:
                                    fills them so the PNG carries no
                                    alpha, per the asset guard test)
   assets/adaptive-foreground.png   adaptive foreground, 1024², alpha —
-                                   a rounded "chip" crop of the SYMBOL
-                                   portion of the artwork (eye+person
-                                   +waves; measured bbox in the script),
-                                   placed at 62% canvas width, centered,
-                                   so the symbol sits inside the 66%
-                                   adaptive safe zone under any mask
+                                   the SYMBOL ONLY (eye+person+waves),
+                                   keyed off the artwork's own field so
+                                   it floats on transparency with NO
+                                   chip/tile shape of its own, centered
+                                   inside the 66% adaptive safe zone so
+                                   ANY launcher mask (circle, squircle,
+                                   square, teardrop) frames it without
+                                   clipping (v1.1.5; the v1.1.3 rounded
+                                   "chip" collided with launcher masks)
   assets/brand/basera-symbol.png   the symbol crop itself (in-app
                                    tight-spot variant, e.g. auth header)
   android mipmap-*/ic_launcher_foreground.webp   108dp set
@@ -39,7 +42,7 @@ This replaces the retired «ب» letterform generator (v1.1.2): the
 in-app BrandMark glyph remains in the component library but no longer
 serves launcher / splash / header duty.
 """
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 import os, sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -71,32 +74,109 @@ def symbol_crop(art: Image.Image) -> Image.Image:
     return art.crop(SYMBOL_BOX)
 
 
-def rounded_chip(img: Image.Image, radius_frac: float = 0.16) -> Image.Image:
-    """Apply a rounded-rectangle alpha to the symbol crop so it reads
-    as a deliberate artwork tile on the adaptive navy field."""
-    w, h = img.size
-    mask = Image.new("L", (w * SS, h * SS), 0)
-    md = ImageDraw.Draw(mask)
-    md.rounded_rectangle([0, 0, w * SS, h * SS], radius=int(h * SS * radius_frac), fill=255)
-    out = img.copy()
-    out.putalpha(mask.resize((w, h), Image.LANCZOS))
+def _field_like(r: int, g: int, b: int) -> bool:
+    """Gate for the artwork's royal-blue field (measured from the file):
+    blue-dominant with a green cap — the field's dark glow sits at
+    G≤110 and its bright azure sheen (a background sweep outside the
+    eye, e.g. (5, 150, 248)) reaches G≈170, while the bright-cyan
+    swoosh core is (79, 229, 255) and the white/gold symbol parts are
+    never blue-dominant (white-edge blends also fail r<=60), so the
+    gate hugs the field and stops at every symbol edge."""
+    return b >= g >= r and b - r >= 40 and g <= 170 and r <= 60
+
+
+def keyed_symbol(art: Image.Image) -> Image.Image:
+    """The symbol crop with the artwork's own field removed (alpha).
+
+    Region growing from the crop borders through field-like pixels
+    only: the fill flows AROUND the symbol (white eye outline, gold
+    waves, cyan swoosh are never field-like, so it cannot cross into
+    them) and the eye's dark interior — enclosed by the white outline —
+    is preserved as artwork. Source-transparent pixels (the artwork's
+    rounded corners) count as background by definition. A 1px alpha
+    feather hides keying steps at icon sizes.
+    """
+    crop = symbol_crop(art)
+    w, h = crop.size
+    rgb = crop.convert("RGB")
+    px = rgb.load()
+    src_alpha = crop.split()[3]
+    sa = src_alpha.load()
+
+    gate = bytearray(w * h)
+    for y in range(h):
+        row = y * w
+        for x in range(w):
+            r, g, b = px[x, y]
+            if sa[x, y] < 128 or _field_like(r, g, b):
+                gate[row + x] = 1
+
+    bg = bytearray(w * h)
+    stack: list[int] = []
+    for x in range(w):
+        for y in (0, h - 1):
+            i = y * w + x
+            if gate[i] and not bg[i]:
+                bg[i] = 1
+                stack.append(i)
+    for y in range(h):
+        for x in (0, w - 1):
+            i = y * w + x
+            if gate[i] and not bg[i]:
+                bg[i] = 1
+                stack.append(i)
+    while stack:
+        i = stack.pop()
+        x, y = i % w, i // w
+        for j in (
+            i - 1 if x > 0 else -1,
+            i + 1 if x < w - 1 else -1,
+            i - w if y > 0 else -1,
+            i + w if y < h - 1 else -1,
+        ):
+            if j >= 0 and gate[j] and not bg[j]:
+                bg[j] = 1
+                stack.append(j)
+
+    alpha = Image.new("L", (w, h), 255)
+    ap = alpha.load()
+    for y in range(h):
+        row = y * w
+        for x in range(w):
+            if bg[row + x]:
+                ap[x, y] = 0
+    alpha = alpha.filter(ImageFilter.GaussianBlur(1.1))
+
+    final = Image.new("L", (w, h))
+    fp = final.load()
+    kp = alpha.load()
+    for y in range(h):
+        for x in range(w):
+            fp[x, y] = kp[x, y] * sa[x, y] // 255
+    out = crop.copy()
+    out.putalpha(final)
     return out
 
 
 def adaptive_foreground(art: Image.Image, canvas: int) -> Image.Image:
-    """Symbol chip centered on transparency, inside the safe zone.
+    """SYMBOL ONLY on transparency, inside the 66% safe zone.
 
-    Chip width = 62% of canvas; the symbol's own widest row (the eye)
-    then spans ~57% — inside the central 66% circle — and the chip is
-    vertically centered so mask cropping touches only its navy
-    corners, never the symbol.
+    No chip, no tile, no shape of its own: the launcher masks the
+    foreground + #061434 background pair into its own circle /
+    squircle / square / teardrop, and any shape baked into the
+    foreground fights that mask. The keyed symbol is scaled to 53%
+    canvas width: measured on the generated asset, its farthest
+    opaque pixel sits at ≈ 0.307 × canvas from center — comfortably
+    inside the 0.33 safe-circle radius (at 57% it grazed 0.330).
+    docs/BRANDING.md records the mask-board verification (zero
+    opaque pixels clipped by any standard mask).
     """
-    chip = rounded_chip(symbol_crop(art))
-    target_w = int(canvas * 0.62)
-    target_h = round(chip.height * target_w / chip.width)
-    chip = chip.resize((target_w, target_h), Image.LANCZOS)
+    sym = keyed_symbol(art)
+    target_w = int(canvas * 0.53)
+    target_h = round(sym.height * target_w / sym.width)
+    sym = sym.resize((target_w, target_h), Image.LANCZOS)
     out = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
-    out.alpha_composite(chip, ((canvas - target_w) // 2, (canvas - target_h) // 2))
+    out.alpha_composite(sym, ((canvas - target_w) // 2, (canvas - target_h) // 2))
     return out
 
 

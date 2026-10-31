@@ -1,6 +1,6 @@
 # BASERA Branding & Launcher Icon
 
-## CURRENT STATE (v1.1.3) — the OFFICIAL logo is now the brand
+## CURRENT STATE (v1.1.5) — the OFFICIAL logo is now the brand
 
 On **2026-10-31 the owner supplied the official BASERA logo** (a
 1254×1254 PNG: deep-navy/royal-blue rounded-square artwork — white
@@ -21,16 +21,32 @@ until that delivery and is **no longer true**.
   own corners are transparent; the field fills them).
 - **Adaptive icon**: background `#061434` (app.json +
   `@color/iconBackground`); foreground
-  (`assets/adaptive-foreground.png`, 1024², alpha) = a rounded
-  "chip" crop of the artwork's SYMBOL portion (eye + person + gold
-  waves). The crop was measured from the file: symbol content spans
-  x 146..1086 / y 119..~677 of 1254, the wordmark starts at y ~730,
-  and the crop box `(100, 80) → (1130, 705)` bottoms out in the
-  silent band between them so no letter fragment enters the symbol
-  assets. The chip is placed at 62% canvas width, centered, so the
-  symbol sits inside the 66% adaptive safe zone under circle /
-  squircle / rounded masks (verified on the branding board,
-  `branding-v5-board.png`).
+  (`assets/adaptive-foreground.png`, 1024², alpha) = **the SYMBOL
+  ONLY** (eye + person + waves + swooshes), keyed off the artwork's
+  own field — no chip, no tile, no shape of its own (v1.1.5; the
+  v1.1.3 rounded "chip" fought the launchers' own masks: under a
+  circular launcher the chip's corners were cropped, under a square
+  one its rounded corners read as a picture-in-picture). The symbol
+  crop was measured from the file: symbol content spans x 146..1086
+  / y 119..~677 of 1254, the wordmark starts at y ~730, and the crop
+  box `(100, 80) → (1130, 705)` bottoms out in the silent band
+  between them so no letter fragment enters the symbol assets. The
+  field is removed by border flood-fill through a measured
+  blue-dominance gate (the bright-cyan swoosh core, G≈229, and the
+  white/gold parts are never field-like, so the fill flows around
+  the symbol and preserves the eye's enclosed dark interior as
+  artwork); a 1px alpha feather hides keying steps. The keyed
+  symbol is placed at 53% canvas width, centered: measured on the
+  generated asset, its farthest opaque pixel sits at **0.305 ×
+  canvas** from center — inside the 66% safe-zone circle (0.33)
+  with margin. **Mask-board verification** (PIL composite of the
+  shipped foreground over `#061434`, masks applied at full
+  resolution, board rendered at 192/96/48 —
+  `branding-v6-mask-board.png`): **circle, squircle,
+  rounded-square 20%, square and teardrop each clip ZERO opaque
+  foreground pixels**, and visually the symbol (waves included)
+  sits complete inside every shape at every size. White/magenta
+  halo checks on the same board show clean keyed edges.
 - **Symbol asset** (`assets/brand/basera-symbol.png`): the same crop
   at native resolution, for in-app tight spots.
 - **Splash**: the full official lockup centered on transparency
