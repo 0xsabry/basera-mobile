@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-10-31',
     runtimeVersion: '1.1.0',
+    titleEn: 'Quality overhaul: clearer design, concise wording, location map',
+    titleAr: 'تحسين شامل: تصميم أوضح ونصوص مختصرة وخريطة للموقع',
+    bodyEn:
+      'A calmer, more distinctive interface on every screen, and shorter, clearer text in Arabic and English. Family gains a My Location view with your real phone GPS fix and an OpenStreetMap preview; the guardian web map now shows location accuracy and freshness. Guardian sharing still needs the one-time server setup by the owner — until then, the app says so honestly.',
+    bodyAr:
+      'واجهة أهدأ وأكثر تميزًا في كل الشاشات، ونصوص أقصر وأوضح بالعربية والإنجليزية. أضيف إلى العائلة قسم «موقعي» الذي يعرض موقع هاتفك الحقيقي مع خريطة OpenStreetMap، وأصبحت خريطة الوصي على الويب تعرض دقة الموقع وحداثته. مشاركة الوصي ما تزال تحتاج إعداد الخادم لمرة واحدة من المالك، وحتى يتم ذلك يوضح التطبيق الأمر بصراحة.',
+  },
+  {
+    date: '2026-10-31',
+    runtimeVersion: '1.1.0',
     titleEn: 'BASERA 1.1.0 — Premium redesign: a calmer, clearer interface',
     titleAr: 'بصيرة 1.1.0 — تصميم جديد فاخر: واجهة أهدى وأوضح',
     bodyEn:
