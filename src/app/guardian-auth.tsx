@@ -13,7 +13,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import { AccessibleButton } from '../components/AccessibleButton';
-import { Banner, BrandMark, Card, EmptyState, Screen, SectionHeader } from '../components/ui';
+import { Banner, BrandSymbol, Card, EmptyState, Screen, SectionHeader } from '../components/ui';
 import { GuardianServiceError, getGuardianService } from '../guardian/GuardianService';
 import { t } from '../i18n/strings';
 import { useSettings } from '../state/SettingsContext';
@@ -87,7 +87,7 @@ export default function GuardianAuthScreen() {
   return (
     <Screen>
       <View style={styles.brandRow}>
-        <BrandMark size={36} />
+        <BrandSymbol height={36} />
         <SectionHeader title={t(lang, 'guardianOpenSignIn')} glyph={GLYPHS.family} />
       </View>
       <Card variant="raised">

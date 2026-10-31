@@ -15,7 +15,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import { AccessibleButton } from '../components/AccessibleButton';
-import { Banner, BrandMark, ListRow, QuietGroup, Screen, SectionHeader, SegmentedControl } from '../components/ui';
+import { Banner, BrandLogo, ListRow, QuietGroup, Screen, SectionHeader, SegmentedControl } from '../components/ui';
 import { t } from '../i18n/strings';
 import { useSettings } from '../state/SettingsContext';
 import { GLYPHS } from '../theme/glyphs';
@@ -44,7 +44,7 @@ export default function OnboardingScreen() {
   return (
     <Screen>
       <View style={styles.hero}>
-        <BrandMark size={64} />
+        <BrandLogo height={88} />
         <Text accessibilityRole="header" style={[styles.title, { color: colors.text, fontSize: type.display + 10 }]}>
           {t(lang, 'appName')}
         </Text>

@@ -17,6 +17,7 @@
  */
 import React from 'react';
 import {
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -152,6 +153,46 @@ export function Screen({
 /* Brand + headers                                                     */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Official BASERA brand assets (owner-supplied 2026-10-31,
+ * docs/BRANDING.md). The full lockup is the artwork exactly as
+ * delivered — never redrawn. Static requires for Metro.
+ */
+const BASERA_LOGO = require('../../assets/brand/basera-logo-official.png');
+const BASERA_SYMBOL = require('../../assets/brand/basera-symbol.png');
+
+/** The official logo, full lockup (square artwork: width = height). */
+export function BrandLogo({ height = 40, label }: { height?: number; label?: string }) {
+  return (
+    <Image
+      source={BASERA_LOGO}
+      accessible={label != null}
+      accessibilityLabel={label}
+      accessibilityRole={label != null ? 'image' : undefined}
+      style={{ width: height, height, borderRadius: height * 0.22 }}
+      resizeMode="contain"
+    />
+  );
+}
+
+/** The official symbol only (eye + person + waves crop, 1030×705). */
+export function BrandSymbol({ height = 36 }: { height?: number }) {
+  return (
+    <Image
+      source={BASERA_SYMBOL}
+      accessibilityElementsHidden
+      style={{ width: height * (1030 / 705), height, borderRadius: height * 0.18 }}
+      resizeMode="contain"
+    />
+  );
+}
+
+/**
+ * Retired «ب» glyph mark (v1.1–1.1.2 identity). Kept in the library
+ * for reference; launcher / splash / header duty moved to the
+ * official logo above in v1.1.3 — do not reintroduce on prominent
+ * surfaces.
+ */
 export function BrandMark({ size = 52 }: { size?: number }) {
   const { colors } = useSettings();
   const dotSize = Math.max(6, size * 0.16);
@@ -208,7 +249,7 @@ export function AppHeader({
   return (
     <View style={styles.appHeader}>
       <View style={styles.brandRow}>
-        <BrandMark size={28} />
+        <BrandLogo height={40} label={brandName} />
         <View style={styles.brandText}>
           <Text accessibilityRole="header" style={[styles.brandName, { color: colors.text, fontSize: type.body }]}>
             {brandName}
