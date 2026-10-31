@@ -241,6 +241,74 @@ describe('OTA native auto-check configuration (audit)', () => {
   });
 });
 
+describe('UpdateService checkAndApplyOnLaunch (cold-start flow)', () => {
+  const downloadable = (reload: jest.Mock) =>
+    fakeNative({
+      checkForUpdateAsync: async () => ({ isUpdateAvailable: true, manifest: { id: 'upd-L' } }),
+      fetchUpdateAsync: async () => ({ isNew: true, manifest: { id: 'upd-L' } }),
+      reloadAsync: reload,
+    });
+
+  it('pending update -> downloads and applies exactly once at cold start', async () => {
+    const reload = jest.fn(async () => undefined);
+    const svc = new UpdateService(downloadable(reload), () => false);
+    const result = await svc.checkAndApplyOnLaunch();
+    expect(result).toEqual({ applied: true });
+    expect(reload).toHaveBeenCalledTimes(1);
+    // A second call in the same process must NOT apply again (no loop).
+    const again = await svc.checkAndApplyOnLaunch();
+    expect(again.applied).toBe(false);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('not ready (up to date) -> no-op, no reload', async () => {
+    const reload = jest.fn(async () => undefined);
+    const svc = new UpdateService(fakeNative({ reloadAsync: reload }), () => false);
+    const result = await svc.checkAndApplyOnLaunch();
+    expect(result).toEqual({ applied: false, reason: 'no-update' });
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('busy guard at launch -> staged but NOT applied, no reload', async () => {
+    const reload = jest.fn(async () => undefined);
+    const svc = new UpdateService(downloadable(reload), () => true);
+    const result = await svc.checkAndApplyOnLaunch();
+    expect(result).toEqual({ applied: false, reason: 'busy' });
+    expect(svc.getStatus().phase).toBe('ready');
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('check failure -> surfaced in status, no reload, no throw', async () => {
+    const reload = jest.fn(async () => undefined);
+    const svc = new UpdateService(
+      fakeNative({
+        checkForUpdateAsync: async () => {
+          throw new Error('network down');
+        },
+        reloadAsync: reload,
+      }),
+      () => false,
+    );
+    const result = await svc.checkAndApplyOnLaunch();
+    expect(result.applied).toBe(false);
+    expect(svc.getStatus().phase).toBe('error');
+    expect(svc.getStatus().error).toContain('network down');
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('reload failure -> reason failed + real message in status (no silent loop)', async () => {
+    const reload = jest.fn(async () => {
+      throw new Error('reload exploded');
+    });
+    const svc = new UpdateService(downloadable(reload), () => false);
+    const result = await svc.checkAndApplyOnLaunch();
+    expect(result).toEqual({ applied: false, reason: 'failed' });
+    expect(svc.getStatus().phase).toBe('error');
+    expect(svc.getStatus().error).toContain('reload exploded');
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('launch check + in-app surfacing (wiring guards)', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { readFileSync } = require('fs') as typeof import('fs');
@@ -250,17 +318,21 @@ describe('launch check + in-app surfacing (wiring guards)', () => {
   const settings = readFileSync(join(__dirname, '..', '..', 'app', '(tabs)', 'settings.tsx'), 'utf8');
   const updates = readFileSync(join(__dirname, '..', '..', 'app', 'updates.tsx'), 'utf8');
 
-  it('the root layout checks for updates on app launch', () => {
+  it('the root layout runs the cold-start update flow on app launch', () => {
     expect(layout).toContain("from '../update/UpdateService'");
-    // The check runs in an effect (mount), not behind a user action.
-    expect(layout).toMatch(/useEffect\(\(\) => \{\s*void updateService\.checkAndDownload\(\);\s*\}, \[\]\);/);
+    // The flow runs in an effect (mount), not behind a user action.
+    expect(layout).toMatch(/useEffect\(\(\) => \{\s*void updateService\.checkAndApplyOnLaunch\(\);\s*\}, \[\]\);/);
   });
 
-  it('the launch path never applies/reloads directly (safe path only)', () => {
-    // restartToApply must stay exclusive to the Updates screen's
-    // explicit, busy-guarded button.
+  it('the layout never reloads directly — apply stays inside the guarded service path', () => {
     expect(layout).not.toContain('restartToApply');
+    expect(layout).not.toContain('reloadAsync');
     expect(updates).toContain('restartToApply');
+  });
+
+  it('the Updates screen surfaces the real error reason from the service', () => {
+    expect(updates).toContain('status.error');
+    expect(updates).toMatch(/status\.phase === 'error'/);
   });
 
   it('Settings surfaces the live update state (subscribed, update-ready visible)', () => {

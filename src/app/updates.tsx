@@ -115,8 +115,19 @@ export default function UpdatesScreen() {
             ? t(lang, 'updateEmbedded')
             : `${status.currentUpdateId}${fmtDateTime(status.currentUpdateCreatedAt) ? ` · ${fmtDateTime(status.currentUpdateCreatedAt)}` : ''}`,
         )}
-        {infoRow(t(lang, 'updateLastCheck'), status.lastCheckAt ?? t(lang, 'updateNeverChecked'))}
+        {infoRow(
+          t(lang, 'updateLastCheck'),
+          status.lastCheckAt ? (fmtDateTime(status.lastCheckAt) ?? status.lastCheckAt) : t(lang, 'updateNeverChecked'),
+        )}
       </QuietGroup>
+
+      {/* The REAL failure reason from the service — never a fake or
+          generic status (owner order 2026-11-01). */}
+      {status.phase === 'error' && !!status.error && (
+        <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.danger, fontSize: type.body }]}>
+          {`${t(lang, 'updateError')} (${status.error})`}
+        </Text>
+      )}
 
       {status.phase === 'ready' && busyNow && (
         <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text, fontSize: type.body }]}>

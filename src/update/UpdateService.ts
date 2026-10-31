@@ -9,11 +9,14 @@
  * so it cannot race or duplicate this flow.
  *
  * Safety contract (owner-approved):
- * - Checks and downloads NEVER reload the app.
- * - A downloaded update applies only on a natural cold start, or when the
- *   user explicitly presses "Restart to apply" AND no accessibility
- *   operation is busy (speech, recognition, processing, hazard handling)
- *   AND no check/download is in flight.
+ * - Checks and downloads NEVER reload the app by themselves.
+ * - A downloaded update applies (a) automatically at the NEXT cold
+ *   start through checkAndApplyOnLaunch() — the launch flow checks,
+ *   downloads, and applies in one pass, before any user operation can
+ *   be in flight — or (b) when the user explicitly presses "Restart to
+ *   apply". Both go through restartToApply(), which refuses while an
+ *   accessibility operation is busy (speech, recognition, processing,
+ *   hazard handling) or a check/download is in flight.
  * - Overlapping checkAndDownload() calls share ONE in-flight promise:
  *   the native check/fetch pair runs at most once at a time.
  * - In Expo Go / the dev client / the 1.0.0 MVP build (no expo-updates
@@ -65,7 +68,7 @@ export interface UpdateStatus {
 
 export type RestartResult =
   | { applied: true }
-  | { applied: false; reason: 'unavailable' | 'no-update' | 'busy' | 'in-progress' };
+  | { applied: false; reason: 'unavailable' | 'no-update' | 'busy' | 'in-progress' | 'failed' };
 
 function loadNativeModule(): UpdatesNativeModule | null {
   try {
@@ -189,15 +192,46 @@ export class UpdateService {
   /**
    * The ONLY reload path in the app. Refuses while an accessibility
    * operation is busy, while a check/download is in flight, and when
-   * nothing was downloaded.
+   * nothing was downloaded. A native reload failure is surfaced
+   * honestly (phase 'error' + the real message), never swallowed.
    */
   async restartToApply(): Promise<RestartResult> {
     if (!this.native || !this.native.isEnabled) return { applied: false, reason: 'unavailable' };
     if (this.inFlight) return { applied: false, reason: 'in-progress' };
     if (!this.pendingUpdateId) return { applied: false, reason: 'no-update' };
     if (this.busyGuard()) return { applied: false, reason: 'busy' };
-    await this.native.reloadAsync();
+    try {
+      await this.native.reloadAsync();
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : 'update apply failed';
+      this.setPhase('error');
+      return { applied: false, reason: 'failed' };
+    }
     return { applied: true };
+  }
+
+  /** Set once this process has consumed its cold-start apply attempt,
+   *  so a remount can never double-apply (reload restarts the process
+   *  anyway; this is belt-and-braces against effect re-runs). */
+  private launchApplyConsumed = false;
+
+  /**
+   * Cold-start update flow (owner order 2026-11-01 — update delivery
+   * must need ZERO user steps): check + download, and if an update is
+   * staged afterwards, apply it immediately through the same guarded
+   * restartToApply() path. Launch is the safe moment — no speech,
+   * camera, OCR or hazard operation can be in flight before the user
+   * has done anything — and the busy guard is still honored if one
+   * somehow is. When nothing is staged this is a plain check. Apply
+   * happens at most once per process; a failure lands in the status
+   * (phase 'error' + real reason) for the Updates screen to show.
+   */
+  async checkAndApplyOnLaunch(): Promise<RestartResult> {
+    if (this.launchApplyConsumed) return { applied: false, reason: 'no-update' };
+    this.launchApplyConsumed = true;
+    const status = await this.checkAndDownload();
+    if (status.phase !== 'ready') return { applied: false, reason: 'no-update' };
+    return this.restartToApply();
   }
 }
 

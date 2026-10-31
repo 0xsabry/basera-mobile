@@ -21,17 +21,19 @@ function RootStack() {
     void getLocationSharingService().initDeletion();
   }, []);
 
-  // Launch update check (owner/team update from inside the app from
-  // now on): every cold start checks for a compatible OTA and downloads
-  // it in the background. Per the UpdateService safety contract this
-  // NEVER reloads and never interrupts speech/camera/OCR/hazard work —
-  // a downloaded update applies on the next natural cold start, or
-  // immediately only via the guarded "Restart to apply" on the Updates
-  // screen, whose state (and the Settings updates row) reflects the
-  // result through the service subscription. Before this effect the
-  // only check in the app was the manual button on the Updates screen.
+  // Launch update flow (owner order: updates must need ZERO user
+  // steps): every cold start checks for a compatible OTA, downloads
+  // it, and — if one is staged — applies it immediately through the
+  // service's guarded apply path. Cold start is the safe moment: no
+  // speech/camera/OCR/hazard operation can be in flight yet, and the
+  // apply path's busy guard still refuses if one somehow is. The
+  // outcome (ready / up-to-date / error with the real reason)
+  // is visible on the Updates screen and the Settings updates row via
+  // the service subscription. Before the 1.1.5 round the only check
+  // was a manual button; before this round a download still waited
+  // for a further restart or a manual apply.
   useEffect(() => {
-    void updateService.checkAndDownload();
+    void updateService.checkAndApplyOnLaunch();
   }, []);
 
   // Hazard events may attach location server-side ONLY while sharing is
