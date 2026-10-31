@@ -10,9 +10,14 @@
  * getFixIfPermitted(). The system prompt may appear only from the
  * explicit "Update location" button (getCurrentFix(true)).
  * Coordinates are never logged anywhere.
+ *
+ * When a fix is shown, its human address is resolved via
+ * places/geocode (Nominatim → device geocoder) for the active
+ * language; when no source can name the place, the coordinates are
+ * shown on their own clearly-labeled line — never as a fake address.
  */
 import { useFocusEffect } from 'expo-router';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
 import {
   accuracyQuality,
@@ -23,6 +28,7 @@ import {
 import { getSupabaseClient } from '../guardian/supabaseClient';
 import { t } from '../i18n/strings';
 import { getCurrentFix, getFixIfPermitted, type GeoFix } from '../places/currentFix';
+import { defaultGeocoder, type ResolvedAddress } from '../places/geocode';
 import { useSettings } from '../state/SettingsContext';
 import { GLYPHS } from '../theme/glyphs';
 import { spacing } from '../theme/tokens';
@@ -70,6 +76,41 @@ export function MyLocationCard() {
    *  is computed from state — never from Date.now() during render. */
   const [nowMs, setNowMs] = useState(() => Date.now());
   const inFlight = useRef(false);
+
+  /** Reverse-geocoded address for the shown fix, in the language it
+   *  was resolved for (a result in the other language is not shown). */
+  const [resolved, setResolved] = useState<{ res: ResolvedAddress; lang: typeof lang } | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const fixAt = fix?.at ?? null;
+
+  // Resolve the shown fix's address for the active language. Keyed by
+  // fix.at + lang only — never on every render. The forFixAt/stale
+  // guard ensures a slow older response never overwrites the address
+  // of a newer fix. No permission prompt can come from this path:
+  // geocoding an already-obtained fix needs no permission.
+  useEffect(() => {
+    if (!fix || fixAt === null) {
+      setResolved(null);
+      return;
+    }
+    let cancelled = false;
+    setResolving(true);
+    defaultGeocoder
+      .resolveAddress(fix, lang)
+      .then((res) => {
+        if (cancelled) return;
+        setResolving(false);
+        if (!res.stale && res.forFixAt === fixAt) setResolved({ res, lang });
+      })
+      .catch(() => {
+        if (!cancelled) setResolving(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // fix is captured through fixAt: a new fix always has a new `at`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixAt, lang]);
 
   /** Silent load: reads signals and takes a fix ONLY if permitted. */
   const loadSilent = useCallback(async () => {
@@ -148,6 +189,12 @@ export function MyLocationCard() {
   const summaryLabel = fix
     ? [t(lang, 'myLocation'), stateLabel, accuracyText].filter(Boolean).join('. ')
     : t(lang, 'myLocation');
+  /** Address applied only when it belongs to the fix on screen AND
+   *  was resolved in the active language. */
+  const shownAddress =
+    resolved && fix && resolved.lang === lang && resolved.res.forFixAt === fix.at
+      ? resolved.res
+      : null;
 
   const configured = getSupabaseClient() !== null;
   const sharingLabel = !configured
@@ -209,6 +256,26 @@ export function MyLocationCard() {
             {accuracyText && <Text style={body}>{accuracyText}</Text>}
             {quality === 'poor' && <Text style={bodySecondary}>{t(lang, 'lowAccuracyNote')}</Text>}
             <Text style={bodySecondary}>{t(lang, 'phoneLocationSource')}</Text>
+            {shownAddress?.address ? (
+              <>
+                <Text style={bodySecondary}>
+                  {t(lang, 'addressTitle')}
+                  {shownAddress.approximate ? ` · ${t(lang, 'addressApproximate')}` : ''}
+                </Text>
+                <Text style={body}>{shownAddress.address}</Text>
+              </>
+            ) : shownAddress?.source === 'none' ? (
+              <>
+                <Text style={body}>{t(lang, 'addressUnavailable')}</Text>
+                <Text style={bodySecondary}>
+                  {`${t(lang, 'coordinatesLabel')}: ${fix.lat.toFixed(5)}, ${fix.lng.toFixed(5)}`}
+                </Text>
+              </>
+            ) : resolving ? (
+              <Text accessibilityLiveRegion="polite" style={bodySecondary}>
+                {t(lang, 'addressLoading')}
+              </Text>
+            ) : null}
             <LocationMapPreview fix={fix} stale={state === 'stale'} summaryLabel={summaryLabel} />
           </>
         )}
