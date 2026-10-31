@@ -78,6 +78,16 @@ export interface ThemeColors {
   textSecondary: string;
   primary: string;
   primaryText: string;
+  /**
+   * Bottom tab bar tints (Bug 5). Dedicated tokens, NOT aliases of
+   * primary/textSecondary: the tab glyphs are thin outline forms
+   * (◇ ♡ ⌂) whose ~1px strokes wash out on device even when the
+   * raw color ratio passes AA, so both tints are held to ≥ 9:1
+   * against `surface` (the bar background) in every palette —
+   * verified in contrast.test.ts.
+   */
+  tabActive: string;
+  tabInactive: string;
   accent: string;
   danger: string;
   /** Semantic status colors — always paired with text, never color alone. */
@@ -113,6 +123,8 @@ export const lightColors: ThemeColors = {
   textSecondary: '#3D5A4F',
   primary: '#0A6B4C',
   primaryText: '#FFFFFF',
+  tabActive: '#064D34',
+  tabInactive: '#24382E',
   accent: '#7C4D00',
   danger: '#B3261E',
   success: '#14632C',
@@ -144,6 +156,8 @@ export const darkColors: ThemeColors = {
   textSecondary: '#B4CCBE',
   primary: '#2FBF8F',
   primaryText: '#03130B',
+  tabActive: '#4ADEA6',
+  tabInactive: '#D8E6DD',
   accent: '#FFC44D',
   danger: '#FF8A80',
   success: '#4CC38A',
@@ -174,6 +188,8 @@ export const lightHighContrast: ThemeColors = {
   textSecondary: '#1A1A1A',
   border: '#000000',
   primary: '#004D33',
+  tabActive: '#003D29',
+  tabInactive: '#000000',
   success: '#00511F',
   warning: '#5C3A00',
   info: '#003B73',
@@ -204,6 +220,8 @@ export const darkHighContrast: ThemeColors = {
   border: '#FFFFFF',
   primary: '#4DFFC3',
   primaryText: '#00150C',
+  tabActive: '#4DFFC3',
+  tabInactive: '#FFFFFF',
   success: '#00FF9D',
   warning: '#FFE14D',
   info: '#66CCFF',

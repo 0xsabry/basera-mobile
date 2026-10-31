@@ -57,6 +57,8 @@ const TEXT_PAIRS: [keyof ThemeColors, keyof ThemeColors][] = [
   ['info', 'surface'],
   ['accent', 'background'],
   ['accent', 'surface'],
+  ['tabInactive', 'surface'],
+  ['tabActive', 'surface'],
   ['onPrimarySoft', 'primarySoft'],
   ['onDangerSoft', 'dangerSoft'],
   ['onSuccessSoft', 'successSoft'],
@@ -79,6 +81,49 @@ describe('design-system contrast (WCAG AA ≥ 4.5:1)', () => {
           expect(contrastRatio(colors[fg], colors[bg])).toBeGreaterThanOrEqual(4.5);
         });
       }
+    });
+  }
+});
+
+/**
+ * Bug 5 — bottom tab bar visibility.
+ *
+ * BEFORE (tints were primary / textSecondary on surface), computed
+ * with the helper above:
+ *   light            inactive  7.57   active  6.52
+ *   dark             inactive 10.13   active  7.38
+ *   lightHighContrast inactive 17.40  active  9.96
+ *   darkHighContrast inactive 19.44   active 15.19
+ * Those ratios pass AA on paper, yet the owner reported the icons
+ * barely visible: the glyphs are thin outline forms (◇ ♡ ⌂) whose
+ * ~1px strokes at weight 400 wash out on device. The fix therefore
+ * holds the dedicated tab tokens to a stronger floor — ≥ 9:1 —
+ * not just the 4.5:1 text minimum, for BOTH usages of each tint
+ * (icon glyph and label; they share the same tokens).
+ *
+ * AFTER (tabInactive / tabActive on surface):
+ *   light            inactive 12.50   active  9.91
+ *   dark             inactive 13.39   active 10.11
+ *   lightHighContrast inactive 21.00  active 12.36
+ *   darkHighContrast inactive 19.44   active 15.19
+ */
+const TAB_BAR_MIN = 9;
+
+describe('tab bar contrast (Bug 5: icon + label ≥ 9:1 on surface)', () => {
+  for (const [name, colors] of PALETTES) {
+    describe(name, () => {
+      it('tabInactive on surface (icon glyph)', () => {
+        expect(contrastRatio(colors.tabInactive, colors.surface)).toBeGreaterThanOrEqual(TAB_BAR_MIN);
+      });
+      it('tabInactive on surface (label text)', () => {
+        expect(contrastRatio(colors.tabInactive, colors.surface)).toBeGreaterThanOrEqual(TAB_BAR_MIN);
+      });
+      it('tabActive on surface (icon glyph)', () => {
+        expect(contrastRatio(colors.tabActive, colors.surface)).toBeGreaterThanOrEqual(TAB_BAR_MIN);
+      });
+      it('tabActive on surface (label text)', () => {
+        expect(contrastRatio(colors.tabActive, colors.surface)).toBeGreaterThanOrEqual(TAB_BAR_MIN);
+      });
     });
   }
 });

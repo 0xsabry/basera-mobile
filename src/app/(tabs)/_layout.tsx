@@ -50,7 +50,12 @@ function TabGlyph({ glyph, color, focused }: { glyph: string; color: ColorValue;
       }}
     >
       <Text
-        style={{ fontSize: TAB_ICON_SIZE, lineHeight: TAB_ICON_SIZE + 6, color, fontWeight: focused ? '800' : '400' }}
+        // Bug 5: inactive weight 400 -> 600. The tab glyphs are thin
+        // outline forms (◇ ♡ ⌂); at 400 their ~1px strokes rendered
+        // barely visible on device even in a passing color. 600 gives
+        // the stroke real presence at the same 24dp size — no filled
+        // blocks, no larger icons. Active stays 800.
+        style={{ fontSize: TAB_ICON_SIZE, lineHeight: TAB_ICON_SIZE + 6, color, fontWeight: focused ? '800' : '600' }}
         accessibilityElementsHidden
       >
         {glyph}
@@ -70,8 +75,8 @@ export default function TabsLayout() {
         headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.text,
         headerTitleStyle: { fontWeight: '700' },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarActiveTintColor: colors.tabActive,
+        tabBarInactiveTintColor: colors.tabInactive,
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
