@@ -21,13 +21,14 @@
  * zone is reverted. «المساعد الذكي» / "Smart Assistant" is wider
  * than a fifth of a 360dp screen at any readable fixed size, so
  * the label size is DERIVED from the window width: measured
- * advance ratios for the longest label of each language (bold,
- * incl. safety margin — AR 7.3, EN 8.1 px of width per 1px of
- * font size) give the largest size that fits the tab width,
- * clamped to [8.5, 13]. `adjustsFontSizeToFit` (floor 0.8) stays
- * as the on-device safety net for font-metric differences.
- * Verified in the v1.1.4 web previews at 360×740 and 390×844:
- * every label's scrollWidth ≤ its clientWidth — no ellipsis.
+ * advance ratios for the longest label of each language (heaviest
+ * weight, incl. safety margin — AR 7.4, EN 8.2 px of width per
+ * 1px of font size), minus the library's hardcoded 10px item
+ * padding, give the largest size that fits, clamped to [7, 13].
+ * `adjustsFontSizeToFit` (floor 0.8) stays as the on-device
+ * safety net for font-metric differences. Verified in the
+ * v1.1.4 web previews at 360×740 and 390×844: every label's
+ * scrollWidth ≤ its clientWidth — no ellipsis.
  * Bar labels intentionally do NOT follow the app text scale (the
  * previous design capped them for the same reason): the bar
  * geometry is fixed, and TalkBack reads the full label regardless.
@@ -63,12 +64,18 @@ const TAB_ICON_SIZE = 24;
 
 /**
  * Measured advance width of each language's longest tab label per
- * 1px of font size (weight 800, safety margin included). Derived
- * from browser text measurement of «المساعد الذكي» (7.19 raw) and
- * "Smart Assistant" (8.04 raw) — see docs/IDENTITY_OLIVE_1.1.4.md.
+ * 1px of font size (safety margin included, heaviest weight).
+ * «المساعد الذكي» ≈ 7.2 raw (DOM-measured at weights 600 and 800);
+ * "Smart Assistant" ≈ 8.05 raw at weight 800 (canvas), 7.65 at 600
+ * (DOM). The label box is narrower than the tab: the bottom-tabs
+ * library hardcodes `padding: 5` on the item button and
+ * tabBarItemStyle cannot override it (verified in the vendored
+ * source and the preview DOM), so the derivation subtracts that
+ * 10px plus a 2px safety margin — see docs/IDENTITY_OLIVE_1.1.4.md.
  */
-const LABEL_WIDTH_RATIO = { ar: 7.3, en: 8.1 } as const;
-const LABEL_MIN_SIZE = 8.5;
+const LABEL_WIDTH_RATIO = { ar: 7.4, en: 8.2 } as const;
+const LABEL_BOX_INSET = 12;
+const LABEL_MIN_SIZE = 7;
 const LABEL_MAX_SIZE = 13;
 
 function TabGlyph({
@@ -132,7 +139,7 @@ export default function TabsLayout() {
   // Single-line fit: the largest label size (0.5 steps) whose
   // measured advance fits the tab width, per language.
   const tabWidth = width / TAB_SCREENS.length;
-  const fitSize = Math.floor(((tabWidth - 2) / LABEL_WIDTH_RATIO[lang]) * 2) / 2;
+  const fitSize = Math.floor(((tabWidth - LABEL_BOX_INSET) / LABEL_WIDTH_RATIO[lang]) * 2) / 2;
   const labelFontSize = Math.max(LABEL_MIN_SIZE, Math.min(LABEL_MAX_SIZE, fitSize));
 
   return (
@@ -153,10 +160,7 @@ export default function TabsLayout() {
           paddingBottom: insets.bottom + 6,
           paddingTop: 6,
         },
-        // paddingHorizontal 0 reclaims the library's built-in 5px
-        // item padding so the label box spans the full tab width —
-        // the fit-size derivation below assumes tabWidth − 2.
-        tabBarItemStyle: { minHeight: 58, paddingHorizontal: 0 },
+        tabBarItemStyle: { minHeight: 58 },
         sceneStyle: { backgroundColor: colors.background },
       }}
     >
