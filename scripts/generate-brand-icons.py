@@ -30,10 +30,16 @@ crops, scales and composites it into the platform surfaces:
   android mipmap-*/ic_launcher_foreground.webp   108dp set
   android mipmap-*/ic_launcher.webp              48dp set
   android mipmap-*/ic_launcher_round.webp        48dp set, circle mask
-  android drawable-*/splashscreen_logo.png       full official artwork
-                                   centered on transparency; the splash
-                                   window background is the deep navy
-                                   #061434 (res/values/colors.xml)
+  android drawable/splashscreen_black.xml        PLAIN SOLID BLACK —
+                                   NO logo, by owner order 2026-10-31
+                                   (the flashing logo splash looked bad).
+                                   The legacy drawable-*/splashscreen_logo.png
+                                   densities are NO LONGER generated and
+                                   are NOT used by the splash; the files
+                                   remain on disk only because the unused
+                                   legacy drawable/ic_launcher_background.xml
+                                   still references them (deleting them
+                                   would fail aapt resource linking).
 
 Adaptive background / field color: deep navy #061434 — sampled from
 the logo's darkest field and the owner's brand spec.
@@ -180,14 +186,28 @@ def adaptive_foreground(art: Image.Image, canvas: int) -> Image.Image:
     return out
 
 
-def splash_logo(art: Image.Image, canvas: int) -> Image.Image:
-    """Full official artwork centered on transparency (72% width);
-    the splash window supplies the deep-navy background."""
-    target = int(canvas * 0.72)
-    tile = art.resize((target, target), Image.LANCZOS)
-    out = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
-    out.alpha_composite(tile, ((canvas - target) // 2, (canvas - target) // 2))
-    return out
+SPLASH_BLACK_XML = """<?xml version="1.0" encoding="utf-8"?>
+<!-- Splash window background: PLAIN SOLID BLACK, no logo anywhere
+     (owner order 2026-10-31 — the half-second flashing logo splash
+     looked bad). The launch window shows only this color until the
+     app's first frame is drawn. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#000000" />
+</shape>
+"""
+
+
+def write_splash_black() -> None:
+    """The splash is intentionally PURE BLACK with no logo (owner order
+    2026-10-31) — this step exists so a regen can never resurrect the
+    old logo splash. It writes only the black drawable; the splash
+    theme (res/values/styles.xml) points at it."""
+    relpath = "android/app/src/main/res/drawable/splashscreen_black.xml"
+    p = os.path.join(ROOT, relpath)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(SPLASH_BLACK_XML)
+    print("wrote", relpath, "(plain black splash, no logo)")
 
 
 def circle_masked(img: Image.Image) -> Image.Image:
@@ -222,8 +242,7 @@ def main():
         save(adaptive_foreground(art, fg), f"android/app/src/main/res/mipmap-{name}/ic_launcher_foreground.webp")
         save(classic(art, base), f"android/app/src/main/res/mipmap-{name}/ic_launcher.webp")
         save(circle_masked(classic(art, base)), f"android/app/src/main/res/mipmap-{name}/ic_launcher_round.webp")
-        splash = int(288 * mult)
-        save(splash_logo(art, splash), f"android/app/src/main/res/drawable-{name}/splashscreen_logo.png")
+    write_splash_black()
 
 
 if __name__ == "__main__":

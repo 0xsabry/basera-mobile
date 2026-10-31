@@ -112,3 +112,26 @@ The launcher set was the product's established «ب» BrandMark rendered
 as a proper adaptive set (white letterform + mint dot in the safe
 zone on the `#0B3D2E` field, splash tile to match). It shipped in
 1.1.2 and is fully replaced by the official-logo set above.
+
+## Addendum 2026-10-31 (v1.1.6) — splash is plain black, no logo
+
+Owner order after on-device testing: the launch splash that flashed
+the logo for half a second "looks bad" — removed. The splash is now
+**plain solid black (`#000000`) and nothing else** until the app's
+first frame:
+
+- `Theme.App.SplashScreen` (`res/values/styles.xml`) windowBackground
+  now points at the new `res/drawable/splashscreen_black.xml` (a solid
+  `#000000` shape). No bitmap is composited anywhere in the splash
+  path; `app.json` carries no splash block (bare workflow — the
+  native theme is the whole splash; no JS splash API is wired).
+- `scripts/generate-brand-icons.py` no longer generates a logo
+  splash: its splash step writes the black drawable verbatim, so a
+  regen cannot resurrect the logo splash.
+- The legacy `drawable-*/splashscreen_logo.png` densities were NOT
+  deleted: the unused legacy `drawable/ic_launcher_background.xml`
+  (referenced by no icon definition — adaptive icons use
+  `@color/iconBackground` + the foreground mipmaps) still references
+  them, and deleting a referenced resource fails aapt linking. They
+  are dead weight in the APK only; nothing at runtime draws them.
+  Launcher icons/mipmaps are byte-identical in this release.
