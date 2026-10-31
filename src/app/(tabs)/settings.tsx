@@ -4,8 +4,10 @@
  *    honest unconfigured note otherwise), B) Language & Appearance
  *    (language/theme/high-contrast/text-scale/reduced-motion — the
  *    text scale flows through the shared typography), C) Voice &
- *    Accessibility (speech gate, rate, device voice picker, haptics,
- *    announcements), D) Privacy & Permissions (statuses read from the
+ *    Accessibility (speech gate, rate, a single field opening the
+ *    dedicated voice picker screen — the device voice list is long,
+ *    owner order 2026-10-31 — haptics, announcements),
+ *    D) Privacy & Permissions (statuses read from the
  *    actual OS modules, why-text, request/settings recovery),
  *    E) Places (proximity radius, opt-in sync), F) Updates summary,
  *    G) About (versions from the update service, model licences).
@@ -21,12 +23,10 @@
 import Slider from '@react-native-community/slider';
 import { Camera } from 'expo-camera';
 import * as Location from 'expo-location';
-import * as Speech from 'expo-speech';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, StyleSheet, Switch, Text, View } from 'react-native';
 import { speechService } from '../../ai/SpeechService';
-import { curateVoices, type CuratedVoices } from '../../ai/voiceCatalog';
 import { AccessibleButton } from '../../components/AccessibleButton';
 import {
   Card,
@@ -72,8 +72,6 @@ export default function SettingsScreen() {
   const configured = getSupabaseClient() !== null;
 
   const [user, setUser] = useState<GuardianUser | null>(null);
-  const [voiceCatalog, setVoiceCatalog] = useState<CuratedVoices | null>(null);
-  const [voiceTestFailed, setVoiceTestFailed] = useState(false);
   const [perms, setPerms] = useState<{ camera: PermInfo; mic: PermInfo; locFg: PermInfo; locBg: PermInfo; notif: PermInfo }>({
     camera: UNKNOWN, mic: UNKNOWN, locFg: UNKNOWN, locBg: UNKNOWN, notif: UNKNOWN,
   });
@@ -88,22 +86,6 @@ export default function SettingsScreen() {
   const refresh = useCallback(async () => {
     if (configured) {
       setUser(await getGuardianService().getCurrentUser().catch(() => null));
-    }
-    try {
-      const all = await Speech.getAvailableVoicesAsync();
-      setVoiceCatalog(curateVoices(all));
-      // Stale-voice guard (Bug 4): a persisted voice identifier the
-      // device no longer offers can silence EVERY utterance. If the
-      // service's selection is not in the fresh device list, clear it
-      // (service + persisted settings) back to the system default.
-      const availableIds = new Set(all.map((v) => v.identifier));
-      if (!speechService.validateVoiceSelection(availableIds)) {
-        void update({ voiceIdentifier: null });
-      }
-    } catch {
-      // Listing itself failed: both language groups render the
-      // no-voice guidance instead of the picker silently disappearing.
-      setVoiceCatalog({ ar: [], en: [] });
     }
     const map = (r: { granted: boolean; canAskAgain?: boolean; status?: string }): PermInfo => ({
       state: r.granted ? 'granted' : r.status === 'denied' || r.canAskAgain === false ? 'denied' : 'undetermined',
@@ -128,7 +110,7 @@ export default function SettingsScreen() {
     } catch {
       /* keep unknown states — the UI shows them honestly */
     }
-  }, [configured, update]);
+  }, [configured]);
 
   useFocusEffect(
     useCallback(() => {
@@ -177,22 +159,6 @@ export default function SettingsScreen() {
           ? t(lang, 'guardianNotConfigured')
           : t(lang, 'placesSyncFailed'),
     );
-  };
-
-  const onTestVoice = async (identifier: string | null, testLang: 'ar' | 'en') => {
-    setVoiceTestFailed(false);
-    const ok = await speechService.testSpeak(identifier, testLang);
-    if (ok) return;
-    setVoiceTestFailed(true);
-    // The failed voice was the SELECTED one: per the voiceTestFailed
-    // copy, fall back to the system default instead of leaving a
-    // voice that cannot speak in place.
-    const failedWasSelected =
-      identifier === null ? settings.voiceIdentifier === null : settings.voiceIdentifier === identifier;
-    if (failedWasSelected && settings.voiceIdentifier !== null) {
-      speechService.setVoiceIdentifier(null);
-      void update({ voiceIdentifier: null });
-    }
   };
 
   const confirmClearHistory = () => {
@@ -348,79 +314,18 @@ export default function SettingsScreen() {
             }}
           />
         </View>
-        {voiceCatalog !== null && (
-          <View style={styles.fieldBlock}>
-            <ListRow
-              variant="quiet"
-              title={t(lang, 'voiceDefault')}
-              accessibilityLabel={t(lang, 'voiceDefault')}
-              onPress={() => void update({ voiceIdentifier: null })}
-              right={
-                settings.voiceIdentifier === null ? (
-                  <Text style={{ color: colors.primary, fontSize: type.body, fontWeight: '800' }}>{GLYPHS.check}</Text>
-                ) : undefined
-              }
-            />
-            <AccessibleButton
-              label={t(lang, 'voiceTest')}
-              variant="secondary"
-              glyph={GLYPHS.speak}
-              onPress={() => void onTestVoice(null, lang)}
-            />
-            {(['ar', 'en'] as const).map((groupLang) => {
-              const group = voiceCatalog[groupLang];
-              const groupTitle = t(lang, groupLang === 'ar' ? 'voiceAvailableAr' : 'voiceAvailableEn');
-              return (
-                <View key={groupLang} style={styles.fieldBlock}>
-                  <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
-                    {groupTitle}
-                  </Text>
-                  {group.length === 0 ? (
-                    <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-                      {t(lang, 'voiceNoneAvailable')}
-                    </Text>
-                  ) : (
-                    group.map((v) => {
-                      const label = v.engineHint ? `${groupTitle} · ${v.engineHint}` : groupTitle;
-                      const selected = settings.voiceIdentifier === v.identifier;
-                      return (
-                        <View key={v.identifier} style={styles.fieldBlock}>
-                          <ListRow
-                            variant="quiet"
-                            title={label}
-                            accessibilityLabel={label}
-                            onPress={() => void update({ voiceIdentifier: v.identifier })}
-                            right={
-                              selected ? (
-                                <Text style={{ color: colors.primary, fontSize: type.body, fontWeight: '800' }}>
-                                  {GLYPHS.check}
-                                </Text>
-                              ) : undefined
-                            }
-                          />
-                          <AccessibleButton
-                            label={t(lang, 'voiceTest')}
-                            variant="secondary"
-                            glyph={GLYPHS.speak}
-                            onPress={() => void onTestVoice(v.identifier, groupLang)}
-                          />
-                        </View>
-                      );
-                    })
-                  )}
-                </View>
-              );
-            })}
-            {!!voiceTestFailed && (
-              <Text
-                accessibilityLiveRegion="polite"
-                style={[styles.body, { color: colors.danger, fontSize: type.body }]}
-              >
-                {t(lang, 'voiceTestFailed')}
-              </Text>
-            )}
-          </View>
-        )}
+        {/* Voice selection lives on its own screen (owner order
+            2026-10-31): the device voice list is long, so Settings
+            carries this single field and the picker itself — catalog,
+            stale-voice guard, test buttons — is src/app/settings-voice.tsx. */}
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.voice}
+          title={t(lang, 'voicePickerTitle')}
+          subtitle={settings.voiceIdentifier === null ? t(lang, 'voiceDefault') : settings.voiceIdentifier}
+          accessibilityLabel={t(lang, 'voicePickerTitle')}
+          onPress={() => router.push('/settings-voice')}
+        />
         {switchRow(GLYPHS.notifications, t(lang, 'announcements'), settings.announcements, (v) =>
           void update({ announcements: v }),
         )}
