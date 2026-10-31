@@ -9,8 +9,12 @@
  * RESOLVED theme from SettingsContext — it lives inside the provider
  * tree (root layout), so it flips live when the user changes theme in
  * Settings: light theme → dark icons ('dark-content'), dark theme →
- * light icons ('light-content'). The bar itself stays transparent so
- * the edge-to-edge look is unchanged.
+ * light icons ('light-content'). The bar's background/translucency
+ * stay exactly as the native theme defines them (transparent,
+ * edge-to-edge) — only the icon contrast changes. (RN 0.88's
+ * StatusBar component types no longer carry the Android-only
+ * backgroundColor/translucent props, and the native theme already
+ * owns both, so the component passes barStyle only.)
  */
 import React from 'react';
 import { StatusBar, type StatusBarStyle } from 'react-native';
@@ -23,5 +27,5 @@ export function statusBarStyleFor(isDark: boolean): StatusBarStyle {
 
 export function ThemedStatusBar() {
   const { isDark } = useSettings();
-  return <StatusBar barStyle={statusBarStyleFor(isDark)} backgroundColor="transparent" translucent />;
+  return <StatusBar barStyle={statusBarStyleFor(isDark)} />;
 }

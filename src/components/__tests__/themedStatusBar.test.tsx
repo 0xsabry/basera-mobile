@@ -29,12 +29,10 @@ describe('statusBarStyleFor (pure mapping)', () => {
 });
 
 describe('ThemedStatusBar render', () => {
-  it('renders dark-content, transparent + translucent on the light theme', () => {
+  it('renders dark-content on the light theme', () => {
     mockIsDark = false;
     const html = renderToStaticMarkup(<ThemedStatusBar />);
     expect(html).toContain('data-barstyle="dark-content"');
-    expect(html).toContain('data-background="transparent"');
-    expect(html).toContain('data-translucent="true"');
   });
   it('flips to light-content when the resolved theme is dark', () => {
     mockIsDark = true;
