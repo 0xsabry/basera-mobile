@@ -63,6 +63,8 @@ const TEXT_PAIRS: [keyof ThemeColors, keyof ThemeColors][] = [
   ['accent', 'surface'],
   ['tabInactive', 'surface'],
   ['tabActive', 'surface'],
+  // v1.1.3: the active tab glyph also sits on its soft container.
+  ['tabActive', 'tabActiveContainer'],
   ['onPrimarySoft', 'primarySoft'],
   ['onDangerSoft', 'dangerSoft'],
   ['onSuccessSoft', 'successSoft'],
@@ -118,6 +120,16 @@ describe('design-system contrast (WCAG AA ≥ 4.5:1)', () => {
  * (light #2E3336 = 12.78, dark #CDD2CE = 11.27) against the brand-
  * green active, and the bar adds an indicator bar + 800/600 weights,
  * so state is carried by hue family + shape + weight, never one cue.
+ *
+ * v1.1.3 brand alignment (navy/royal/gold identity) + tab container:
+ * the indicator bar is folded into a soft rounded CONTAINER behind
+ * the active glyph, so the active tint must ALSO clear 9:1 on
+ * tabActiveContainer. Measured (tabInactive / tabActive on surface,
+ * then tabActive on its container):
+ *   light             inactive 11.20   active 12.60   container 11.25
+ *   dark              inactive 11.74   active 10.79   container  9.48
+ *   lightHighContrast inactive 21.00   active 12.76   container 11.40
+ *   darkHighContrast  inactive 18.36   active 11.59   container  9.96
  */
 const TAB_BAR_MIN = 9;
 
@@ -135,6 +147,9 @@ describe('tab bar contrast (Bug 5: icon + label ≥ 9:1 on surface)', () => {
       });
       it('tabActive on surface (label text)', () => {
         expect(contrastRatio(colors.tabActive, colors.surface)).toBeGreaterThanOrEqual(TAB_BAR_MIN);
+      });
+      it('tabActive on tabActiveContainer (glyph on its soft container, v1.1.3)', () => {
+        expect(contrastRatio(colors.tabActive, colors.tabActiveContainer)).toBeGreaterThanOrEqual(TAB_BAR_MIN);
       });
     });
   }

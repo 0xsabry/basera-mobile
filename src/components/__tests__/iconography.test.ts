@@ -174,7 +174,7 @@ describe('brand assets: launcher + splash set is well-formed', () => {
   it('app.json points the adaptive foreground at the dedicated alpha asset', () => {
     const appJson = JSON.parse(fs.readFileSync(path.join(REPO, 'app.json'), 'utf8'));
     expect(appJson.expo.android.adaptiveIcon.foregroundImage).toBe('./assets/adaptive-foreground.png');
-    expect(appJson.expo.android.adaptiveIcon.backgroundColor).toBe('#0B3D2E');
+    expect(appJson.expo.android.adaptiveIcon.backgroundColor).toBe('#061434');
     expect(appJson.expo.icon).toBe('./assets/icon.png');
   });
 });
