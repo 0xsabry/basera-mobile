@@ -28,6 +28,7 @@ import VoiceScreen from '../../app/voice';
 import { TAB_SCREENS } from '../../app/(tabs)/_layout';
 import { t, type StringKey } from '../../i18n/strings';
 import { SettingsProvider } from '../../state/SettingsContext';
+import { GLYPHS } from '../../theme/glyphs';
 import { forwardChevron } from '../../theme/glyphs';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -151,6 +152,10 @@ describe('tab structure', () => {
     expect(TAB_SCREENS.map((s) => s.name)).toEqual(['index', 'assistance', 'history', 'family', 'settings']);
     const glyphs = TAB_SCREENS.map((s) => s.glyph);
     expect(new Set(glyphs).size).toBe(5);
+    // v1.1.2: the Smart Assistant tab carries the ✦ spark — the retired
+    // ◇ (a plain diamond that communicated nothing) must not return.
+    expect(TAB_SCREENS[1].glyph).toBe(GLYPHS.assistance);
+    expect(glyphs).not.toContain('◇');
     for (const def of TAB_SCREENS) {
       expect(t('ar', def.titleKey).length).toBeGreaterThan(0);
       expect(t('en', def.titleKey).length).toBeGreaterThan(0);

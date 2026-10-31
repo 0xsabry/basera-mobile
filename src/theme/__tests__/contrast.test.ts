@@ -49,6 +49,10 @@ const TEXT_PAIRS: [keyof ThemeColors, keyof ThemeColors][] = [
   ['heroTextSecondary', 'heroBackground'],
   ['danger', 'background'],
   ['danger', 'surface'],
+  // v1.1.2: text ON the filled danger surface (SOS button). White was
+  // hard-coded in AccessibleButton and measured 2.28:1 on the dark
+  // palette's light-salmon danger — now a token, locked here.
+  ['dangerText', 'danger'],
   ['success', 'background'],
   ['success', 'surface'],
   ['warning', 'background'],
@@ -106,6 +110,14 @@ describe('design-system contrast (WCAG AA ≥ 4.5:1)', () => {
  *   dark             inactive 13.39   active 10.11
  *   lightHighContrast inactive 21.00  active 12.36
  *   darkHighContrast inactive 19.44   active 15.19
+ *
+ * v1.1.2 state separation: ratios alone did not make the state
+ * readable — in the light palette BOTH tints were dark greens
+ * (inactive #24382E vs active #064D34), differing mainly in weight.
+ * The inactive tint is now a NEUTRAL grey in the standard palettes
+ * (light #2E3336 = 12.78, dark #CDD2CE = 11.27) against the brand-
+ * green active, and the bar adds an indicator bar + 800/600 weights,
+ * so state is carried by hue family + shape + weight, never one cue.
  */
 const TAB_BAR_MIN = 9;
 

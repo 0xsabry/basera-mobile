@@ -24,7 +24,7 @@ export function AccessibleButton({ label, hint, onPress, variant = 'primary', di
   const { colors, type, settings } = useSettings();
   const bg =
     variant === 'primary' ? colors.primary : variant === 'danger' ? colors.danger : colors.surfaceAlt;
-  const fg = variant === 'secondary' ? colors.text : variant === 'danger' ? '#FFFFFF' : colors.primaryText;
+  const fg = variant === 'secondary' ? colors.text : variant === 'danger' ? colors.dangerText : colors.primaryText;
   // Reduced-motion preference removes the press fade effect entirely.
   const pressOpacity = settings.reducedMotion ? 1 : 0.85;
   return (

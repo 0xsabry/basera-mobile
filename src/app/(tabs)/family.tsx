@@ -856,7 +856,7 @@ const styles = StyleSheet.create({
   codeText: { fontSize: 40, fontWeight: '800', textAlign: 'center', letterSpacing: 4 },
   codeBox: { gap: spacing.sm, alignItems: 'center' },
   listBlock: { gap: spacing.sm, paddingVertical: spacing.xs },
-  qrFrame: { padding: spacing.md, borderRadius: 16, borderWidth: 1 },
+  qrFrame: { padding: spacing.md, borderRadius: radius.card, borderWidth: 1 },
   input: {
     borderWidth: 1.5,
     borderRadius: radius.md,

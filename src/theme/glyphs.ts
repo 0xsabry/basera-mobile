@@ -13,7 +13,9 @@
  *
  * Primary-feature glyph map — every primary feature has a UNIQUE
  * glyph, chosen only from safe system-font glyphs:
- *   assistance ◇ (hub / help diamond — distinct from the SOS flag)
+ *   assistance ✦ (the smart-assistant spark — the contemporary,
+ *              instantly-read "AI assistant" mark; v1.1.2 replaced ◇,
+ *              a plain diamond that communicated nothing)
  *   voice      ◉ (speaking disc / microphone)
  *   detect     ◎ (eye / viewfinder target)
  *   read       ≣ (lines of text)
@@ -26,11 +28,14 @@
  * Secondary glyphs may alias a primary shape where the meaning is the
  * same (camera ◎ = detect input, mic ◉ = voice, location ⌖ = places);
  * shield ⬢ and privacy ⛨ are kept distinct from each other.
+ * (notifications ✧ is the OUTLINE four-point star used at small sizes
+ * in Settings rows — the assistance tab's ✦ is its filled counterpart
+ * at 24dp; the pair mirrors the existing ◎/◉ detect/voice distinction.)
  */
 export const GLYPHS = {
   brand: 'ب',
   home: '⌂',
-  assistance: '◇',
+  assistance: '✦',
   history: '▤',
   family: '♡',
   settings: '⚙',

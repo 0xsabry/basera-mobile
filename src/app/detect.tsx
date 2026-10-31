@@ -283,6 +283,8 @@ const styles = StyleSheet.create({
   },
   preview: { width: '100%', borderRadius: radius.md },
   box: { position: 'absolute', borderWidth: 3, borderRadius: 4 },
-  boxLabel: { fontSize: 14, fontWeight: '700', paddingHorizontal: 4, alignSelf: 'flex-start' },
+  // 16 = the caption floor of the type scale (was 14 — below every
+  // text token in the system, on the app's most-read overlay).
+  boxLabel: { fontSize: 16, fontWeight: '700', paddingHorizontal: 4, alignSelf: 'flex-start' },
   detRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });

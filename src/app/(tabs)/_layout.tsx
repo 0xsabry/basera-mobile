@@ -9,6 +9,16 @@
  * label (never icon-only), an explicit screen-reader label, and the
  * bar respects the device safe area.
  *
+ * v1.1.2 state separation: owners could not tell the active tab at a
+ * glance — the two tints were both dark greens (light theme) and the
+ * only other cue was weight. Now (1) the inactive tint is a NEUTRAL
+ * grey while the active tint stays brand green (theme tokens),
+ * (2) the active tab carries a short indicator BAR above its glyph —
+ * a shape cue that survives color-vision differences — and
+ * (3) weights stay 800/600. Labels never wrap or clip: one line,
+ * shrink-to-fit (the «المساعد الذكي» / "Smart Assistant" label is
+ * wider than its tab at full size).
+ *
  * Sub-screens (detect, read, voice, updates, guardian-auth, places,
  * alerts, onboarding) are stack routes in the root layout, pushed above
  * the tabs, so the tab bar never covers their controls.
@@ -20,6 +30,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { t, type StringKey } from '../../i18n/strings';
 import { useSettings } from '../../state/SettingsContext';
 import { GLYPHS } from '../../theme/glyphs';
+import { radius } from '../../theme/tokens';
 
 export interface TabScreenDef {
   name: string;
@@ -49,6 +60,19 @@ function TabGlyph({ glyph, color, focused }: { glyph: string; color: ColorValue;
         justifyContent: 'center',
       }}
     >
+      {/* Active indicator — a 24×3.5dp pill in the active tint above
+          the glyph. Unfocused tabs render the same box transparent so
+          the glyph column never shifts when selection changes. */}
+      <View
+        accessibilityElementsHidden
+        style={{
+          width: 24,
+          height: 3.5,
+          borderRadius: radius.pill,
+          marginBottom: 3,
+          backgroundColor: focused ? color : 'transparent',
+        }}
+      />
       <Text
         // Bug 5: inactive weight 400 -> 600. The tab glyphs are thin
         // outline forms (◇ ♡ ⌂); at 400 their ~1px strokes rendered
@@ -104,6 +128,9 @@ export default function TabsLayout() {
             ),
             tabBarLabel: ({ focused, color }: { focused: boolean; color: ColorValue }) => (
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
                 style={{
                   color,
                   // Capped: at text scale 1.3 the uncapped caption size

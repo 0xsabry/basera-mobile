@@ -79,17 +79,28 @@ export interface ThemeColors {
   primary: string;
   primaryText: string;
   /**
-   * Bottom tab bar tints (Bug 5). Dedicated tokens, NOT aliases of
-   * primary/textSecondary: the tab glyphs are thin outline forms
-   * (◇ ♡ ⌂) whose ~1px strokes wash out on device even when the
-   * raw color ratio passes AA, so both tints are held to ≥ 9:1
-   * against `surface` (the bar background) in every palette —
-   * verified in contrast.test.ts.
+   * Bottom tab bar tints (Bug 5; state separation reworked v1.1.2).
+   * Dedicated tokens, NOT aliases of primary/textSecondary: the tab
+   * glyphs are thin outline forms (♡ ⌂) whose ~1px strokes wash out
+   * on device even when the raw color ratio passes AA, so both tints
+   * are held to ≥ 9:1 against `surface` (the bar background) in every
+   * palette — verified in contrast.test.ts. State separation does NOT
+   * rely on these tints alone: the ACTIVE tint is the brand green,
+   * the INACTIVE tint is a NEUTRAL grey (no green cast — previously
+   * both were dark greens and read as the same state), and the bar
+   * adds a shape cue (active indicator bar + 800 weight) on top.
    */
   tabActive: string;
   tabInactive: string;
   accent: string;
   danger: string;
+  /**
+   * Text on a filled `danger` surface (the SOS button). NOT always
+   * white: in the dark palettes `danger` is a light salmon, where
+   * white text measured 2.28:1 — the pair is locked ≥ 4.5:1 in
+   * contrast.test.ts (v1.1.2 fix).
+   */
+  dangerText: string;
   /** Semantic status colors — always paired with text, never color alone. */
   success: string;
   warning: string;
@@ -124,9 +135,10 @@ export const lightColors: ThemeColors = {
   primary: '#0A6B4C',
   primaryText: '#FFFFFF',
   tabActive: '#064D34',
-  tabInactive: '#24382E',
+  tabInactive: '#2E3336',
   accent: '#7C4D00',
   danger: '#B3261E',
+  dangerText: '#FFFFFF',
   success: '#14632C',
   warning: '#7C4D00',
   info: '#0B5394',
@@ -157,9 +169,10 @@ export const darkColors: ThemeColors = {
   primary: '#2FBF8F',
   primaryText: '#03130B',
   tabActive: '#4ADEA6',
-  tabInactive: '#D8E6DD',
+  tabInactive: '#CDD2CE',
   accent: '#FFC44D',
   danger: '#FF8A80',
+  dangerText: '#2B0703',
   success: '#4CC38A',
   warning: '#FFC44D',
   info: '#6CB2F5',
