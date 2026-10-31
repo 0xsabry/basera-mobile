@@ -351,6 +351,26 @@ const en = {
   mapAttribution: '© OpenStreetMap contributors',
   mapLoadFailed: 'Map unavailable. Location details only.',
   phoneLocationSource: 'Phone location',
+  // --- Critical bug-fix release (v1.1.1) keys — added by coordinator;
+  // workstream children CONSUME these, do not add keys. ---
+  addressTitle: 'Address',
+  addressApproximate: 'Approximate address',
+  addressUnavailable: 'Address unavailable — coordinates only',
+  coordinatesLabel: 'Coordinates',
+  addressLoading: 'Finding the address…',
+  languageRestartNotice: 'The app will restart to apply the language',
+  languageRestartDeferred: 'The language will be applied when the current task finishes',
+  imageErrorUnsupported: 'This image format is not supported. Choose a JPEG or PNG photo.',
+  imageErrorDecode: 'The image could not be read. It may be damaged — choose another photo.',
+  imageErrorProcessing: 'Processing failed. Please try again.',
+  voiceAvailableAr: 'Arabic — Available voice',
+  voiceAvailableEn: 'English — Available voice',
+  voiceTest: 'Test voice',
+  voiceSampleAr: 'مرحبًا، هذا اختبار للصوت.',
+  voiceSampleEn: 'Hello, this is a voice test.',
+  voiceNoneAvailable:
+    'No usable voice is installed for this language. Install voice data in Android Settings → Accessibility → Text-to-speech output, then come back here.',
+  voiceTestFailed: 'This voice could not speak. The system default voice will be used instead.',
 };
 
 export type StringKey = keyof typeof en;
@@ -703,6 +723,25 @@ const ar: Record<StringKey, string> = {
   mapAttribution: '© OpenStreetMap contributors',
   mapLoadFailed: 'الخريطة غير متاحة. تُعرض التفاصيل فقط.',
   phoneLocationSource: 'موقع الهاتف',
+  // --- مفاتيح إصدار إصلاح الأخطاء (v1.1.1) ---
+  addressTitle: 'العنوان',
+  addressApproximate: 'عنوان تقريبي',
+  addressUnavailable: 'العنوان غير متاح — تُعرض الإحداثيات فقط',
+  coordinatesLabel: 'الإحداثيات',
+  addressLoading: 'جارٍ البحث عن العنوان…',
+  languageRestartNotice: 'سيتم إعادة تشغيل التطبيق لتطبيق اللغة',
+  languageRestartDeferred: 'ستُطبَّق اللغة عند انتهاء المهمة الحالية',
+  imageErrorUnsupported: 'صيغة الصورة غير مدعومة. اختر صورة بصيغة JPEG أو PNG.',
+  imageErrorDecode: 'تعذّرت قراءة الصورة. ربما تكون تالفة — اختر صورة أخرى.',
+  imageErrorProcessing: 'فشلت المعالجة. حاول مرة أخرى.',
+  voiceAvailableAr: 'العربية — صوت متاح',
+  voiceAvailableEn: 'الإنجليزية — صوت متاح',
+  voiceTest: 'اختبار الصوت',
+  voiceSampleAr: 'مرحبًا، هذا اختبار للصوت.',
+  voiceSampleEn: 'Hello, this is a voice test.',
+  voiceNoneAvailable:
+    'لا يوجد صوت مثبّت صالح لهذه اللغة. ثبّت بيانات الصوت من إعدادات أندرويد ← إمكانية الوصول ← تحويل النص إلى كلام، ثم عُد إلى هنا.',
+  voiceTestFailed: 'تعذّر تشغيل هذا الصوت. سيُستخدم صوت النظام الافتراضي بدلًا منه.',
 };
 
 export const STRINGS: Record<'en' | 'ar', Record<StringKey, string>> = { en, ar };
