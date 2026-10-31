@@ -23,6 +23,16 @@ export interface ReleaseNote {
 /** Newest first. */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-10-31',
+    runtimeVersion: '1.1.0',
+    titleEn: 'BASERA 1.1.0 — Premium redesign: a calmer, clearer interface',
+    titleAr: 'بصيرة 1.1.0 — تصميم جديد فاخر: واجهة أهدى وأوضح',
+    bodyEn:
+      'A complete visual redesign of every screen: a new design system with refined light, dark and high-contrast themes, a clearer home (brand header, one voice hero, an honest smart-glasses status card, and a feature grid), segmented settings controls, grouped history, severity cards for alerts, and a mic-hero voice screen. No features changed and nothing was removed — everything works exactly as before, and all status information is still announced with text, never color alone.',
+    bodyAr:
+      'إعادة تصميم بصرية كاملة لكل الشاشات: نظام تصميم جديد بمظاهر فاتحة وداكنة وعالية التباين أرقى، رئيسية أوضح (ترويسة بالعلامة، زر صوتي رئيسي واحد، بطاقة حالة صادقة للنظارة الذكية، وشبكة مميزات)، عناصر تحكم مجزأة في الإعدادات، سجل مجمع حسب اليوم، بطاقات خطورة للتنبيهات، وشاشة صوت بقرص ميكروفون. مفيش مميزات اتغيرت ولا حاجة اتشالت — كل حاجة شغالة زي ما هي بالضبط، وكل معلومات الحالة لسه بتتقال بنص، مش بلون لوحده أبدًا.',
+  },
+  {
     date: '2026-10-30',
     runtimeVersion: '1.1.0',
     titleEn: 'BASERA 1.1.0 — New design, Places memory, danger alerts, background sharing',

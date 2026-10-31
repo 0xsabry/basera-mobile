@@ -130,14 +130,14 @@ export default function HomeScreen() {
       {/* Device status — real signals only. */}
       <Card>
         <SectionHeader title={t(lang, 'deviceStatusTitle')} glyph={GLYPHS.detect} />
-        <View style={styles.statusRow}>
-          <Text style={[styles.body, styles.flexText, { color: colors.text, fontSize: type.body }]}>
+        <View style={styles.statusStack}>
+          <Text style={[styles.body, { color: colors.text, fontSize: type.body, fontWeight: '700' }]}>
             {t(lang, 'assistantStatus')}
           </Text>
           <StatusPill tone="success" label={`${t(lang, 'statusReady')} — ${t(lang, 'modeReady')}`} />
         </View>
-        <View style={styles.statusRow}>
-          <Text style={[styles.body, styles.flexText, { color: colors.text, fontSize: type.body }]}>
+        <View style={styles.statusStack}>
+          <Text style={[styles.body, { color: colors.text, fontSize: type.body, fontWeight: '700' }]}>
             {t(lang, 'familySafety')}
           </Text>
           <StatusPill tone={sharingTone} label={sharingText} />
@@ -237,6 +237,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  statusStack: { gap: spacing.xs },
   flexText: { flex: 1, gap: spacing.xs },
   cardTitle: { fontWeight: '800', lineHeight: 28 },
   body: { lineHeight: 29 },
