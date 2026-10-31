@@ -159,3 +159,15 @@ remains compatible with the already-built Android runtime 1.1.0** — the
 dependency report therefore raises no objection to the owner authorizing
 the OTA publish from Windows. (This statement is about source/runtime
 compatibility; on-device receipt of an update remains a device check.)
+
+## Correction (2026-10-31, Windows audit reconciliation)
+An earlier draft of this document said the vulnerable implementation was
+absent from the installed zod 3.25.76 package. **That was wrong.** The
+3.25.76 package ships both implementations: root export = v3
+(`index.cjs` → `./v3/external.cjs`), plus the full v4 implementation under
+the `zod/v4` subpath — including `$ZodArray.handleArrayResult` at
+`v4/core/schemas.cjs:647`. Presence is confirmed; reachability is the
+separate question, answered by the trace in the 2026-10-31 reconciliation
+report: @expo/cli imports only `require("zod")` (root → v3) in two
+dev-server schema files, no consumer of the nested copy loads `zod/v4`,
+and neither zod nor deepmerge appears in the exported app bundle.
