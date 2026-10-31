@@ -3,7 +3,7 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0B3D2E",
-        "foregroundImage": "./assets/icon.png"
+        "foregroundImage": "./assets/adaptive-foreground.png"
       },
       "package": "me.auramarketing.basera",
       "permissions": [
