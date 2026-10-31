@@ -81,7 +81,7 @@ export default function TabsLayout() {
           paddingTop: 6,
         },
         tabBarItemStyle: { minHeight: 58 },
-        tabBarLabelStyle: { fontSize: type.caption, fontWeight: '700' },
+        tabBarLabelStyle: { fontSize: Math.min(type.caption, 17), fontWeight: '700' },
         sceneStyle: { backgroundColor: colors.background },
       }}
     >
@@ -99,9 +99,12 @@ export default function TabsLayout() {
               <Text
                 style={{
                   color,
-                  fontSize: type.caption,
+                  // Capped: at text scale 1.3 the uncapped caption size
+                  // makes the five localized labels crowd and overlap.
+                  fontSize: Math.min(type.caption, 17),
                   fontWeight: focused ? '800' : '600',
-                  lineHeight: type.caption * 1.3,
+                  lineHeight: Math.min(type.caption, 17) * 1.3,
+                  textAlign: 'center',
                 }}
               >
                 {t(lang, def.titleKey)}

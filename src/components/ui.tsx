@@ -306,7 +306,16 @@ export function StatusPill({ tone, label, glyph }: { tone: Tone; label: string; 
       style={[styles.pill, { backgroundColor: tc.soft, borderColor: tc.solid }]}
     >
       <Text style={{ color: tc.on, fontSize: type.caption, fontWeight: '800' }}>{glyph ?? TONE_GLYPHS[tone]}</Text>
-      <Text style={{ color: tc.on, fontSize: type.caption, fontWeight: '700', lineHeight: type.caption * 1.3 }}>
+      <Text
+        style={{
+          color: tc.on,
+          fontSize: type.caption,
+          fontWeight: '700',
+          lineHeight: type.caption * 1.3,
+          flexShrink: 1,
+          textAlign: 'center',
+        }}
+      >
         {label}
       </Text>
     </View>
@@ -816,6 +825,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xxs,
     alignSelf: 'flex-start',
+    // Inside rows (StatusStrip, pill rows) a long localized label must
+    // compress and wrap instead of pushing content off-screen.
+    flexShrink: 1,
   },
   iconTile: { alignItems: 'center', justifyContent: 'center' },
   tileRow: {
@@ -832,7 +844,7 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
   },
   tileGrid: {
-    flexBasis: '48%',
+    flexBasis: '46%',
     flexGrow: 1,
     gap: spacing.sm,
     minHeight: 118,
