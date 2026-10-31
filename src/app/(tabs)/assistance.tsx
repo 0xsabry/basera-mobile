@@ -17,6 +17,8 @@ import { voiceCommandService } from '../../ai/voiceSingleton';
 import { AccessibleButton } from '../../components/AccessibleButton';
 import {
   Banner,
+  FeatureGrid,
+  FeatureTile,
   HeroAction,
   ListRow,
   QuietGroup,
@@ -88,40 +90,41 @@ export default function AssistanceScreen() {
         glyph={GLYPHS.voice}
         onPress={() => pushOnce('/voice')}
       />
-      {/* Core actions — the same four as Home, as quiet list rows. */}
-      <QuietGroup>
-        <ListRow
-          variant="quiet"
+      {/* Core actions — the same four as Home, in the same 2×2 grid
+          (v1.1.2: identical composition on both surfaces). */}
+      <FeatureGrid>
+        <FeatureTile
+          layout="grid"
           glyph={GLYPHS.detect}
           title={t(lang, 'detect')}
           subtitle={t(lang, 'identifyObjectsHint')}
-          accessibilityHint={t(lang, 'detectHint')}
+          hint={t(lang, 'detectHint')}
           onPress={() => pushOnce('/detect')}
         />
-        <ListRow
-          variant="quiet"
+        <FeatureTile
+          layout="grid"
           glyph={GLYPHS.read}
           title={t(lang, 'readText')}
           subtitle={t(lang, 'readTextHint')}
-          accessibilityHint={t(lang, 'readTextHint')}
+          hint={t(lang, 'readTextHint')}
           onPress={() => pushOnce('/read')}
         />
-        <ListRow
-          variant="quiet"
+        <FeatureTile
+          layout="grid"
           glyph={GLYPHS.places}
           title={t(lang, 'places')}
           subtitle={t(lang, 'placesHint')}
-          accessibilityHint={t(lang, 'placesHint')}
+          hint={t(lang, 'placesHint')}
           onPress={() => pushOnce('/places')}
         />
-        <ListRow
-          variant="quiet"
+        <FeatureTile
+          layout="grid"
           glyph={GLYPHS.alerts}
           title={t(lang, 'viewAlerts')}
           subtitle={t(lang, 'alertsSubtitle')}
           onPress={() => pushOnce('/alerts')}
         />
-      </QuietGroup>
+      </FeatureGrid>
 
       <SectionHeader title={t(lang, 'speak')} glyph={GLYPHS.speak} />
       <QuietGroup>
