@@ -410,7 +410,7 @@ export default function GuardianScreen() {
               <Text accessibilityLiveRegion="polite" style={body()}>
                 {t(lang, deletionServerMessageKey(deletion)!)}
                 {deletion.state === 'confirmed' && deletion.confirmedAt
-                  ? ` — ${new Date(deletion.confirmedAt).toLocaleString()}`
+                  ? ` — ${new Date(deletion.confirmedAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}`
                   : ''}
               </Text>
             )}

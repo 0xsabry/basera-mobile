@@ -103,7 +103,7 @@ export default function HistoryScreen() {
     return (
       <Screen>
         <AccessibleButton
-          label={lang === 'ar' ? 'ارجع للسجل' : 'Back to history'}
+          label={t(lang, 'backToHistory')}
           onPress={() => setSelected(null)}
           variant="secondary"
         />

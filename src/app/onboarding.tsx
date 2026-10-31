@@ -23,20 +23,20 @@ import { spacing } from '../theme/tokens';
 import type { AppLanguage } from '../ai/types';
 
 export default function OnboardingScreen() {
-  const { settings, colors, type, update } = useSettings();
+  const { settings, colors, type, update, switchLanguage } = useSettings();
   const lang = settings.language;
   const [chosen, setChosen] = useState<AppLanguage>(lang);
 
   const finish = async (chosenLang: AppLanguage) => {
-    await update({ language: chosenLang, onboardingDone: true });
+    await update({ onboardingDone: true });
+    // Language goes through switchLanguage so a direction flip gets the
+    // same safe-restart treatment as a Settings change (Bug 2).
+    await switchLanguage(chosenLang);
     speechService.setRate(settings.speechRate);
     if (settings.announcements) {
       // Announcement path on purpose: the welcome must NEVER become the
       // "Repeat" target (ROOT CAUSE 3).
-      void speechService.speakAnnouncement(
-        chosenLang === 'ar' ? 'أهلاً بك في بصيرة. اختار اللي تحب تعمله من الشاشة الرئيسية.' : 'Welcome to BASERA. Choose what you would like to do from the home screen.',
-        chosenLang,
-      );
+      void speechService.speakAnnouncement(t(chosenLang, 'welcomeSpoken'), chosenLang);
     }
     router.replace('/');
   };

@@ -371,6 +371,10 @@ const en = {
   voiceNoneAvailable:
     'No usable voice is installed for this language. Install voice data in Android Settings → Accessibility → Text-to-speech output, then come back here.',
   voiceTestFailed: 'This voice could not speak. The system default voice will be used instead.',
+  backToHistory: 'Back to history',
+  ocrSpokenPrefix: 'The text says:',
+  welcomeSpoken: 'Welcome to BASERA. Choose what you would like to do from the home screen.',
+  languageChangedConfirm: 'Language changed to English',
 };
 
 export type StringKey = keyof typeof en;
@@ -742,6 +746,10 @@ const ar: Record<StringKey, string> = {
   voiceNoneAvailable:
     'لا يوجد صوت مثبّت صالح لهذه اللغة. ثبّت بيانات الصوت من إعدادات أندرويد ← إمكانية الوصول ← تحويل النص إلى كلام، ثم عُد إلى هنا.',
   voiceTestFailed: 'تعذّر تشغيل هذا الصوت. سيُستخدم صوت النظام الافتراضي بدلًا منه.',
+  backToHistory: 'ارجع للسجل',
+  ocrSpokenPrefix: 'النص بيقول:',
+  welcomeSpoken: 'أهلاً بك في بصيرة. اختار اللي تحب تعمله من الشاشة الرئيسية.',
+  languageChangedConfirm: 'تم تغيير اللغة إلى العربية',
 };
 
 export const STRINGS: Record<'en' | 'ar', Record<StringKey, string>> = { en, ar };

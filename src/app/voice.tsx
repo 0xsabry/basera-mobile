@@ -31,7 +31,7 @@ import { elevation, radius, spacing } from '../theme/tokens';
 const voiceService = voiceCommandService;
 
 export default function VoiceScreen() {
-  const { settings, colors, type, update } = useSettings();
+  const { settings, colors, type, switchLanguage } = useSettings();
   const lang = settings.language;
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -104,8 +104,8 @@ export default function VoiceScreen() {
         break;
       case 'change-language': {
         const next = lang === 'ar' ? 'en' : 'ar';
-        await update({ language: next });
-        void speechService.speakAnnouncement(next === 'ar' ? 'تم تغيير اللغة إلى العربية' : 'Language changed to English', next);
+        await switchLanguage(next);
+        void speechService.speakAnnouncement(t(next, 'languageChangedConfirm'), next);
         break;
       }
       case 'sos': {
