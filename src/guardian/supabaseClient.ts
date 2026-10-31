@@ -1,14 +1,16 @@
 /**
- * Supabase client for guardian features (V1.1 Phase 1).
+ * Supabase client for guardian features (V1.1).
  *
- * The owner has NOT created the Supabase project yet. Configuration comes
- * from EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY (inlined by
- * Expo at build time) or app.json extra.supabaseUrl / supabaseAnonKey.
- * When unconfigured, getSupabaseClient() returns null and every guardian
- * surface shows the honest "not configured yet" state — never fake data.
+ * The owner's project is DEPLOYED (vbvvwyeccsegfwprwrga) and its URL +
+ * publishable key ship as the app.json extra fallback; configuration can
+ * be overridden by EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY
+ * (inlined by Expo at build time). The null-config path remains only as a
+ * defensive fallback: if no config were present, getSupabaseClient()
+ * returns null and guardian surfaces show the honest "not configured"
+ * state — never fake data. See docs/SUPABASE_INTEGRATION.md.
  *
- * Only the ANON key ever ships in the app. The service-role key and FCM
- * server credentials live exclusively in Edge Function secrets (server).
+ * Only the publishable (client) key ever ships in the app — never any
+ * service-role/secret key.
  *
  * Session storage: expo-secure-store, with chunking because a Supabase
  * session JSON can exceed SecureStore's per-value size limit.
