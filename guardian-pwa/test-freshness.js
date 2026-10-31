@@ -233,3 +233,107 @@ check(
 );
 
 console.log(`\n${passed} freshness tests passed.`);
+
+// ===========================================================================
+// Realtime wiring (realtime.js) — DEPLOYED contract: one channel, a
+// guardian_locations (*) binding and a sos_alerts (INSERT) binding per
+// wearer, filtered on subject_user_id. Live delivery itself was
+// verified against the real project (see docs/SUPABASE_INTEGRATION.md);
+// these tests pin the client-side wiring with a fake supabase client.
+// ===========================================================================
+const { createGuardianRealtime } = require("./realtime.js");
+
+let rtPassed = 0;
+function rtCheck(name, cond) {
+  assert.ok(cond, name);
+  rtPassed += 1;
+  console.log(`ok - ${name}`);
+}
+
+function fakeRtClient() {
+  const channels = [];
+  const removed = [];
+  return {
+    channels,
+    removed,
+    channel(name) {
+      const ch = {
+        name,
+        bindings: [],
+        on(event, filter, cb) {
+          this.bindings.push({ event, filter, cb });
+          return this;
+        },
+        subscribe() {
+          return this;
+        },
+      };
+      channels.push(ch);
+      return ch;
+    },
+    removeChannel(ch) {
+      removed.push(ch);
+      return Promise.resolve("ok");
+    },
+  };
+}
+
+{
+  const client = fakeRtClient();
+  const locations = [];
+  const sos = [];
+  const rt = createGuardianRealtime({
+    client,
+    onLocation: (id, row, ev) => locations.push([id, row, ev]),
+    onSos: (row) => sos.push(row),
+  });
+  rt.setWearers(["w1", "w2"]);
+  rtCheck("one channel for all wearers", client.channels.length === 1);
+  const ch = client.channels[0];
+  rtCheck("two bindings per wearer (locations + sos)", ch.bindings.length === 4);
+  rtCheck(
+    "location binding filters subject_user_id",
+    ch.bindings[0].filter.table === "guardian_locations" &&
+      ch.bindings[0].filter.filter === "subject_user_id=eq.w1",
+  );
+  rtCheck(
+    "sos binding is INSERT-only on sos_alerts",
+    ch.bindings[1].filter.table === "sos_alerts" && ch.bindings[1].filter.event === "INSERT",
+  );
+  // Payloads route to the right callbacks.
+  ch.bindings[0].cb({ eventType: "UPDATE", new: { latitude: 30, longitude: 31 } });
+  rtCheck("location payload reaches onLocation", locations.length === 1 && locations[0][0] === "w1");
+  ch.bindings[0].cb({ eventType: "DELETE", new: null });
+  rtCheck("DELETE payload maps to null row", locations[1][1] === null);
+  ch.bindings[1].cb({ eventType: "INSERT", new: { id: "s1", subject_user_id: "w1" } });
+  rtCheck("sos payload reaches onSos", sos.length === 1 && sos[0].id === "s1");
+  // Same set = no rebuild; new set = rebuild with teardown.
+  rt.setWearers(["w2", "w1"]);
+  rtCheck("same wearer set does not rebuild the channel", client.channels.length === 1);
+  rt.setWearers(["w3"]);
+  rtCheck("changed wearer set rebuilds", client.channels.length === 2 && client.removed.length === 1);
+  rt.unsubscribe();
+  rtCheck("unsubscribe removes the channel", client.removed.length === 2);
+  rtCheck("wearerIds cleared after unsubscribe", rt.wearerIds().length === 0);
+}
+
+// ===========================================================================
+// config.js carries the REAL deployed project (publishable key only).
+// ===========================================================================
+{
+  const fs = require("node:fs");
+  const vm = require("node:vm");
+  const sandbox = { self: {} };
+  vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(require("node:path").join(__dirname, "config.js"), "utf8"), sandbox);
+  const cfg = sandbox.self.BASERA_CONFIG;
+  rtCheck("config has the deployed project URL", cfg.supabaseUrl === "https://vbvvwyeccsegfwprwrga.supabase.co");
+  rtCheck(
+    "config key is a publishable (public) key, never a secret/service key",
+    typeof cfg.supabaseAnonKey === "string" &&
+      cfg.supabaseAnonKey.startsWith("sb_publishable_") &&
+      !cfg.supabaseAnonKey.startsWith("sb_secret"),
+  );
+}
+
+console.log(`\n${rtPassed} realtime/config tests passed.`);

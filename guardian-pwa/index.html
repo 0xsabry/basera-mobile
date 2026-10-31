@@ -76,13 +76,13 @@
       <section id="redeemSection" hidden>
         <h2 data-i18n="redeemTitle">ربط بشخص يشارك موقعه معك</h2>
         <p data-i18n="redeemBody">
-          أدخل كود الربط الذي أعطاك إياه. سيُنشئ الكود طلبًا معلّقًا فقط — ولن
-          ترى أي موقع حتى يوافق هو على الطلب من تطبيقه.
+          أدخل كود الدعوة الذي أعطاك إياه. يُنشأ الربط فورًا؛ ولن ترى موقعه
+          إلا إذا فعّل هو المشاركة لك.
         </p>
-        <label for="pairCode" data-i18n="pairCode">كود الربط (6 أرقام)</label>
-        <input id="pairCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+        <label for="pairCode" data-i18n="pairCode">كود الدعوة</label>
+        <input id="pairCode" autocomplete="one-time-code" maxlength="64" />
         <div class="row" style="margin-top:12px">
-          <button id="redeemBtn" type="button" data-i18n="redeem">إرسال طلب الربط</button>
+          <button id="redeemBtn" type="button" data-i18n="redeem">قبول الدعوة</button>
         </div>
       </section>
 
@@ -99,15 +99,17 @@
         </div>
       </section>
 
+      <section id="sosSection" hidden>
+        <h2 data-i18n="sosTitle">تنبيهات الطوارئ</h2>
+        <div id="sosList"></div>
+      </section>
+
       <section id="notifySection" hidden>
         <h2 data-i18n="notifyTitle">تنبيهات الخطر</h2>
         <p id="notifyState" data-i18n="notifyBody">
           فعّل التنبيهات لتصلك إشعارات فورية عند حدوث تنبيه خطر (المرحلة 3).
         </p>
         <button id="notifyBtn" type="button" data-i18n="enableNotify">تفعيل التنبيهات</button>
-        <button id="testNotifyBtn" class="secondary" type="button" data-i18n="testNotify">
-          إرسال تنبيه تجريبي لأوصيائي
-        </button>
       </section>
 
       <section id="sessionSection" hidden>
@@ -118,6 +120,7 @@
 
     <script src="config.js"></script>
     <script src="freshness.js"></script>
+    <script src="realtime.js"></script>
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
