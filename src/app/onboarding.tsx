@@ -44,7 +44,7 @@ export default function OnboardingScreen() {
   return (
     <Screen>
       <View style={styles.hero}>
-        <BrandMark size={84} />
+        <BrandMark size={64} />
         <Text accessibilityRole="header" style={[styles.title, { color: colors.text, fontSize: type.display + 10 }]}>
           {t(lang, 'appName')}
         </Text>
@@ -74,7 +74,7 @@ export default function OnboardingScreen() {
         <ListRow
           variant="quiet"
           glyph={GLYPHS.voice}
-          title={t(lang, 'voice')}
+          title={t(lang, 'voiceAssistance')}
           subtitle={t(lang, 'voiceHint')}
         />
       </QuietGroup>

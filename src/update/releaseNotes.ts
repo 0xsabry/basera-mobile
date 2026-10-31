@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-10-31',
     runtimeVersion: '1.1.0',
+    titleEn: 'Final polish: quiet icons, calmer Home, reliability fixes',
+    titleAr: 'لمسة أخيرة: أيقونات هادئة ورئيسية أبسط وإصلاحات موثوقية',
+    bodyEn:
+      'Icons are now small and light everywhere, and Home is a calmer list led by the voice assistant. Voice commands no longer leak sessions, speech can no longer block updates, and location sharing cannot start twice at once. Wording follows the short canonical labels throughout.',
+    bodyAr:
+      'أصبحت الأيقونات صغيرة وخفيفة في كل مكان، والرئيسية قائمة أهدأ بقيادة المساعد الصوتي. لم تعد الأوامر الصوتية تترك جلسات عالقة، ولا يعود النطق يمنع التحديثات، ولا يمكن بدء مشاركة الموقع مرتين معًا. النصوص كلها بالتسميات القصيرة المعتمدة.',
+  },
+  {
+    date: '2026-10-31',
+    runtimeVersion: '1.1.0',
     titleEn: 'Quality overhaul: clearer design, concise wording, location map',
     titleAr: 'تحسين شامل: تصميم أوضح ونصوص مختصرة وخريطة للموقع',
     bodyEn:

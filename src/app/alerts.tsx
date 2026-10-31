@@ -20,6 +20,7 @@ import {
   Card,
   CompactAction,
   EmptyState,
+  Icon,
   Screen,
   SectionHeader,
   StatusPill,
@@ -156,7 +157,10 @@ export default function AlertsScreen() {
         return (
           <Card key={e.id} tone={isHigh ? 'danger' : undefined}>
             <View style={styles.pillRow}>
-              <Text style={{ fontSize: type.bodyLarge }}>{isHigh || e.kind === 'sos' ? GLYPHS.alerts : GLYPHS.info}</Text>
+              <Icon
+                glyph={isHigh || e.kind === 'sos' ? GLYPHS.alerts : GLYPHS.info}
+                tone={isHigh || e.kind === 'sos' ? 'danger' : 'info'}
+              />
               <Text style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge, flex: 1 }]}>
                 {eventTitle(lang, e)}
               </Text>

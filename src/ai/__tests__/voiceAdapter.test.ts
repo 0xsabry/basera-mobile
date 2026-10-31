@@ -223,6 +223,52 @@ describe('NativeVoiceCommandService (expo-speech-recognition adapter)', () => {
     expect(voiceErrorMessageKey(err)).toBe('voiceErrPermission');
   });
 
+  it('startListening is idempotent: a second start while a session is active is a no-op', async () => {
+    const svc = new NativeVoiceCommandService();
+    const startSpy = jest.spyOn(mockModule, 'start');
+    await svc.startListening('en', jest.fn(), jest.fn());
+    await svc.startListening('en', jest.fn(), jest.fn());
+    expect(startSpy).toHaveBeenCalledTimes(1);
+    startSpy.mockRestore();
+    await svc.stopListening();
+  });
+
+  it('a duplicate final result is delivered only once (session is finished-guarded)', async () => {
+    const svc = new NativeVoiceCommandService();
+    const onResult = jest.fn();
+    await svc.startListening('en', onResult, jest.fn());
+    mockModule.emit('result', { isFinal: true, results: [{ transcript: 'repeat' }] });
+    mockModule.emit('result', { isFinal: true, results: [{ transcript: 'repeat' }] });
+    expect(onResult).toHaveBeenCalledTimes(1);
+  });
+
+  it('when native start throws, subscriptions are cleaned up and a retry can start', async () => {
+    const svc = new NativeVoiceCommandService();
+    const onResult = jest.fn();
+    const originalStart = mockModule.start;
+    mockModule.start = () => {
+      throw new Error('recognizer busy');
+    };
+    await expect(svc.startListening('en', onResult, jest.fn())).rejects.toThrow('recognizer busy');
+    // No stale listeners may survive the failed start.
+    mockModule.emit('result', { isFinal: true, results: [{ transcript: 'repeat' }] });
+    expect(onResult).not.toHaveBeenCalled();
+    // Error recovery: a fresh start works after the failure.
+    mockModule.start = originalStart;
+    await svc.startListening('en', onResult, jest.fn());
+    mockModule.emit('result', { isFinal: true, results: [{ transcript: 'repeat' }] });
+    expect(onResult).toHaveBeenCalledTimes(1);
+    await svc.stopListening();
+  });
+
+  it('stopListening is idempotent (double stop does not throw)', async () => {
+    const svc = new NativeVoiceCommandService();
+    await svc.startListening('en', jest.fn(), jest.fn());
+    await svc.stopListening();
+    await expect(svc.stopListening()).resolves.toBeUndefined();
+    expect(mockModule.stopped).toBe(true);
+  });
+
   it('after stopListening, late end/error events reach no callbacks', async () => {
     const svc = new NativeVoiceCommandService();
     const onError = jest.fn();

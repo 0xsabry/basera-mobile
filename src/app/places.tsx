@@ -21,6 +21,7 @@ import {
   Card,
   CompactAction,
   EmptyState,
+  Icon,
   IconTile,
   QuietGroup,
   Screen,
@@ -72,11 +73,11 @@ const PlaceCard = React.memo(function PlaceCard({
   return (
     <View style={styles.placeRow}>
       <View style={styles.placeHead}>
-        <IconTile glyph={PLACE_CATEGORY_GLYPHS[place.category] ?? GLYPHS.places} size={46} />
+        <IconTile glyph={PLACE_CATEGORY_GLYPHS[place.category] ?? GLYPHS.places} />
         <Text style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge, flex: 1 }]}>
           {place.name}
-          {place.favorite ? ` ${GLYPHS.star}` : ''}
         </Text>
+        {place.favorite ? <Icon glyph={GLYPHS.star} tone="warning" /> : null}
         <StatusPill
           tone={place.proximityEnabled ? 'success' : 'neutral'}
           glyph={GLYPHS.location}

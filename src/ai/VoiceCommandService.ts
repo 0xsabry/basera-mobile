@@ -320,6 +320,11 @@ function loadSpeechModule(): SpeechModuleLike {
 export class NativeVoiceCommandService implements VoiceCommandService {
   private subscriptions: { remove(): void }[] = [];
   private module: SpeechModuleLike | null = null;
+  /** True while a recognition session is live. Guards startListening
+   *  idempotence: a second start while listening must not re-register
+   *  listeners or call the native start() again. Reset by finish(),
+   *  stopListening(), and any start failure. */
+  private sessionActive = false;
 
   private clearSubscriptions(): void {
     for (const s of this.subscriptions) {
@@ -338,71 +343,90 @@ export class NativeVoiceCommandService implements VoiceCommandService {
     onError: (e: Error) => void,
     onEnd?: () => void,
   ): Promise<void> {
-    const mod = loadSpeechModule();
-    this.module = mod;
+    // Idempotence: a session is already live — a duplicate start is a
+    // no-op, never a second native start or a second listener set.
+    if (this.sessionActive) return;
+    this.sessionActive = true;
+    try {
+      const mod = loadSpeechModule();
+      this.module = mod;
 
-    const permission = await mod.requestPermissionsAsync();
-    if (!permission.granted) {
-      throw new VoiceUnavailableError(
-        'Microphone permission was denied. BASERA needs microphone access for voice commands; you can grant it in system settings.',
-        'permission',
-      );
-    }
-    if (!mod.isRecognitionAvailable()) {
-      throw new VoiceUnavailableError(
-        'Speech recognition is not available on this device (no speech recognition service found). BASERA never assumes offline recognition support.',
-        'unavailable',
-      );
-    }
-
-    this.clearSubscriptions();
-
-    // Session completion fires exactly once: final result, error,
-    // 'nomatch', or the recognizer's own 'end' — the screen resets its
-    // state from onEnd, so it can never get stuck on "listening".
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      onEnd?.();
-    };
-    this.subscriptions.push(
-      mod.addListener('result', (ev: SpeechRecognitionResultEventLike) => {
-        if (!ev.isFinal) return;
-        const transcript = ev.results?.[0]?.transcript?.trim();
-        if (transcript) {
-          onResult(transcript);
-          finish();
-        }
-      }),
-      mod.addListener('error', (ev: SpeechRecognitionErrorEventLike) => {
-        const kind = mapNativeErrorCode(ev.error ?? '');
-        // 'aborted' = we (or the system) stopped listening on purpose:
-        // a normal end of session, not a failure to report.
-        if (kind === 'aborted') {
-          finish();
-          return;
-        }
-        onError(
-          new VoiceRecognitionError(kind, ev.message || ev.error || 'Speech recognition error'),
+      const permission = await mod.requestPermissionsAsync();
+      if (!permission.granted) {
+        throw new VoiceUnavailableError(
+          'Microphone permission was denied. BASERA needs microphone access for voice commands; you can grant it in system settings.',
+          'permission',
         );
-        finish();
-      }),
-      mod.addListener('nomatch', () => {
-        onError(new VoiceRecognitionError('no-match', 'No speech matched.'));
-        finish();
-      }),
-      mod.addListener('end', finish),
-    );
+      }
+      if (!mod.isRecognitionAvailable()) {
+        throw new VoiceUnavailableError(
+          'Speech recognition is not available on this device (no speech recognition service found). BASERA never assumes offline recognition support.',
+          'unavailable',
+        );
+      }
 
-    mod.start({
-      lang: lang === 'ar' ? 'ar-EG' : 'en-US',
-      interimResults: false,
-      maxAlternatives: 1,
-    });
+      this.clearSubscriptions();
+
+      // Session completion fires exactly once: final result, error,
+      // 'nomatch', or the recognizer's own 'end' — the screen resets its
+      // state from onEnd, so it can never get stuck on "listening".
+      // Every handler is finished-guarded: after completion, a duplicate
+      // final result / error / nomatch must not reach the callbacks.
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        this.sessionActive = false;
+        onEnd?.();
+      };
+      this.subscriptions.push(
+        mod.addListener('result', (ev: SpeechRecognitionResultEventLike) => {
+          if (finished || !ev.isFinal) return;
+          const transcript = ev.results?.[0]?.transcript?.trim();
+          if (transcript) {
+            onResult(transcript);
+            finish();
+          }
+        }),
+        mod.addListener('error', (ev: SpeechRecognitionErrorEventLike) => {
+          if (finished) return;
+          const kind = mapNativeErrorCode(ev.error ?? '');
+          // 'aborted' = we (or the system) stopped listening on purpose:
+          // a normal end of session, not a failure to report.
+          if (kind === 'aborted') {
+            finish();
+            return;
+          }
+          onError(
+            new VoiceRecognitionError(kind, ev.message || ev.error || 'Speech recognition error'),
+          );
+          finish();
+        }),
+        mod.addListener('nomatch', () => {
+          if (finished) return;
+          onError(new VoiceRecognitionError('no-match', 'No speech matched.'));
+          finish();
+        }),
+        mod.addListener('end', finish),
+      );
+
+      mod.start({
+        lang: lang === 'ar' ? 'ar-EG' : 'en-US',
+        interimResults: false,
+        maxAlternatives: 1,
+      });
+    } catch (e) {
+      // Error recovery: no half-registered session may survive a failed
+      // start (module load, permission, availability, or native start)
+      // — drop the listeners and allow an immediate retry.
+      this.sessionActive = false;
+      this.clearSubscriptions();
+      throw e;
+    }
   }
 
   async stopListening(): Promise<void> {
+    this.sessionActive = false;
     try {
       this.module?.stop();
     } catch {

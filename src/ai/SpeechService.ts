@@ -47,6 +47,10 @@ export class ExpoSpeechService implements SpeechService {
   private _lastLang: AppLanguage = 'en';
   private speechEnabled = true;
   private voiceIdentifier: string | null = null;
+  /** Clear-callback of the utterance currently playing, so stop() can
+   *  release the accessibility-busy guard even when the TTS engine
+   *  never fires onStopped (web / interrupted engines). */
+  private activeClearBusy: (() => void) | null = null;
 
   get lastText(): string | null {
     return this._lastText;
@@ -63,8 +67,9 @@ export class ExpoSpeechService implements SpeechService {
   setSpeechEnabled(enabled: boolean): void {
     this.speechEnabled = enabled;
     if (!enabled) {
-      // Turning speech off must also silence anything currently playing.
-      void Speech.stop().catch(() => undefined);
+      // Turning speech off must also silence anything currently playing
+      // (and release the busy guard via stop()).
+      void this.stop().catch(() => undefined);
     }
   }
 
@@ -87,16 +92,25 @@ export class ExpoSpeechService implements SpeechService {
     const clearBusy = () => {
       if (cleared) return;
       cleared = true;
+      if (this.activeClearBusy === clearBusy) this.activeClearBusy = null;
       setAccessibilityBusy('speech', false);
     };
-    Speech.speak(text, {
-      language: lang === 'ar' ? 'ar-EG' : 'en-US',
-      rate: this.rate,
-      ...(this.voiceIdentifier ? { voice: this.voiceIdentifier } : {}),
-      onDone: clearBusy,
-      onStopped: clearBusy,
-      onError: clearBusy,
-    });
+    this.activeClearBusy = clearBusy;
+    try {
+      Speech.speak(text, {
+        language: lang === 'ar' ? 'ar-EG' : 'en-US',
+        rate: this.rate,
+        ...(this.voiceIdentifier ? { voice: this.voiceIdentifier } : {}),
+        onDone: clearBusy,
+        onStopped: clearBusy,
+        onError: clearBusy,
+      });
+    } catch (e) {
+      // Synchronous TTS failure: no callback will ever fire, so the
+      // busy guard must be released here or OTA reload stays blocked.
+      clearBusy();
+      throw e;
+    }
   }
 
   async speak(text: string, lang: AppLanguage): Promise<void> {
@@ -124,7 +138,12 @@ export class ExpoSpeechService implements SpeechService {
   }
 
   async stop(): Promise<void> {
-    await Speech.stop();
+    try {
+      await Speech.stop();
+    } finally {
+      // Idempotent: clearBusy() no-ops if onStopped already fired.
+      this.activeClearBusy?.();
+    }
   }
 
   async repeatLast(): Promise<void> {

@@ -132,6 +132,26 @@ describe('LocationSharingService', () => {
     await svc.stopWatching();
   });
 
+  it('concurrent start() calls subscribe exactly one watch (race guard)', async () => {
+    const g = fakeGuardian();
+    const a = fakeAdapter(true);
+    let watchCalls = 0;
+    const counting: LocationAdapter = {
+      ...a.adapter,
+      watchPosition: async (...args: Parameters<LocationAdapter['watchPosition']>) => {
+        watchCalls++;
+        return a.adapter.watchPosition(...args);
+      },
+    };
+    const svc = new LocationSharingService(g.service, counting, null);
+    const [r1, r2] = await Promise.all([svc.start(), svc.start()]);
+    expect(r1).toBe('started');
+    expect(r2).toBe('started');
+    expect(watchCalls).toBe(1);
+    expect(g.sharingCalls).toEqual([true]);
+    await svc.stopWatching();
+  });
+
   it('disableSharing stops the watch AND purges via setSharingEnabled(false)', async () => {
     const g = fakeGuardian();
     const a = fakeAdapter(true);

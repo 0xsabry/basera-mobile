@@ -1,9 +1,10 @@
 /**
  * Voice assistant — V1.1 redesign: a mic hero with an explicit state
- * machine (idle / listening / error), drawn as a large disc whose
- * tone AND text label change with state (never color alone), plus
- * design-system command rows. Recognition, command parsing, place
- * flows and cleanup logic are unchanged.
+ * machine (idle / listening / error), drawn as a mic control — a
+ * soft surface inside a ring whose tone AND text label change with
+ * state (never color alone), plus design-system command rows.
+ * Recognition, command parsing, place flows and cleanup logic are
+ * unchanged.
  */
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -221,7 +222,11 @@ export default function VoiceScreen() {
   const pressOpacity = settings.reducedMotion ? 1 : 0.88;
   const stateLabel = listening ? t(lang, 'listening') : error ? t(lang, 'errorGeneric') : t(lang, 'voiceHeroState');
   const discColor = listening ? colors.danger : error ? colors.warning : colors.heroBackground;
-  const discTextColor = listening ? '#FFFFFF' : error ? colors.onWarningSoft : colors.heroText;
+  // Polish pass: the disc is no longer filled with the state color —
+  // it is a soft surface, so the glyph itself carries the state color
+  // (the ring border carries it too). Name kept: the iconography
+  // guard whitelists this control glyph by it.
+  const discTextColor = discColor;
 
   return (
     <Screen>
@@ -239,8 +244,8 @@ export default function VoiceScreen() {
             { borderColor: discColor, opacity: pressed ? pressOpacity : 1 },
           ]}
         >
-          <View style={[styles.disc, { backgroundColor: discColor, shadowColor: colors.shadow }]}>
-            <Text style={{ color: discTextColor, fontSize: 56, fontWeight: '800', lineHeight: 66 }}>
+          <View style={[styles.disc, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}>
+            <Text style={{ color: discTextColor, fontSize: 32, fontWeight: '600', lineHeight: 38 }}>
               {GLYPHS.voice}
             </Text>
           </View>

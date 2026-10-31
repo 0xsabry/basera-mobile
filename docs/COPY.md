@@ -38,10 +38,10 @@ One concept, one term — everywhere, in labels, body text, and speech.
 
 | Concept | Arabic | English |
 | --- | --- | --- |
-| Detect (action) | وصف ما حولك | Describe surroundings |
+| Detect (action) | وصف المشهد | Describe surroundings |
 | Detection (noun) | وصف المحيط | Surroundings description |
 | Read text | قراءة النص | Read text |
-| Saved places | الأماكن المحفوظة | Saved places |
+| Saved places | أماكني المحفوظة | Saved places |
 | Guardian | الوصي (pl. الأوصياء) | Guardian |
 | Location sharing | مشاركة الموقع | Location sharing |
 | Safety alert | تنبيه سلامة / تنبيهات السلامة | Safety alert(s) |

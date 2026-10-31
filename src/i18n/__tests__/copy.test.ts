@@ -18,6 +18,7 @@ const LABEL_KEYS: StringKey[] = [
   'detect',
   'readText',
   'voice',
+  'voiceAssistance',
   'places',
   'history',
   'settings',
@@ -160,7 +161,7 @@ describe('copy: terminology spot checks', () => {
   it('uses the fixed terminology from docs/COPY.md', () => {
     expect(ar.detect).toContain('وصف');
     expect(ar.readText).toContain('النص');
-    expect(ar.places).toBe('الأماكن المحفوظة');
+    expect(ar.places).toBe('أماكني المحفوظة');
     expect(ar.guardian).toContain('الوصي');
     expect(ar.tagline).toBe('المساعدة الذكية');
     expect(en.tagline).toBe('Smart assistance');
@@ -185,6 +186,27 @@ describe('copy: terminology spot checks', () => {
     expect(ar.mapAttribution).toBe('© OpenStreetMap contributors');
     expect(en.phoneLocationSource).toBe('Phone location');
     expect(ar.phoneLocationSource).toBe('موقع الهاتف');
+  });
+});
+
+describe('copy: canonical strings (owner-mandated exact wording)', () => {
+  it('the 7 canonical Arabic strings match exactly', () => {
+    expect(ar.homeGreeting).toBe('ما الذي تحتاج إليه؟');
+    expect(ar.voiceAssistance).toBe('المساعدة الصوتية');
+    expect(ar.detect).toBe('وصف المشهد');
+    expect(ar.readText).toBe('قراءة النص');
+    expect(ar.places).toBe('أماكني المحفوظة');
+    expect(ar.guardianSharing).toBe('مشاركة الموقع');
+    expect(ar.glassesCardStatus).toBe('النظارة غير متصلة');
+  });
+
+  it('canonical English counterparts stay as agreed', () => {
+    expect(en.voiceAssistance).toBe('Voice assistance');
+    expect(en.detect).toBe('Describe surroundings');
+    expect(en.places).toBe('Saved places');
+    // Persona/action labels are distinct from the feature noun and stay.
+    expect(ar.voice).toBe('المساعد الصوتي');
+    expect(en.voice).toBe('Voice assistant');
   });
 });
 

@@ -146,6 +146,11 @@ export class LocationSharingService {
   private appStateSub: { remove(): void } | null = null;
   private deletionAppStateSub: { remove(): void } | null = null;
   private running = false;
+  /** In-flight start() promise (polish-pass fix): `running` only
+   * flips after several awaits, so without this two concurrent
+   * start() calls would both subscribe a location watch. Concurrent
+   * callers share the in-flight attempt and its REAL result. */
+  private startPromise: Promise<SharingStartResult> | null = null;
   private batcher = new LocationBatcher();
   private deletion: PendingDeletionManager;
   lastError: string | null = null;
@@ -211,6 +216,16 @@ export class LocationSharingService {
    */
   async start(): Promise<SharingStartResult> {
     if (this.running) return 'started';
+    if (this.startPromise) return this.startPromise;
+    this.startPromise = this.doStart();
+    try {
+      return await this.startPromise;
+    } finally {
+      this.startPromise = null;
+    }
+  }
+
+  private async doStart(): Promise<SharingStartResult> {
     const granted = await this.adapter.requestForegroundPermission();
     if (!granted) return 'permission-denied';
     // A pending deletion is NEVER dropped by re-enabling sharing: it is

@@ -4,6 +4,7 @@
  * Now only meaningful responses are repeatable.
  */
 import { ExpoSpeechService } from '../SpeechService';
+import { isAccessibilityBusy, resetAccessibilityBusy } from '../../state/accessibilityBusy';
 
 const mockSpeak = jest.fn();
 const mockStop = jest.fn(async () => undefined);
@@ -92,6 +93,31 @@ describe('SpeechService repeat semantics', () => {
     svc.setSpeechEnabled(true);
     await svc.speak('hello again', 'en');
     expect(mockSpeak).toHaveBeenCalledTimes(1);
+  });
+
+  it('stop() releases the accessibility-busy guard even when TTS never fires onStopped', async () => {
+    // OTA safety: utter() raises the 'speech' busy guard and only the
+    // TTS callbacks clear it. If the engine is stopped externally and
+    // never calls back, stop() itself must release the guard —
+    // otherwise UpdateService refuses every restart forever.
+    resetAccessibilityBusy();
+    const svc = new ExpoSpeechService();
+    await svc.speak('hello', 'en'); // mock never fires onDone/onStopped
+    expect(isAccessibilityBusy()).toBe(true);
+    await svc.stop();
+    expect(isAccessibilityBusy()).toBe(false);
+    resetAccessibilityBusy();
+  });
+
+  it('a synchronous TTS failure clears the busy guard (error recovery)', async () => {
+    resetAccessibilityBusy();
+    mockSpeak.mockImplementationOnce(() => {
+      throw new Error('tts boom');
+    });
+    const svc = new ExpoSpeechService();
+    await expect(svc.speak('hello', 'en')).rejects.toThrow('tts boom');
+    expect(isAccessibilityBusy()).toBe(false);
+    resetAccessibilityBusy();
   });
 
   it('chosen voice identifier is passed through to the TTS call', async () => {

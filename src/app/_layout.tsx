@@ -37,7 +37,7 @@ function RootStack() {
       <Stack.Screen name="onboarding" options={{ title: t(lang, 'onboardingTitle'), ...header }} />
       <Stack.Screen name="detect" options={{ title: t(lang, 'detect'), ...header }} />
       <Stack.Screen name="read" options={{ title: t(lang, 'readText'), ...header }} />
-      <Stack.Screen name="voice" options={{ title: t(lang, 'voice'), ...header }} />
+      <Stack.Screen name="voice" options={{ title: t(lang, 'voiceAssistance'), ...header }} />
       <Stack.Screen name="guardian-auth" options={{ title: t(lang, 'guardianOpenSignIn'), ...header }} />
       <Stack.Screen name="updates" options={{ title: t(lang, 'updates'), ...header }} />
       <Stack.Screen name="places" options={{ title: t(lang, 'places'), ...header }} />

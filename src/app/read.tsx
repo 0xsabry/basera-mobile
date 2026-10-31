@@ -14,6 +14,7 @@ import {
   Banner,
   Card,
   CompactAction,
+  Icon,
   QuietGroup,
   Screen,
   SectionHeader,
@@ -104,7 +105,7 @@ export default function ReadScreen() {
       ) : (
         <ViewfinderFrame>
           <View style={[styles.previewPlaceholder, { backgroundColor: colors.surfaceAlt }]}>
-            <Text style={{ color: colors.textSecondary, fontSize: 44, lineHeight: 52 }}>{GLYPHS.read}</Text>
+            <Icon glyph={GLYPHS.read} size={24} tone="muted" />
             <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
               {t(lang, 'imagePreview')}
             </Text>
