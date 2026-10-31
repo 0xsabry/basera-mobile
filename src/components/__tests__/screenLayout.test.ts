@@ -8,6 +8,14 @@
  */
 import fs from 'fs';
 import path from 'path';
+
+// Same mock as the UI smoke tests: the real package loads RN native
+// internals (ESM) the node harness cannot execute.
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaProvider: ({ children }: { children: unknown }) => children,
+}));
+
 import { SCREEN_MAX_WIDTH } from '../ui';
 
 const ui = fs.readFileSync(path.join(__dirname, '..', 'ui.tsx'), 'utf8');
