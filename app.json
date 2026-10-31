@@ -2,7 +2,7 @@
   "expo": {
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0B3D2E",
+        "backgroundColor": "#061434",
         "foregroundImage": "./assets/adaptive-foreground.png"
       },
       "package": "me.auramarketing.basera",
@@ -86,7 +86,7 @@
       [
         "expo-notifications",
         {
-          "color": "#0B3D2E"
+          "color": "#061434"
         }
       ]
     ],

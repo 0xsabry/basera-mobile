@@ -1,92 +1,113 @@
 #!/usr/bin/env python3
 """
-BASERA brand-icon generator (see docs/BRANDING.md).
+BASERA brand-asset generator (see docs/BRANDING.md).
 
-Renders the product's established brand mark — the «ب» letterform with
-its accent dot, exactly as composed by the in-app BrandMark component
-(src/components/ui.tsx) — into every launcher / splash surface:
+SOURCE OF TRUTH: the OFFICIAL logo supplied by the owner on
+2026-10-31 — assets/brand/basera-logo-official.png (1254², deep-navy /
+royal-blue rounded-square artwork: white eye+person symbol, gold
+sound waves, "BASERA" wordmark, Arabic tagline). The artwork itself
+is NEVER redrawn, regenerated or modified here; this script only
+crops, scales and composites it into the platform surfaces:
 
-  assets/icon.png                  classic icon, 1024², opaque
-  assets/adaptive-foreground.png   adaptive foreground, 1024², alpha
+  assets/icon.png                  classic icon, 1024², opaque —
+                                   the full official artwork over the
+                                   deep-navy field (its own rounded
+                                   corners are transparent; the field
+                                   fills them so the PNG carries no
+                                   alpha, per the asset guard test)
+  assets/adaptive-foreground.png   adaptive foreground, 1024², alpha —
+                                   a rounded "chip" crop of the SYMBOL
+                                   portion of the artwork (eye+person
+                                   +waves; measured bbox in the script),
+                                   placed at 62% canvas width, centered,
+                                   so the symbol sits inside the 66%
+                                   adaptive safe zone under any mask
+  assets/brand/basera-symbol.png   the symbol crop itself (in-app
+                                   tight-spot variant, e.g. auth header)
   android mipmap-*/ic_launcher_foreground.webp   108dp set
   android mipmap-*/ic_launcher.webp              48dp set
   android mipmap-*/ic_launcher_round.webp        48dp set, circle mask
-  android drawable-*/splashscreen_logo.png       tile mark on alpha
+  android drawable-*/splashscreen_logo.png       full official artwork
+                                   centered on transparency; the splash
+                                   window background is the deep navy
+                                   #061434 (res/values/colors.xml)
 
-Colors are the shipped brand colors, sampled from the previous icon:
-  field / adaptive background  #0B3D2E  (app.json adaptiveIcon, colors.xml)
-  letter                       #FFFFFF  (primaryText on the brand field)
-  accent dot                   #2FBF8F  (brand mint — the old icon's iris)
+Adaptive background / field color: deep navy #061434 — sampled from
+the logo's darkest field and the owner's brand spec.
 
-The «ب» is set in Noto Sans Arabic Bold — the same family/weight the
-in-app BrandMark renders in on Android (system Arabic font, weight 700).
-Rendered at 4x and downscaled for clean edges. No new brand identity:
-this is the existing mark, reproduced at launcher sizes.
+This replaces the retired «ب» letterform generator (v1.1.2): the
+in-app BrandMark glyph remains in the component library but no longer
+serves launcher / splash / header duty.
 """
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 import os, sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-FIELD = (11, 61, 46, 255)        # #0B3D2E
-LETTER = (255, 255, 255, 255)    # #FFFFFF
-DOT = (47, 191, 143, 255)        # #2FBF8F
-FONT_PATH = "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf"
-LETTER_CHAR = "\u0628"           # ب
+OFFICIAL = os.path.join(ROOT, "assets", "brand", "basera-logo-official.png")
+FIELD = (6, 20, 52, 255)  # #061434 deep navy
 
-SS = 4  # supersample factor
+# Symbol crop in official-file coordinates. Measured from the file:
+# white/gold symbol content spans x 146..1086, y 119..~677 (eye,
+# person, waves, swooshes); the "BASERA" wordmark starts at y ~730,
+# leaving a silent band at y 678..725 — the crop bottom (705) sits
+# inside that band so no letter fragment enters the symbol assets.
+SYMBOL_BOX = (100, 80, 1130, 705)
 
-
-def letter_layer(canvas: int) -> Image.Image:
-    """The «ب» + accent dot on transparency, mark inside the safe zone.
-
-    Adaptive-icon safe zone: key art within the central 66% circle.
-    The letterform spans ~46% of the canvas width; letter + dot span
-    ~24%..78% vertically.
-    """
-    big = canvas * SS
-    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    # Fit the letterform to the target width by measuring its bbox.
-    target_w = 0.46 * big
-    size = int(big * 0.9)
-    while size > 10:
-        f = ImageFont.truetype(FONT_PATH, size)
-        box = d.textbbox((0, 0), LETTER_CHAR, font=f)
-        if (box[2] - box[0]) <= target_w:
-            break
-        size = int(size * 0.92)
-    f = ImageFont.truetype(FONT_PATH, size)
-    box = d.textbbox((0, 0), LETTER_CHAR, font=f)
-    lw, lh = box[2] - box[0], box[3] - box[1]
-    # Letter center at 45% of canvas height (dot lives below it).
-    cx, cy = big / 2, big * 0.45
-    d.text((cx - box[0] - lw / 2, cy - box[1] - lh / 2), LETTER_CHAR, font=f, fill=LETTER)
-    # Accent dot — the BrandMark's "eye", below the letterform.
-    r = 0.045 * big
-    dot_cy = big * 0.715
-    d.ellipse([cx - r, dot_cy - r, cx + r, dot_cy + r], fill=DOT)
-    return img.resize((canvas, canvas), Image.LANCZOS)
+SS = 4  # supersample factor for masks
 
 
-def classic(canvas: int) -> Image.Image:
+def load_official() -> Image.Image:
+    return Image.open(OFFICIAL).convert("RGBA")
+
+
+def classic(art: Image.Image, canvas: int) -> Image.Image:
+    """Full official artwork over the deep-navy field, opaque RGB."""
     out = Image.new("RGBA", (canvas, canvas), FIELD)
-    out.alpha_composite(letter_layer(canvas))
-    # Fully opaque by construction — store as RGB so the file itself
-    # carries no alpha channel (guarded in iconography.test.ts).
+    out.alpha_composite(art.resize((canvas, canvas), Image.LANCZOS))
     return out.convert("RGB")
 
 
-def tile_logo(canvas: int) -> Image.Image:
-    """Splash logo: the BrandMark as a rounded tile on transparency."""
-    big = canvas * SS
-    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    inset = big * 0.19
-    d.rounded_rectangle([inset, inset, big - inset, big - inset],
-                        radius=(big - 2 * inset) * 0.30, fill=FIELD)
-    mark = letter_layer(canvas)
-    img.alpha_composite(mark.resize((big, big), Image.LANCZOS))
-    return img.resize((canvas, canvas), Image.LANCZOS)
+def symbol_crop(art: Image.Image) -> Image.Image:
+    return art.crop(SYMBOL_BOX)
+
+
+def rounded_chip(img: Image.Image, radius_frac: float = 0.16) -> Image.Image:
+    """Apply a rounded-rectangle alpha to the symbol crop so it reads
+    as a deliberate artwork tile on the adaptive navy field."""
+    w, h = img.size
+    mask = Image.new("L", (w * SS, h * SS), 0)
+    md = ImageDraw.Draw(mask)
+    md.rounded_rectangle([0, 0, w * SS, h * SS], radius=int(h * SS * radius_frac), fill=255)
+    out = img.copy()
+    out.putalpha(mask.resize((w, h), Image.LANCZOS))
+    return out
+
+
+def adaptive_foreground(art: Image.Image, canvas: int) -> Image.Image:
+    """Symbol chip centered on transparency, inside the safe zone.
+
+    Chip width = 62% of canvas; the symbol's own widest row (the eye)
+    then spans ~57% — inside the central 66% circle — and the chip is
+    vertically centered so mask cropping touches only its navy
+    corners, never the symbol.
+    """
+    chip = rounded_chip(symbol_crop(art))
+    target_w = int(canvas * 0.62)
+    target_h = round(chip.height * target_w / chip.width)
+    chip = chip.resize((target_w, target_h), Image.LANCZOS)
+    out = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+    out.alpha_composite(chip, ((canvas - target_w) // 2, (canvas - target_h) // 2))
+    return out
+
+
+def splash_logo(art: Image.Image, canvas: int) -> Image.Image:
+    """Full official artwork centered on transparency (72% width);
+    the splash window supplies the deep-navy background."""
+    target = int(canvas * 0.72)
+    tile = art.resize((target, target), Image.LANCZOS)
+    out = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+    out.alpha_composite(tile, ((canvas - target) // 2, (canvas - target) // 2))
+    return out
 
 
 def circle_masked(img: Image.Image) -> Image.Image:
@@ -110,17 +131,19 @@ def save(img: Image.Image, relpath: str):
 
 
 def main():
-    save(classic(1024), "assets/icon.png")
-    save(letter_layer(1024), "assets/adaptive-foreground.png")
+    art = load_official()
+    save(classic(art, 1024), "assets/icon.png")
+    save(adaptive_foreground(art, 1024), "assets/adaptive-foreground.png")
+    save(symbol_crop(art), "assets/brand/basera-symbol.png")
     dens = [("mdpi", 1), ("hdpi", 1.5), ("xhdpi", 2), ("xxhdpi", 3), ("xxxhdpi", 4)]
     for name, mult in dens:
         fg = int(108 * mult)
         base = int(48 * mult)
-        save(letter_layer(fg), f"android/app/src/main/res/mipmap-{name}/ic_launcher_foreground.webp")
-        save(classic(base), f"android/app/src/main/res/mipmap-{name}/ic_launcher.webp")
-        save(circle_masked(classic(base)), f"android/app/src/main/res/mipmap-{name}/ic_launcher_round.webp")
+        save(adaptive_foreground(art, fg), f"android/app/src/main/res/mipmap-{name}/ic_launcher_foreground.webp")
+        save(classic(art, base), f"android/app/src/main/res/mipmap-{name}/ic_launcher.webp")
+        save(circle_masked(classic(art, base)), f"android/app/src/main/res/mipmap-{name}/ic_launcher_round.webp")
         splash = int(288 * mult)
-        save(tile_logo(splash), f"android/app/src/main/res/drawable-{name}/splashscreen_logo.png")
+        save(splash_logo(art, splash), f"android/app/src/main/res/drawable-{name}/splashscreen_logo.png")
 
 
 if __name__ == "__main__":
