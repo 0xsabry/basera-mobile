@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-10-31',
     runtimeVersion: '1.1.0',
+    titleEn: 'BASERA 1.1.6 — Black launch screen, voice picker in Settings, samples removed',
+    titleAr: 'بصيرة 1.1.6 — شاشة بدء سوداء واختيار الصوت داخل الإعدادات وحذف الصور التجريبية',
+    bodyEn:
+      'Four changes from device feedback. The launch screen is now plain black with no logo flashing at startup — this arrives with the new app file. Choosing the speech voice now lives in its own screen inside Settings, so the long voice list no longer fills the settings page. The sample photos are gone from the image sources; the camera and the gallery remain. And the Home header no longer shows the logo — the greeting comes first.',
+    bodyAr:
+      'أربعة تغييرات بناءً على تجربة الجهاز. أصبحت شاشة بدء التطبيق سوداء تمامًا دون أن يظهر الشعار عند التشغيل — ويصل هذا التغيير مع ملف التطبيق الجديد. وأصبح اختيار صوت النطق في شاشة مستقلة داخل الإعدادات، فلم تعد قائمة الأصوات الطويلة تملأ صفحة الإعدادات. وحُذفت الصور التجريبية من مصادر الصور، وبقيت الكاميرا والمعرض. ولم تعد ترويسة الشاشة الرئيسية تُظهر الشعار — تأتي التحية أولًا.',
+  },
+  {
+    date: '2026-10-31',
+    runtimeVersion: '1.1.0',
     titleEn: 'BASERA 1.1.5 — Status bar fixed, light by default, tablet layout, shape-proof icon',
     titleAr: 'بصيرة 1.1.5 — إصلاح شريط الحالة وسمة فاتحة افتراضية وتخطيط للأجهزة اللوحية وأيقونة تتكيف مع كل شكل',
     bodyEn:
