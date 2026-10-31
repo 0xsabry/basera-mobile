@@ -1,19 +1,34 @@
+/**
+ * Text reader (OCR) — V1.1 redesign: viewfinder framing, result card
+ * with a detected-language pill, action grid. Recognition routing,
+ * speech and history logic are unchanged.
+ */
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import { OcrUnavailableError, RoutingTextRecognizer } from '../ai/TextRecognizer';
 import type { OcrResult } from '../ai/types';
-import { AccessibleButton } from '../components/AccessibleButton';
 import { ImageSourcePicker } from '../components/ImageSourcePicker';
+import {
+  ActionGrid,
+  Banner,
+  Card,
+  CompactAction,
+  Screen,
+  SectionHeader,
+  StatusPill,
+  ViewfinderFrame,
+} from '../components/ui';
 import { historyStore, persistImageCopy } from '../data/HistoryStore';
 import type { CapturedImage } from '../input/ImageSource';
 import { t } from '../i18n/strings';
 import { setAccessibilityBusy } from '../state/accessibilityBusy';
 import { useSettings } from '../state/SettingsContext';
-import { spacing, typeScale } from '../theme/tokens';
+import { GLYPHS } from '../theme/glyphs';
+import { radius, spacing } from '../theme/tokens';
 
 export default function ReadScreen() {
-  const { settings, colors } = useSettings();
+  const { settings, colors, type } = useSettings();
   const lang = settings.language;
   const [image, setImage] = useState<CapturedImage | null>(null);
   const [result, setResult] = useState<OcrResult | null>(null);
@@ -74,60 +89,71 @@ export default function ReadScreen() {
     l === 'ar' ? t(lang, 'langAr') : l === 'en' ? t(lang, 'langEn') : l === 'mixed' ? t(lang, 'langMixed') : t(lang, 'langUnknown');
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+    <Screen>
       <ImageSourcePicker onImage={handleImage} onError={setError} disabled={busy} />
       {busy && (
-        <View style={styles.row}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'analyzing')}</Text>
-        </View>
+        <Card>
+          <View style={styles.row}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'analyzing')}</Text>
+          </View>
+        </Card>
       )}
       {!!error && (
-        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger }]}>
-          {error}
-        </Text>
+        <Banner tone="danger" title={t(lang, 'errorGeneric')}>
+          <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+            {error}
+          </Text>
+        </Banner>
       )}
       {image && (
-        <Image
-          source={{ uri: image.uri }}
-          style={[styles.preview, { aspectRatio: image.width / Math.max(1, image.height) }]}
-          resizeMode="contain"
-          accessibilityLabel={t(lang, 'imagePreview')}
-        />
+        <ViewfinderFrame>
+          <Image
+            source={{ uri: image.uri }}
+            style={[styles.preview, { aspectRatio: image.width / Math.max(1, image.height) }]}
+            resizeMode="contain"
+            accessibilityLabel={t(lang, 'imagePreview')}
+          />
+        </ViewfinderFrame>
       )}
       {result && (
-        <View>
-          <Text style={[styles.heading, { color: colors.text }]}>{t(lang, 'ocrResult')}</Text>
-          <Text style={[styles.body, { color: colors.textSecondary }]}>
-            {t(lang, 'detectedLanguage')}: {langLabel(result.language)}
-          </Text>
+        <Card>
+          <SectionHeader title={t(lang, 'ocrResult')} glyph={GLYPHS.read} />
+          <View style={styles.row}>
+            <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
+              {t(lang, 'detectedLanguage')}:
+            </Text>
+            <StatusPill tone="info" glyph={GLYPHS.language} label={langLabel(result.language)} />
+          </View>
           {result.text ? (
-            <Text selectable style={[styles.bodyLarge, { color: colors.text }]}>
+            <Text selectable style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
               {result.text}
             </Text>
           ) : result.engineNote === 'arabic-unsupported' ? (
-            <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'arabicOcrUnsupported')}</Text>
+            <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'arabicOcrUnsupported')}</Text>
           ) : (
-            <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'noTextFound')}</Text>
+            <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'noTextFound')}</Text>
           )}
-        </View>
+        </Card>
       )}
-      <AccessibleButton
-        label={t(lang, 'speak')}
-        onPress={() => result?.text && void speechService.speak(spokenText(result), lang)}
-        disabled={!result?.text}
-      />
-      <AccessibleButton label={t(lang, 'repeat')} onPress={() => void speechService.repeatLast()} variant="secondary" />
-      <AccessibleButton label={t(lang, 'stopSpeaking')} onPress={() => void speechService.stop()} variant="secondary" />
-    </ScrollView>
+      <ActionGrid>
+        <CompactAction
+          label={t(lang, 'speak')}
+          glyph={GLYPHS.speak}
+          variant="primary"
+          onPress={() => result?.text && void speechService.speak(spokenText(result), lang)}
+          disabled={!result?.text}
+        />
+        <CompactAction label={t(lang, 'repeat')} glyph={GLYPHS.repeat} onPress={() => void speechService.repeatLast()} />
+        <CompactAction label={t(lang, 'stopSpeaking')} glyph={GLYPHS.stop} onPress={() => void speechService.stop()} />
+      </ActionGrid>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.md },
-  heading: { fontSize: typeScale.heading, fontWeight: '700' },
-  body: { fontSize: typeScale.body, lineHeight: 29 },
-  bodyLarge: { fontSize: typeScale.bodyLarge, lineHeight: 34 },
+  body: { lineHeight: 29 },
+  bodyLarge: { lineHeight: 34 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  preview: { width: '100%', borderRadius: 12 },
+  preview: { width: '100%', borderRadius: radius.md },
 });

@@ -315,6 +315,7 @@ export function FeatureTile({
   hint,
   layout = 'row',
   badge,
+  disabled,
 }: {
   glyph: string;
   tone?: Tone;
@@ -324,6 +325,7 @@ export function FeatureTile({
   hint?: string;
   layout?: 'row' | 'grid';
   badge?: string;
+  disabled?: boolean;
 }) {
   const { colors, type, settings } = useSettings();
   const isRTL = settings.language === 'ar';
@@ -333,6 +335,8 @@ export function FeatureTile({
       accessibilityRole="button"
       accessibilityLabel={badge ? `${title}. ${badge}` : title}
       accessibilityHint={hint}
+      accessibilityState={{ disabled: !!disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         layout === 'grid' ? styles.tileGrid : styles.tileRow,
@@ -340,7 +344,7 @@ export function FeatureTile({
           backgroundColor: colors.surface,
           borderColor: colors.border,
           shadowColor: colors.shadow,
-          opacity: pressed ? pressOpacity : 1,
+          opacity: disabled ? 0.5 : pressed ? pressOpacity : 1,
         },
       ]}
     >

@@ -5,12 +5,28 @@
  * requires confirmation. Proximity reminders run in the foreground
  * (see places/proximity.ts) and background-recorded proximity events
  * are surfaced here on open.
+ *
+ * V1.1 redesign: design-system cards with category glyphs, a segmented
+ * category picker, and a compact action grid per place. Store calls
+ * and flows are unchanged.
  */
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import { AccessibleButton } from '../components/AccessibleButton';
+import {
+  ActionGrid,
+  Banner,
+  Card,
+  CompactAction,
+  EmptyState,
+  IconTile,
+  Screen,
+  SectionHeader,
+  SegmentedControl,
+  StatusPill,
+} from '../components/ui';
 import { t } from '../i18n/strings';
 import { getCurrentFix } from '../places/currentFix';
 import { categoryLabel, describePlace } from '../places/PlacesAssistant';
@@ -22,6 +38,7 @@ import {
 } from '../places/PlacesStore';
 import { announceNearbyPlaces, drainPendingProximityEvents, type PendingProximityEvent } from '../places/proximity';
 import { useSettings } from '../state/SettingsContext';
+import { GLYPHS, PLACE_CATEGORY_GLYPHS } from '../theme/glyphs';
 import { radius, spacing } from '../theme/tokens';
 
 interface FormState {
@@ -52,53 +69,61 @@ const PlaceCard = React.memo(function PlaceCard({
   onDelete: (place: Place) => void;
 }) {
   return (
-    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <Text style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
-        {place.name}
-        {place.favorite ? ' ★' : ''}
-      </Text>
+    <Card>
+      <View style={styles.placeHead}>
+        <IconTile glyph={PLACE_CATEGORY_GLYPHS[place.category] ?? GLYPHS.places} tone="info" size={46} />
+        <Text style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge, flex: 1 }]}>
+          {place.name}
+          {place.favorite ? ` ${GLYPHS.star}` : ''}
+        </Text>
+        <StatusPill
+          tone={place.proximityEnabled ? 'success' : 'neutral'}
+          glyph={GLYPHS.location}
+          label={place.proximityEnabled ? t(lang, 'placesProximityOn') : t(lang, 'placesProximityOff')}
+        />
+      </View>
       {!!place.note && (
         <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{place.note}</Text>
       )}
       <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
+        {categoryLabel(lang, place.category)} ·{' '}
         {place.lastVisitedAt
           ? `${t(lang, 'placesLastVisited')}: ${new Date(place.lastVisitedAt).toLocaleDateString(
               lang === 'ar' ? 'ar-EG' : 'en-US',
             )}`
           : t(lang, 'placesNeverVisited')}
       </Text>
-      <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
-        {place.proximityEnabled ? t(lang, 'placesProximityOn') : t(lang, 'placesProximityOff')}
-      </Text>
-      <AccessibleButton
-        label={t(lang, 'placesListen')}
-        variant="secondary"
-        onPress={() => void speechService.speak(describePlace(lang, place), lang)}
-      />
-      <AccessibleButton
-        label={t(lang, 'placesMarkVisited')}
-        variant="secondary"
-        onPress={() => {
-          void placesStore.markVisited(place.id).then(onChanged);
-        }}
-      />
-      <AccessibleButton
-        label={place.favorite ? `★ ${t(lang, 'placesFavorite')}` : t(lang, 'placesFavorite')}
-        variant="secondary"
-        onPress={() => {
-          void placesStore.update(place.id, { favorite: !place.favorite }).then(onChanged);
-        }}
-      />
-      <AccessibleButton
-        label={place.proximityEnabled ? t(lang, 'placesProximityOff') : t(lang, 'placesProximityOn')}
-        variant="secondary"
-        onPress={() => {
-          void placesStore.update(place.id, { proximityEnabled: !place.proximityEnabled }).then(onChanged);
-        }}
-      />
-      <AccessibleButton label={t(lang, 'placesEdit')} variant="secondary" onPress={() => onEdit(place)} />
-      <AccessibleButton label={t(lang, 'delete')} variant="danger" onPress={() => onDelete(place)} />
-    </View>
+      <ActionGrid>
+        <CompactAction
+          label={t(lang, 'placesListen')}
+          glyph={GLYPHS.speak}
+          onPress={() => void speechService.speak(describePlace(lang, place), lang)}
+        />
+        <CompactAction
+          label={t(lang, 'placesMarkVisited')}
+          glyph={GLYPHS.check}
+          onPress={() => {
+            void placesStore.markVisited(place.id).then(onChanged);
+          }}
+        />
+        <CompactAction
+          label={t(lang, 'placesFavorite')}
+          glyph={GLYPHS.star}
+          onPress={() => {
+            void placesStore.update(place.id, { favorite: !place.favorite }).then(onChanged);
+          }}
+        />
+        <CompactAction
+          label={place.proximityEnabled ? t(lang, 'placesProximityOff') : t(lang, 'placesProximityOn')}
+          glyph={GLYPHS.location}
+          onPress={() => {
+            void placesStore.update(place.id, { proximityEnabled: !place.proximityEnabled }).then(onChanged);
+          }}
+        />
+        <CompactAction label={t(lang, 'placesEdit')} onPress={() => onEdit(place)} />
+        <CompactAction label={t(lang, 'delete')} variant="danger" onPress={() => onDelete(place)} />
+      </ActionGrid>
+    </Card>
   );
 });
 
@@ -219,97 +244,87 @@ export default function PlacesScreen() {
   const inputStyle = {
     color: colors.text,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceAlt,
     fontSize: type.body,
   };
 
+  const field = (
+    label: string,
+    value: string,
+    onChange: (v: string) => void,
+    placeholder: string,
+  ) => (
+    <View style={styles.field}>
+      <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>{label}</Text>
+      <TextInput
+        style={[styles.input, inputStyle]}
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textSecondary}
+        accessibilityLabel={label}
+      />
+    </View>
+  );
+
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'placesHint')}</Text>
+    <Screen>
+      <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>{t(lang, 'placesHint')}</Text>
       {recentNear.length > 0 && (
-        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-          {t(lang, 'placesRecentNear')}: {recentNear.map((e) => e.name).join(', ')}
-        </Text>
-      )}
-
-      <Text accessibilityRole="header" style={[styles.heading, { color: colors.text, fontSize: type.heading }]}>
-        {editingId ? t(lang, 'placesEdit') : t(lang, 'placesAddTitle')}
-      </Text>
-      <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
-        {t(lang, 'placesNameLabel')}
-      </Text>
-      <TextInput
-        style={[styles.input, inputStyle]}
-        value={form.name}
-        onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
-        placeholder={t(lang, 'placesNamePlaceholder')}
-        placeholderTextColor={colors.textSecondary}
-        accessibilityLabel={t(lang, 'placesNameLabel')}
-      />
-      <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
-        {t(lang, 'placesCategoryLabel')}
-      </Text>
-      <View style={styles.chips}>
-        {PLACE_CATEGORIES.map((cat) => (
-          <AccessibleButton
-            key={cat}
-            label={categoryLabel(lang, cat)}
-            variant={form.category === cat ? 'primary' : 'secondary'}
-            onPress={() => setForm((f) => ({ ...f, category: cat }))}
-          />
-        ))}
-      </View>
-      <TextInput
-        style={[styles.input, inputStyle]}
-        value={form.note}
-        onChangeText={(v) => setForm((f) => ({ ...f, note: v }))}
-        placeholder={t(lang, 'placesNoteLabel')}
-        placeholderTextColor={colors.textSecondary}
-        accessibilityLabel={t(lang, 'placesNoteLabel')}
-      />
-      <TextInput
-        style={[styles.input, inputStyle]}
-        value={form.entranceInfo}
-        onChangeText={(v) => setForm((f) => ({ ...f, entranceInfo: v }))}
-        placeholder={t(lang, 'placesEntranceLabel')}
-        placeholderTextColor={colors.textSecondary}
-        accessibilityLabel={t(lang, 'placesEntranceLabel')}
-      />
-      <TextInput
-        style={[styles.input, inputStyle]}
-        value={form.obstaclesNote}
-        onChangeText={(v) => setForm((f) => ({ ...f, obstaclesNote: v }))}
-        placeholder={t(lang, 'placesObstaclesLabel')}
-        placeholderTextColor={colors.textSecondary}
-        accessibilityLabel={t(lang, 'placesObstaclesLabel')}
-      />
-      {!editingId && (
-        <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
-          {t(lang, 'placesPermissionExpl')}
-        </Text>
-      )}
-      {editingId ? (
-        <AccessibleButton label={t(lang, 'saveAction')} onPress={() => void saveEdit()} />
-      ) : (
-        <AccessibleButton
-          label={saving ? t(lang, 'analyzing') : t(lang, 'placesSaveWithLocation')}
-          onPress={() => void saveWithLocation()}
-        />
-      )}
-      {!!status && (
-        <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-          {status}
-        </Text>
-      )}
-
-      {places.length === 0 && (
-        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'placesEmpty')}</Text>
-      )}
-      {grouped.map((g) => (
-        <View key={g.category}>
-          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text, fontSize: type.heading }]}>
-            {categoryLabel(lang, g.category)}
+        <Banner tone="info" glyph={GLYPHS.location} title={t(lang, 'placesRecentNear')}>
+          <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+            {recentNear.map((e) => e.name).join(', ')}
           </Text>
+        </Banner>
+      )}
+
+      <SectionHeader title={editingId ? t(lang, 'placesEdit') : t(lang, 'placesAddTitle')} glyph={GLYPHS.places} />
+      <Card>
+        {field(t(lang, 'placesNameLabel'), form.name, (v) => setForm((f) => ({ ...f, name: v })), t(lang, 'placesNamePlaceholder'))}
+        <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
+          {t(lang, 'placesCategoryLabel')}
+        </Text>
+        <SegmentedControl
+          accessibilityLabel={t(lang, 'placesCategoryLabel')}
+          value={form.category}
+          onChange={(v) => setForm((f) => ({ ...f, category: v }))}
+          options={PLACE_CATEGORIES.map((cat) => ({
+            value: cat,
+            label: `${PLACE_CATEGORY_GLYPHS[cat] ?? ''} ${categoryLabel(lang, cat)}`,
+          }))}
+        />
+        {field(t(lang, 'placesNoteLabel'), form.note, (v) => setForm((f) => ({ ...f, note: v })), t(lang, 'placesNoteLabel'))}
+        {field(t(lang, 'placesEntranceLabel'), form.entranceInfo, (v) => setForm((f) => ({ ...f, entranceInfo: v })), t(lang, 'placesEntranceLabel'))}
+        {field(t(lang, 'placesObstaclesLabel'), form.obstaclesNote, (v) => setForm((f) => ({ ...f, obstaclesNote: v })), t(lang, 'placesObstaclesLabel'))}
+        {!editingId && (
+          <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
+            {t(lang, 'placesPermissionExpl')}
+          </Text>
+        )}
+        {editingId ? (
+          <AccessibleButton label={t(lang, 'saveAction')} glyph={GLYPHS.check} onPress={() => void saveEdit()} />
+        ) : (
+          <AccessibleButton
+            label={saving ? t(lang, 'analyzing') : t(lang, 'placesSaveWithLocation')}
+            glyph={GLYPHS.location}
+            onPress={() => void saveWithLocation()}
+          />
+        )}
+        {!!status && (
+          <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+            {status}
+          </Text>
+        )}
+      </Card>
+
+      {places.length === 0 && <EmptyState glyph={GLYPHS.places} title={t(lang, 'placesEmpty')} />}
+      {grouped.map((g) => (
+        <View key={g.category} style={styles.group}>
+          <SectionHeader
+            title={categoryLabel(lang, g.category)}
+            glyph={PLACE_CATEGORY_GLYPHS[g.category] ?? GLYPHS.places}
+            tone="info"
+          />
           {g.items.map((place) => (
             <PlaceCard
               key={place.id}
@@ -324,17 +339,16 @@ export default function PlacesScreen() {
           ))}
         </View>
       ))}
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.sm },
-  heading: { fontWeight: '700', marginTop: spacing.md },
   body: { lineHeight: 29 },
   bodyLarge: { lineHeight: 32, fontWeight: '700' },
   label: { fontWeight: '600' },
   input: { borderWidth: 1.5, borderRadius: radius.md, padding: spacing.md, minHeight: 56 },
-  chips: { gap: spacing.sm },
-  card: { borderWidth: 1.5, borderRadius: radius.lg, padding: spacing.md, gap: 6, marginTop: spacing.sm },
+  field: { gap: spacing.xs },
+  group: { gap: spacing.md },
+  placeHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
 });

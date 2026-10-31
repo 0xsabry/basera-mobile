@@ -1,6 +1,13 @@
+/**
+ * Voice assistant — V1.1 redesign: a mic hero with an explicit state
+ * machine (idle / listening / error), drawn as a large disc whose
+ * tone AND text label change with state (never color alone), plus
+ * design-system command rows. Recognition, command parsing, place
+ * flows and cleanup logic are unchanged.
+ */
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import {
   COMMAND_REGISTRY,
@@ -9,6 +16,7 @@ import {
 } from '../ai/VoiceCommandService';
 import { voiceCommandService } from '../ai/voiceSingleton';
 import { AccessibleButton } from '../components/AccessibleButton';
+import { Banner, Card, ListRow, Screen, SectionHeader, StatusPill } from '../components/ui';
 import { acknowledgeHazards, triggerSos } from '../hazards/HazardService';
 import { t } from '../i18n/strings';
 import { getCurrentFix } from '../places/currentFix';
@@ -16,12 +24,13 @@ import { PlacesAssistant } from '../places/PlacesAssistant';
 import { placesStore } from '../places/PlacesStore';
 import { setAccessibilityBusy } from '../state/accessibilityBusy';
 import { useSettings } from '../state/SettingsContext';
-import { spacing, typeScale } from '../theme/tokens';
+import { GLYPHS } from '../theme/glyphs';
+import { elevation, radius, spacing } from '../theme/tokens';
 
 const voiceService = voiceCommandService;
 
 export default function VoiceScreen() {
-  const { settings, colors, update } = useSettings();
+  const { settings, colors, type, update } = useSettings();
   const lang = settings.language;
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -209,65 +218,108 @@ export default function VoiceScreen() {
     }
   };
 
+  const pressOpacity = settings.reducedMotion ? 1 : 0.88;
+  const stateLabel = listening ? t(lang, 'listening') : error ? t(lang, 'errorGeneric') : t(lang, 'voiceHeroState');
+  const discColor = listening ? colors.danger : error ? colors.warning : colors.heroBackground;
+  const discTextColor = listening ? '#FFFFFF' : error ? colors.onWarningSoft : colors.heroText;
+
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <AccessibleButton
-        label={listening ? t(lang, 'listening') : t(lang, 'tapToSpeak')}
-        hint={t(lang, 'voiceHint')}
-        onPress={start}
-        disabled={listening}
-      />
-      {!!transcript && (
-        <Text style={[styles.body, { color: colors.text }]}>
-          {t(lang, 'yourCommand')}: {transcript}
+    <Screen>
+      {/* Mic hero — state machine: idle → listening → (result | error). */}
+      <View style={styles.heroWrap}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={listening ? t(lang, 'listening') : t(lang, 'tapToSpeak')}
+          accessibilityHint={t(lang, 'voiceHint')}
+          accessibilityState={{ disabled: listening, busy: listening }}
+          disabled={listening}
+          onPress={() => void start()}
+          style={({ pressed }) => [
+            styles.discRing,
+            { borderColor: discColor, opacity: pressed ? pressOpacity : 1 },
+          ]}
+        >
+          <View style={[styles.disc, { backgroundColor: discColor, shadowColor: colors.shadow }]}>
+            <Text style={{ color: discTextColor, fontSize: 52, fontWeight: '800', lineHeight: 62 }}>
+              {GLYPHS.voice}
+            </Text>
+          </View>
+        </Pressable>
+        <Text
+          accessibilityLiveRegion="polite"
+          style={[styles.stateText, { color: colors.text, fontSize: type.bodyLarge }]}
+        >
+          {listening ? t(lang, 'listening') : t(lang, 'tapToSpeak')}
         </Text>
+        <Text style={{ color: colors.textSecondary, fontSize: type.body, lineHeight: type.body * 1.4 }}>
+          {stateLabel}
+        </Text>
+      </View>
+
+      {!!transcript && (
+        <Card>
+          <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+            {t(lang, 'yourCommand')}: {transcript}
+          </Text>
+        </Card>
       )}
       {!!feedback && (
-        <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
-          {feedback}
-        </Text>
+        <Card>
+          <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+            {feedback}
+          </Text>
+        </Card>
       )}
       {!!error && (
-        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger }]}>
-          {error}
-        </Text>
+        <Banner tone="danger" title={t(lang, 'errorGeneric')}>
+          <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+            {error}
+          </Text>
+        </Banner>
       )}
       {listening && (
-        <AccessibleButton label={t(lang, 'stopListening')} onPress={() => void stopListening()} variant="secondary" />
+        <AccessibleButton label={t(lang, 'stopListening')} glyph={GLYPHS.stop} onPress={() => void stopListening()} variant="secondary" />
       )}
-      <AccessibleButton label={t(lang, 'stopSpeaking')} onPress={() => void speechService.stop()} variant="secondary" />
+      <AccessibleButton label={t(lang, 'stopSpeaking')} glyph={GLYPHS.stop} onPress={() => void speechService.stop()} variant="secondary" />
 
-      <Text style={[styles.heading, { color: colors.text }]}>{t(lang, 'supportedCommands')}</Text>
+      <SectionHeader title={t(lang, 'supportedCommands')} glyph={GLYPHS.voice} />
       {COMMAND_REGISTRY.map((c) => (
-        <View
+        <ListRow
           key={c.action}
-          style={[styles.cmdRow, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          accessible
+          glyph={GLYPHS.voice}
+          tone={c.implemented ? 'primary' : 'neutral'}
+          title={lang === 'ar' ? c.exampleAr : c.exampleEn}
           accessibilityLabel={`${lang === 'ar' ? c.exampleAr : c.exampleEn} — ${c.implemented ? t(lang, 'implemented') : t(lang, 'planned')}`}
-        >
-          <Text style={[styles.body, { color: colors.text }]}>{lang === 'ar' ? c.exampleAr : c.exampleEn}</Text>
-          <Text style={[styles.badge, { color: c.implemented ? colors.primary : colors.accent }]}>
-            {c.implemented ? t(lang, 'implemented') : t(lang, 'planned')}
-          </Text>
-        </View>
+          right={
+            <StatusPill
+              tone={c.implemented ? 'success' : 'neutral'}
+              label={c.implemented ? t(lang, 'implemented') : t(lang, 'planned')}
+            />
+          }
+        />
       ))}
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.sm },
-  heading: { fontSize: typeScale.heading, fontWeight: '700', marginTop: spacing.md },
-  body: { fontSize: typeScale.body, lineHeight: 29 },
-  cmdRow: {
-    borderWidth: 1.5,
-    borderRadius: 14,
-    padding: spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 60,
+  heroWrap: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
+  discRing: {
+    borderWidth: 3,
+    borderRadius: radius.pill,
+    padding: 10,
   },
-  badge: { fontSize: typeScale.caption, fontWeight: '800' },
+  disc: {
+    width: 128,
+    height: 128,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: elevation.hero,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+  },
+  stateText: { fontWeight: '800', textAlign: 'center' },
+  body: { lineHeight: 29 },
 });

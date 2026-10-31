@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, ScrollView, StyleSheet, View } from 'react-native';
 import type { CapturedImage } from '../input/ImageSource';
 import { GalleryImageSource } from '../input/GalleryImageSource';
 import { PhoneCameraTestSource } from '../input/PhoneCameraTestSource';
@@ -7,8 +7,10 @@ import { SAMPLES, SampleImageSource } from '../input/SampleImageSource';
 import { SmartGlassesCameraSource } from '../input/SmartGlassesCameraSource';
 import { t } from '../i18n/strings';
 import { useSettings } from '../state/SettingsContext';
-import { spacing, typeScale } from '../theme/tokens';
+import { GLYPHS } from '../theme/glyphs';
+import { radius, spacing } from '../theme/tokens';
 import { AccessibleButton } from './AccessibleButton';
+import { FeatureTile, SectionHeader } from './ui';
 
 interface Props {
   onImage: (image: CapturedImage) => void;
@@ -17,7 +19,12 @@ interface Props {
   disabled?: boolean;
 }
 
-/** Shared source chooser used by Detection + Text Reader screens. */
+/**
+ * Shared source chooser used by Detection + Text Reader screens.
+ * V1.1 redesign: design-system tiles with distinct glyphs; the four
+ * sources and their behavior (incl. the honest glasses NotAvailable
+ * alert) are unchanged.
+ */
 export function ImageSourcePicker({ onImage, onError, disabled = false }: Props) {
   const { settings, colors } = useSettings();
   const lang = settings.language;
@@ -42,29 +49,36 @@ export function ImageSourcePicker({ onImage, onError, disabled = false }: Props)
     }
   };
 
+  const off = busy || disabled;
   return (
-    <View>
-      <Text style={[styles.heading, { color: colors.text }]}>{t(lang, 'chooseImageSource')}</Text>
-      <AccessibleButton
-        label={t(lang, 'sourceGallery')}
+    <View style={styles.wrap}>
+      <SectionHeader title={t(lang, 'chooseImageSource')} glyph={GLYPHS.camera} />
+      <FeatureTile
+        glyph={GLYPHS.gallery}
+        title={t(lang, 'sourceGallery')}
+        disabled={off}
         onPress={() => run(() => new GalleryImageSource().getImage())}
-        disabled={busy || disabled}
       />
-      <AccessibleButton
-        label={t(lang, 'sourceCameraTest')}
+      <FeatureTile
+        glyph={GLYPHS.camera}
+        tone="info"
+        title={t(lang, 'sourceCameraTest')}
+        disabled={off}
         onPress={() => run(() => new PhoneCameraTestSource().getImage())}
-        disabled={busy || disabled}
-        variant="secondary"
       />
-      <AccessibleButton
-        label={t(lang, 'sourceSample')}
+      <FeatureTile
+        glyph={GLYPHS.sample}
+        tone="neutral"
+        title={t(lang, 'sourceSample')}
+        disabled={off}
         onPress={() => setShowSamples((v) => !v)}
-        disabled={busy || disabled}
-        variant="secondary"
       />
-      <AccessibleButton
-        label={t(lang, 'sourceGlasses')}
-        disabled={busy || disabled}
+      <FeatureTile
+        glyph={GLYPHS.glasses}
+        tone="neutral"
+        title={t(lang, 'sourceGlasses')}
+        subtitle={t(lang, 'glassesCardStatus')}
+        disabled={off}
         onPress={async () => {
           try {
             await new SmartGlassesCameraSource().getImage();
@@ -74,7 +88,6 @@ export function ImageSourcePicker({ onImage, onError, disabled = false }: Props)
             onError(t(lang, 'glassesNotAvailable'));
           }
         }}
-        variant="secondary"
       />
       {showSamples && (
         <ScrollView horizontal contentContainerStyle={styles.sampleRow}>
@@ -82,13 +95,13 @@ export function ImageSourcePicker({ onImage, onError, disabled = false }: Props)
             <View key={s.id} style={styles.sampleItem}>
               <Image
                 source={s.module}
-                style={styles.sampleThumb}
+                style={[styles.sampleThumb, { borderColor: colors.border }]}
                 accessibilityLabel={lang === 'ar' ? s.titleAr : s.titleEn}
               />
               <AccessibleButton
                 label={lang === 'ar' ? s.titleAr : s.titleEn}
                 onPress={() => run(() => new SampleImageSource(s).getImage())}
-                disabled={busy || disabled}
+                disabled={off}
               />
             </View>
           ))}
@@ -99,8 +112,8 @@ export function ImageSourcePicker({ onImage, onError, disabled = false }: Props)
 }
 
 const styles = StyleSheet.create({
-  heading: { fontSize: typeScale.heading, fontWeight: '700', marginBottom: spacing.sm },
+  wrap: { gap: spacing.md },
   sampleRow: { gap: spacing.md, paddingVertical: spacing.sm },
   sampleItem: { width: 220 },
-  sampleThumb: { width: 220, height: 150, borderRadius: 12, marginBottom: spacing.xs },
+  sampleThumb: { width: 220, height: 150, borderRadius: radius.md, borderWidth: 1, marginBottom: spacing.xs },
 });

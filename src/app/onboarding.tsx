@@ -1,15 +1,26 @@
+/**
+ * Onboarding — one honest step: what BASERA does, the plain truth
+ * about the glasses (still in development; the phone is the input
+ * today), and the language choice that finishes setup.
+ *
+ * V1.1 redesign: premium welcome staging (brand hero, cards) on the
+ * design system. The finish flow — including the announcement-only
+ * welcome that must never become the Repeat target — is unchanged.
+ */
 import { router } from 'expo-router';
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import { AccessibleButton } from '../components/AccessibleButton';
+import { Banner, BrandMark, Card, Screen, SectionHeader } from '../components/ui';
 import { t } from '../i18n/strings';
 import { useSettings } from '../state/SettingsContext';
-import { spacing, typeScale } from '../theme/tokens';
+import { GLYPHS } from '../theme/glyphs';
+import { spacing } from '../theme/tokens';
 import type { AppLanguage } from '../ai/types';
 
 export default function OnboardingScreen() {
-  const { settings, colors, update } = useSettings();
+  const { settings, colors, type, update } = useSettings();
   const lang = settings.language;
 
   const finish = async (chosen: AppLanguage) => {
@@ -27,27 +38,41 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>
-        {t(lang, 'appName')}
-      </Text>
-      <Text style={[styles.tagline, { color: colors.textSecondary }]}>{t(lang, 'tagline')}</Text>
-      <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'onboardingBody')}</Text>
-      <View style={[styles.note, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'onboardingGlassesNote')}</Text>
+    <Screen>
+      <View style={styles.hero}>
+        <BrandMark size={84} />
+        <Text accessibilityRole="header" style={[styles.title, { color: colors.text, fontSize: type.display + 10 }]}>
+          {t(lang, 'appName')}
+        </Text>
+        <Text style={[styles.tagline, { color: colors.textSecondary, fontSize: type.bodyLarge }]}>
+          {t(lang, 'tagline')}
+        </Text>
+        <Text style={[styles.welcome, { color: colors.text, fontSize: type.bodyLarge }]}>
+          {t(lang, 'onboardingWelcome')}
+        </Text>
       </View>
-      <Text style={[styles.heading, { color: colors.text }]}>{t(lang, 'onboardingPickLanguage')}</Text>
-      <AccessibleButton label="العربية" hint="اختيار العربية كلغة التطبيق" onPress={() => finish('ar')} />
-      <AccessibleButton label="English" hint="Choose English as the app language" onPress={() => finish('en')} variant="secondary" />
-    </ScrollView>
+
+      <Card>
+        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'onboardingBody')}</Text>
+      </Card>
+
+      <Banner tone="info" glyph={GLYPHS.glasses} title={t(lang, 'glassesCardTitle')}>
+        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+          {t(lang, 'onboardingGlassesNote')}
+        </Text>
+      </Banner>
+
+      <SectionHeader title={t(lang, 'onboardingPickLanguage')} glyph={GLYPHS.language} />
+      <AccessibleButton label="العربية" hint="اختيار العربية كلغة التطبيق" glyph={GLYPHS.check} onPress={() => finish('ar')} />
+      <AccessibleButton label="English" hint="Choose English as the app language" glyph={GLYPHS.check} onPress={() => finish('en')} variant="secondary" />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.md },
-  title: { fontSize: 44, fontWeight: '800', textAlign: 'center' },
-  tagline: { fontSize: typeScale.bodyLarge, textAlign: 'center' },
-  body: { fontSize: typeScale.body, lineHeight: 30 },
-  heading: { fontSize: typeScale.heading, fontWeight: '700', marginTop: spacing.md },
-  note: { borderWidth: 1.5, borderRadius: 16, padding: spacing.md },
+  hero: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
+  title: { fontWeight: '800', textAlign: 'center' },
+  tagline: { textAlign: 'center', lineHeight: 30 },
+  welcome: { textAlign: 'center', lineHeight: 32, fontWeight: '600', marginTop: spacing.sm },
+  body: { lineHeight: 30 },
 });

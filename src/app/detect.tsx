@@ -1,5 +1,11 @@
+/**
+ * Scene description (YOLO detection) — V1.1 redesign: viewfinder
+ * framing around the preview, result cards with confidence pills,
+ * design-system hazard banner. Detection, hazard processing, speech
+ * and history logic are unchanged.
+ */
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import { buildDescription, describeDetection } from '../ai/DescriptionBuilder';
 import { DetectorUnavailableError, YoloDetector } from '../ai/ObjectDetector';
 import { analyzeObstacles } from '../ai/ObstacleAwareness';
@@ -7,6 +13,16 @@ import { speechService } from '../ai/SpeechService';
 import type { Detection } from '../ai/types';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { ImageSourcePicker } from '../components/ImageSourcePicker';
+import {
+  ActionGrid,
+  Banner,
+  Card,
+  CompactAction,
+  Screen,
+  SectionHeader,
+  StatusPill,
+  ViewfinderFrame,
+} from '../components/ui';
 import { historyStore, persistImageCopy } from '../data/HistoryStore';
 import {
   acknowledgeHazards,
@@ -18,12 +34,13 @@ import type { CapturedImage } from '../input/ImageSource';
 import { t } from '../i18n/strings';
 import { setAccessibilityBusy } from '../state/accessibilityBusy';
 import { useSettings } from '../state/SettingsContext';
-import { spacing, typeScale } from '../theme/tokens';
+import { GLYPHS } from '../theme/glyphs';
+import { radius, spacing } from '../theme/tokens';
 
 const detector = new YoloDetector();
 
 export default function DetectScreen() {
-  const { settings, colors } = useSettings();
+  const { settings, colors, type } = useSettings();
   const lang = settings.language;
   const [image, setImage] = useState<CapturedImage | null>(null);
   const [detections, setDetections] = useState<Detection[]>([]);
@@ -91,78 +108,80 @@ export default function DetectScreen() {
     p === 'near' ? t(lang, 'proximityNear') : p === 'medium' ? t(lang, 'proximityMedium') : t(lang, 'proximityFar');
   const posLabel = (p: string) =>
     p === 'left' ? t(lang, 'positionLeft') : p === 'right' ? t(lang, 'positionRight') : t(lang, 'positionCenter');
+  const hasHigh = hazardAlerts.some((a) => a.level === 'high');
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+    <Screen>
       <ImageSourcePicker onImage={handleImage} onError={setError} disabled={busy} />
 
       {busy && (
-        <View style={styles.row}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.body, { color: colors.text }]}>{t(lang, 'analyzing')}</Text>
-        </View>
+        <Card>
+          <View style={styles.row}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'analyzing')}</Text>
+          </View>
+        </Card>
       )}
       {!!error && (
-        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger }]}>
-          {error}
-        </Text>
+        <Banner tone="danger" title={t(lang, 'errorGeneric')}>
+          <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+            {error}
+          </Text>
+        </Banner>
       )}
 
       {image && (
-        <View>
-          <Text style={[styles.heading, { color: colors.text }]}>{t(lang, 'imagePreview')}</Text>
-          <View
-            style={styles.previewWrap}
-            onLayout={(e) => setPreviewSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
-          >
-            <Image
-              source={{ uri: image.uri }}
-              style={[styles.preview, { aspectRatio: image.width / Math.max(1, image.height) }]}
-              resizeMode="contain"
-              accessibilityLabel={t(lang, 'imagePreview')}
-            />
-            {previewSize.w > 0 &&
-              detections.map((d, i) => (
-                <View
-                  key={i}
-                  pointerEvents="none"
-                  style={[
-                    styles.box,
-                    {
-                      borderColor: colors.overlayBox,
-                      left: d.box.x * previewSize.w,
-                      top: d.box.y * previewSize.h,
-                      width: d.box.width * previewSize.w,
-                      height: d.box.height * previewSize.h,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.boxLabel, { backgroundColor: colors.overlayBox, color: colors.background }]}>
-                    {lang === 'ar' ? d.labelAr : d.labelEn}
-                  </Text>
-                </View>
-              ))}
-          </View>
+        <View style={styles.section}>
+          <SectionHeader title={t(lang, 'imagePreview')} glyph={GLYPHS.camera} />
+          <ViewfinderFrame>
+            <View
+              style={styles.previewWrap}
+              onLayout={(e) => setPreviewSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+            >
+              <Image
+                source={{ uri: image.uri }}
+                style={[styles.preview, { aspectRatio: image.width / Math.max(1, image.height) }]}
+                resizeMode="contain"
+                accessibilityLabel={t(lang, 'imagePreview')}
+              />
+              {previewSize.w > 0 &&
+                detections.map((d, i) => (
+                  <View
+                    key={i}
+                    pointerEvents="none"
+                    style={[
+                      styles.box,
+                      {
+                        borderColor: colors.overlayBox,
+                        left: d.box.x * previewSize.w,
+                        top: d.box.y * previewSize.h,
+                        width: d.box.width * previewSize.w,
+                        height: d.box.height * previewSize.h,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.boxLabel, { backgroundColor: colors.overlayBox, color: colors.background }]}>
+                      {lang === 'ar' ? d.labelAr : d.labelEn}
+                    </Text>
+                  </View>
+                ))}
+            </View>
+          </ViewfinderFrame>
         </View>
       )}
 
       {hazardAlerts.length > 0 && (
-        <View
-          accessibilityLiveRegion="assertive"
-          style={[
-            styles.hazardBanner,
-            {
-              backgroundColor: colors.surface,
-              borderColor: hazardAlerts.some((a) => a.level === 'high') ? colors.danger : colors.warning,
-            },
-          ]}
-        >
-          {hazardAlerts.map((a) => (
-            <Text key={a.id} style={[styles.bodyLarge, { color: colors.text }]}>
-              {hazardAlertText(lang, a)}
-            </Text>
-          ))}
-          <Text style={[styles.body, { color: colors.textSecondary }]}>{t(lang, 'hazardScanNote')}</Text>
+        <Banner tone={hasHigh ? 'danger' : 'warning'} glyph={GLYPHS.alerts} title={t(lang, 'alertsLatest')}>
+          <View accessibilityLiveRegion="assertive" style={styles.section}>
+            {hazardAlerts.map((a) => (
+              <Text key={a.id} style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
+                {hazardAlertText(lang, a)}
+              </Text>
+            ))}
+          </View>
+          <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
+            {t(lang, 'hazardScanNote')}
+          </Text>
           <AccessibleButton
             label={t(lang, 'iAmOk')}
             onPress={() => {
@@ -175,57 +194,60 @@ export default function DetectScreen() {
             variant="secondary"
             onPress={() => void speechService.repeatAlert()}
           />
-        </View>
+        </Banner>
       )}
 
       {!!description && (
-        <Text accessibilityLiveRegion="polite" style={[styles.bodyLarge, { color: colors.text }]}>
-          {description}
-        </Text>
+        <Card>
+          <Text accessibilityLiveRegion="polite" style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
+            {description}
+          </Text>
+        </Card>
       )}
 
       {detections.length > 0 && (
-        <View>
-          <Text style={[styles.heading, { color: colors.text }]}>{t(lang, 'detectionsFound')}</Text>
+        <Card>
+          <SectionHeader title={t(lang, 'detectionsFound')} glyph={GLYPHS.detect} />
           {detections.map((d, i) => (
-            <Text key={i} style={[styles.body, { color: colors.text }]}>
-              • {describeDetection(d, lang)}
-            </Text>
+            <View key={i} style={styles.detRow}>
+              <Text style={[styles.body, { color: colors.text, fontSize: type.body, flex: 1 }]}>
+                {describeDetection(d, lang)}
+              </Text>
+              <StatusPill tone="info" glyph={GLYPHS.check} label={`${Math.round(d.confidence * 100)}%`} />
+            </View>
           ))}
-          <Text style={[styles.heading, { color: colors.text, marginTop: spacing.md }]}>
-            {t(lang, 'obstacleSummary')}
-          </Text>
+          <SectionHeader title={t(lang, 'obstacleSummary')} glyph={GLYPHS.alerts} tone="warning" />
           {obstacles.slice(0, 5).map((o, i) => (
-            <Text key={i} style={[styles.body, { color: colors.text }]}>
+            <Text key={i} style={[styles.body, { color: colors.text, fontSize: type.body }]}>
               • {lang === 'ar' ? o.detection.labelAr : o.detection.labelEn} — {posLabel(o.position)} — {proxLabel(o.proximity)}
             </Text>
           ))}
-        </View>
+        </Card>
       )}
 
-      <View style={styles.actions}>
-        <AccessibleButton
+      <ActionGrid>
+        <CompactAction
           label={t(lang, 'speak')}
+          glyph={GLYPHS.speak}
+          variant="primary"
           onPress={() => description && void speechService.speak(description, lang)}
           disabled={!description}
         />
-        <AccessibleButton label={t(lang, 'repeat')} onPress={() => void speechService.repeatLast()} variant="secondary" />
-        <AccessibleButton label={t(lang, 'stopSpeaking')} onPress={() => void speechService.stop()} variant="secondary" />
-      </View>
-    </ScrollView>
+        <CompactAction label={t(lang, 'repeat')} glyph={GLYPHS.repeat} onPress={() => void speechService.repeatLast()} />
+        <CompactAction label={t(lang, 'stopSpeaking')} glyph={GLYPHS.stop} onPress={() => void speechService.stop()} />
+      </ActionGrid>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.md },
-  heading: { fontSize: typeScale.heading, fontWeight: '700', marginBottom: spacing.xs },
-  body: { fontSize: typeScale.body, lineHeight: 29 },
-  bodyLarge: { fontSize: typeScale.bodyLarge, lineHeight: 32, fontWeight: '600' },
+  body: { lineHeight: 29 },
+  bodyLarge: { lineHeight: 32, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  section: { gap: spacing.sm },
   previewWrap: { position: 'relative', width: '100%' },
-  preview: { width: '100%', borderRadius: 12 },
+  preview: { width: '100%', borderRadius: radius.md },
   box: { position: 'absolute', borderWidth: 3, borderRadius: 4 },
   boxLabel: { fontSize: 14, fontWeight: '700', paddingHorizontal: 4, alignSelf: 'flex-start' },
-  actions: { marginTop: spacing.sm },
-  hazardBanner: { borderWidth: 3, borderRadius: 16, padding: spacing.md, gap: spacing.sm },
+  detRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });

@@ -1,16 +1,39 @@
+/**
+ * Updates — OTA status + release notes. V1.1 redesign: status card
+ * with a phase pill, release notes presented as a proper card. The
+ * update service calls and the busy-guard are unchanged.
+ */
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import { AccessibleButton } from '../components/AccessibleButton';
+import { Card, Screen, SectionHeader, StatusPill, type Tone } from '../components/ui';
 import { t } from '../i18n/strings';
 import { isAccessibilityBusy } from '../state/accessibilityBusy';
 import { useSettings } from '../state/SettingsContext';
-import { spacing, typeScale } from '../theme/tokens';
+import { GLYPHS } from '../theme/glyphs';
+import { spacing } from '../theme/tokens';
 import { currentReleaseNote } from '../update/releaseNotes';
 import { updateService, type UpdateStatus } from '../update/UpdateService';
 
+function phaseTone(phase: UpdateStatus['phase']): Tone {
+  switch (phase) {
+    case 'ready':
+      return 'success';
+    case 'error':
+      return 'danger';
+    case 'checking':
+    case 'downloading':
+      return 'info';
+    case 'unavailable':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
 export default function UpdatesScreen() {
-  const { settings, colors } = useSettings();
+  const { settings, colors, type } = useSettings();
   const lang = settings.language;
   const [status, setStatus] = useState<UpdateStatus>(() => updateService.getStatus());
   const [busyNow, setBusyNow] = useState(false);
@@ -63,44 +86,42 @@ export default function UpdatesScreen() {
               ? t(lang, 'updateUnavailable')
               : t(lang, 'updateUpToDate');
 
+  const infoRow = (label: string, value: string) => (
+    <View style={styles.infoRow}>
+      <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>{label}</Text>
+      <Text style={[styles.body, styles.infoValue, { color: colors.text, fontSize: type.body }]}>{value}</Text>
+    </View>
+  );
+
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-        {t(lang, 'updates')}
-      </Text>
+    <Screen>
+      <SectionHeader title={t(lang, 'updates')} glyph={GLYPHS.updates} />
 
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.body, { color: colors.text }]}>
-          {t(lang, 'updateRuntime')}: {status.runtimeVersion ?? '—'}
-        </Text>
-        <Text style={[styles.body, { color: colors.text }]}>
-          {t(lang, 'updateChannel')}: {status.channel ?? '—'}
-        </Text>
-        <Text style={[styles.body, { color: colors.text }]}>
-          {t(lang, 'updateCurrentId')}:{' '}
-          {status.isEmbeddedLaunch || !status.currentUpdateId
-            ? t(lang, 'updateEmbedded')
-            : status.currentUpdateId}
-        </Text>
-        <Text style={[styles.body, { color: colors.text }]}>
-          {t(lang, 'updateLastCheck')}: {status.lastCheckAt ?? t(lang, 'updateNeverChecked')}
-        </Text>
-      </View>
+      <Card>
+        {infoRow(t(lang, 'updateRuntime'), status.runtimeVersion ?? '—')}
+        {infoRow(t(lang, 'updateChannel'), status.channel ?? '—')}
+        {infoRow(
+          t(lang, 'updateCurrentId'),
+          status.isEmbeddedLaunch || !status.currentUpdateId ? t(lang, 'updateEmbedded') : status.currentUpdateId,
+        )}
+        {infoRow(t(lang, 'updateLastCheck'), status.lastCheckAt ?? t(lang, 'updateNeverChecked'))}
+        <View style={styles.infoRow}>
+          <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
+            {t(lang, 'assistantStatus')}
+          </Text>
+          <StatusPill tone={phaseTone(status.phase)} glyph={GLYPHS.updates} label={phaseText} />
+        </View>
+      </Card>
 
-      <Text
-        accessibilityLiveRegion="polite"
-        style={[styles.bodyLarge, { color: status.phase === 'error' ? colors.danger : colors.text }]}
-      >
-        {phaseText}
-      </Text>
       {status.phase === 'ready' && busyNow && (
-        <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
+        <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
           {t(lang, 'updateBusyBlocked')}
         </Text>
       )}
 
       <AccessibleButton
         label={t(lang, 'updateCheckNow')}
+        glyph={GLYPHS.updates}
         onPress={() => void check()}
         disabled={status.phase === 'checking' || status.phase === 'downloading' || !status.available}
       />
@@ -114,24 +135,26 @@ export default function UpdatesScreen() {
       )}
 
       {note && (
-        <View>
-          <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-            {t(lang, 'updateReleaseNotes')}
-          </Text>
-          <Text style={[styles.bodyLarge, { color: colors.text }]}>
-            {lang === 'ar' ? note.titleAr : note.titleEn} ({note.date})
-          </Text>
-          <Text style={[styles.body, { color: colors.text }]}>{lang === 'ar' ? note.bodyAr : note.bodyEn}</Text>
-        </View>
+        <>
+          <SectionHeader title={t(lang, 'updateReleaseNotes')} glyph={GLYPHS.info} tone="info" />
+          <Card>
+            <Text style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
+              {lang === 'ar' ? note.titleAr : note.titleEn}
+            </Text>
+            <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>{note.date}</Text>
+            <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+              {lang === 'ar' ? note.bodyAr : note.bodyEn}
+            </Text>
+          </Card>
+        </>
       )}
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.md },
-  heading: { fontSize: typeScale.heading, fontWeight: '700' },
-  body: { fontSize: typeScale.body, lineHeight: 29 },
-  bodyLarge: { fontSize: typeScale.bodyLarge, lineHeight: 32, fontWeight: '600' },
-  card: { borderWidth: 1.5, borderRadius: 16, padding: spacing.md, gap: 6 },
+  body: { lineHeight: 29 },
+  bodyLarge: { lineHeight: 32, fontWeight: '600' },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  infoValue: { flex: 1, fontWeight: '600' },
 });

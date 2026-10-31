@@ -1,15 +1,21 @@
+/**
+ * Guardian sign-in / sign-up — V1.1 redesign: brand header + form card
+ * on the design system. Auth calls and honest error handling unchanged.
+ */
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import { AccessibleButton } from '../components/AccessibleButton';
+import { Banner, BrandMark, Card, EmptyState, Screen, SectionHeader } from '../components/ui';
 import { GuardianServiceError, getGuardianService } from '../guardian/GuardianService';
 import { t } from '../i18n/strings';
 import { useSettings } from '../state/SettingsContext';
-import { MIN_TOUCH, spacing, typeScale } from '../theme/tokens';
+import { GLYPHS } from '../theme/glyphs';
+import { radius, spacing } from '../theme/tokens';
 
 export default function GuardianAuthScreen() {
-  const { settings, colors } = useSettings();
+  const { settings, colors, type } = useSettings();
   const lang = settings.language;
   const service = getGuardianService();
   const [email, setEmail] = useState('');
@@ -40,67 +46,76 @@ export default function GuardianAuthScreen() {
 
   if (!service.isConfigured()) {
     return (
-      <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-        <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
-          {t(lang, 'guardianNotConfigured')}
-        </Text>
-      </ScrollView>
+      <Screen>
+        <EmptyState glyph={GLYPHS.family} title={t(lang, 'guardian')} body={t(lang, 'guardianNotConfigured')} />
+      </Screen>
     );
   }
 
+  const inputStyle = {
+    color: colors.text,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    fontSize: type.body,
+  };
+
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
-        {t(lang, 'guardianOpenSignIn')}
-      </Text>
-      <TextInput
-        accessibilityLabel={t(lang, 'guardianEmail')}
-        autoCapitalize="none"
-        autoComplete="email"
-        keyboardType="email-address"
-        placeholder={t(lang, 'guardianEmail')}
-        placeholderTextColor={colors.textSecondary}
-        value={email}
-        onChangeText={setEmail}
-        style={[
-          styles.input,
-          { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface },
-        ]}
-      />
-      <TextInput
-        accessibilityLabel={t(lang, 'guardianPassword')}
-        autoCapitalize="none"
-        autoComplete="password"
-        secureTextEntry
-        placeholder={t(lang, 'guardianPassword')}
-        placeholderTextColor={colors.textSecondary}
-        value={password}
-        onChangeText={setPassword}
-        style={[
-          styles.input,
-          { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface },
-        ]}
-      />
-      {!!error && (
-        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger }]}>
-          {error}
+    <Screen>
+      <View style={styles.brandRow}>
+        <BrandMark size={44} />
+        <SectionHeader title={t(lang, 'guardianOpenSignIn')} glyph={GLYPHS.family} />
+      </View>
+      <Card>
+        <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
+          {t(lang, 'guardianEmail')}
         </Text>
-      )}
-      <AccessibleButton label={t(lang, 'guardianSignIn')} onPress={() => void run('in')} disabled={busy || !email || !password} />
-      <AccessibleButton label={t(lang, 'guardianSignUp')} onPress={() => void run('up')} variant="secondary" disabled={busy || !email || !password} />
-    </ScrollView>
+        <TextInput
+          accessibilityLabel={t(lang, 'guardianEmail')}
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          placeholder={t(lang, 'guardianEmail')}
+          placeholderTextColor={colors.textSecondary}
+          value={email}
+          onChangeText={setEmail}
+          style={[styles.input, inputStyle]}
+        />
+        <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
+          {t(lang, 'guardianPassword')}
+        </Text>
+        <TextInput
+          accessibilityLabel={t(lang, 'guardianPassword')}
+          autoCapitalize="none"
+          autoComplete="password"
+          secureTextEntry
+          placeholder={t(lang, 'guardianPassword')}
+          placeholderTextColor={colors.textSecondary}
+          value={password}
+          onChangeText={setPassword}
+          style={[styles.input, inputStyle]}
+        />
+        {!!error && (
+          <Banner tone="danger" title={t(lang, 'guardianAuthError')}>
+            <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+              {error}
+            </Text>
+          </Banner>
+        )}
+        <AccessibleButton label={t(lang, 'guardianSignIn')} onPress={() => void run('in')} disabled={busy || !email || !password} />
+        <AccessibleButton label={t(lang, 'guardianSignUp')} onPress={() => void run('up')} variant="secondary" disabled={busy || !email || !password} />
+      </Card>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.md },
-  heading: { fontSize: typeScale.heading, fontWeight: '700' },
-  body: { fontSize: typeScale.body, lineHeight: 29 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  body: { lineHeight: 29 },
+  label: { fontWeight: '600' },
   input: {
     borderWidth: 1.5,
-    borderRadius: 12,
+    borderRadius: radius.md,
     padding: spacing.md,
-    minHeight: MIN_TOUCH,
-    fontSize: typeScale.body,
+    minHeight: 60,
   },
 });
