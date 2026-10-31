@@ -215,6 +215,7 @@ export function parseInvitePayload(data: unknown): Invite {
 
 export type InviteErrorKind =
   | 'invalid-or-expired'
+  | 'rate-limited'
   | 'expired'
   | 'already-used'
   | 'self-pairing'
@@ -230,6 +231,9 @@ export type InviteErrorKind =
 export function classifyInviteErrorMessage(message: string): InviteErrorKind {
   const m = message.toLowerCase();
   if (m.includes('invalid_or_expired')) return 'invalid-or-expired';
+  // Deployed create-guardian-invite rate-limits per wearer
+  // ({"error":"invite_rate_limited"} — verified live 2026-10-31).
+  if (/rate.?limit|too many/.test(m)) return 'rate-limited';
   if (/expir/.test(m)) return 'expired';
   if (/already|used|redeemed|consumed/.test(m)) return 'already-used';
   if (/self|own code|your own|same user/.test(m)) return 'self-pairing';

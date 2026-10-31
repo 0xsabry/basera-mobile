@@ -215,6 +215,8 @@ const en = {
   guardianInviteExpiresAt: 'Expires at',
   guardianInviteExpired: 'This invite has expired. Create a new one.',
   guardianInviteErrorInvalidOrExpired: 'The invite code is invalid or has expired.',
+  guardianInviteErrorRateLimited:
+    'Too many invite codes were created recently — wait a few minutes, then try again.',
   guardianInviteErrorUsed: 'This code was already used.',
   guardianInviteErrorSelf: 'You cannot use your own invite code.',
   guardianCheckEmail: 'Account created. Open the confirmation link sent to your email, then sign in.',
@@ -613,6 +615,8 @@ const ar: Record<StringKey, string> = {
   guardianInviteExpiresAt: 'ينتهي في',
   guardianInviteExpired: 'انتهت صلاحية هذه الدعوة. أنشئ دعوة جديدة.',
   guardianInviteErrorInvalidOrExpired: 'كود الدعوة غير صحيح أو انتهت صلاحيته.',
+  guardianInviteErrorRateLimited:
+    'أُنشئت أكواد دعوة كثيرة مؤخرًا — انتظر بضع دقائق ثم حاول مجددًا.',
   guardianInviteErrorUsed: 'استُخدم هذا الكود من قبل.',
   guardianInviteErrorSelf: 'لا يمكنك استخدام كود الدعوة الخاص بك.',
   guardianCheckEmail: 'تم إنشاء الحساب. افتح رابط التأكيد المرسل إلى بريدك الإلكتروني ثم سجّل الدخول.',

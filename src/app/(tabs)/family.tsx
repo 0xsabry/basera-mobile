@@ -369,8 +369,14 @@ export default function GuardianScreen() {
       if (settings.announcements) {
         void speechService.speakAnnouncement(`${t(lang, 'guardianYourCode')}: ${c.code}`, lang);
       }
-    } catch {
-      setMessage(t(lang, 'errorGeneric'));
+    } catch (e) {
+      // The deployed function rate-limits invite creation — say so
+      // honestly instead of a generic failure.
+      setMessage(
+        e instanceof GuardianInviteError && e.kind === 'rate-limited'
+          ? t(lang, 'guardianInviteErrorRateLimited')
+          : t(lang, 'errorGeneric'),
+      );
     } finally {
       setBusy(false);
     }

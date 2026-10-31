@@ -238,6 +238,7 @@ describe('invite payload parsing + error classification', () => {
 
   it('classifies the deployed combined error code FIRST (never claims "expired" for a typo)', () => {
     expect(classifyInviteErrorMessage('invalid_or_expired_invite')).toBe('invalid-or-expired');
+    expect(classifyInviteErrorMessage('invite_rate_limited')).toBe('rate-limited');
     expect(classifyInviteErrorMessage('invite code has expired')).toBe('expired');
     expect(classifyInviteErrorMessage('code already used')).toBe('already-used');
     expect(classifyInviteErrorMessage('Failed to fetch')).toBe('network');
