@@ -52,8 +52,12 @@ function expectKeys(html: string, keys: StringKey[]) {
 }
 
 describe('screen render smoke (Arabic defaults, design system)', () => {
-  it('Home: brand header, hero, glasses status strip, 2x2 grid, family strip', () => {
+  it('Home: compact brand header, hero, quiet feature rows, glasses + family strips, last result', () => {
     const html = renderScreen(<HomeScreen />);
+    // Polish pass: the mandated Home composition dropped the bottom
+    // service-note banner (the family strip already carries the
+    // unconfigured state; the full note lives on the Family screen,
+    // asserted there) — 'guardianNotConfigured' moved off Home.
     expectKeys(html, [
       'appName',
       'homeGreeting',
@@ -67,7 +71,6 @@ describe('screen render smoke (Arabic defaults, design system)', () => {
       'places',
       'viewAlerts',
       'lastResult',
-      'guardianNotConfigured',
     ]);
   });
 

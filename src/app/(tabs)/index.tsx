@@ -1,15 +1,14 @@
 /**
- * Home — the command center, rebuilt on the V1.1 design system.
+ * Home — the command center, polish pass (docs/POLISH.md).
  *
- * Strict priority order: slim brand header (the greeting is the
- * display element), one hero voice action (assistant readiness lives
- * in its state label), an honest one-row glasses StatusStrip (not
- * connected — no paragraph), a 2×2 core action grid (detect, read,
- * places, alerts — ONE accent, tones are not decorative), a family
- * StatusStrip carrying the REAL sharing state, then the contextual
- * items: the active-alert banner, the last result as a quiet row
- * with Repeat, and — only when the guardian service is actually
- * unconfigured — the service note banner last.
+ * Exact structure, nothing else: (1) compact brand header, (2) the
+ * greeting as page title, (3) one refined voice activation control
+ * (typography-led, small mic icon), (4) the four core features as
+ * QUIET LIST ROWS with 24dp icons — no decorative tiles, (5) the
+ * compact glasses status strip («النظارة غير متصلة»), (6) the family
+ * strip carrying the REAL sharing state, (7) the active-alert banner
+ * and the last result with Repeat, when present. No slogans, no
+ * paragraphs, no badges; whitespace does the work.
  */
 import { Redirect, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
@@ -19,9 +18,8 @@ import { AccessibleButton } from '../../components/AccessibleButton';
 import {
   AppHeader,
   Banner,
-  FeatureGrid,
-  FeatureTile,
   HeroAction,
+  ListRow,
   QuietGroup,
   Screen,
   SectionHeader,
@@ -109,7 +107,42 @@ export default function HomeScreen() {
         onPress={() => pushOnce('/voice')}
       />
 
-      {/* Smart glasses — honest NotAvailable state, one slim row. */}
+      {/* Core features — quiet list rows, small icons, text-led. */}
+      <QuietGroup>
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.detect}
+          title={t(lang, 'detect')}
+          subtitle={t(lang, 'identifyObjectsHint')}
+          accessibilityHint={t(lang, 'detectHint')}
+          onPress={() => pushOnce('/detect')}
+        />
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.read}
+          title={t(lang, 'readText')}
+          subtitle={t(lang, 'readTextHint')}
+          accessibilityHint={t(lang, 'readTextHint')}
+          onPress={() => pushOnce('/read')}
+        />
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.places}
+          title={t(lang, 'places')}
+          subtitle={t(lang, 'placesHint')}
+          accessibilityHint={t(lang, 'placesHint')}
+          onPress={() => pushOnce('/places')}
+        />
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.alerts}
+          title={t(lang, 'viewAlerts')}
+          subtitle={t(lang, 'alertsSubtitle')}
+          onPress={() => pushOnce('/alerts')}
+        />
+      </QuietGroup>
+
+      {/* Smart glasses — honest NotAvailable state, one compact line. */}
       <StatusStrip
         glyph={GLYPHS.glasses}
         title={t(lang, 'glassesCardTitle')}
@@ -117,41 +150,6 @@ export default function HomeScreen() {
         pillTone="neutral"
         pillGlyph={GLYPHS.glasses}
       />
-
-      {/* Core actions — exactly 2×2, one accent for all four. */}
-      <FeatureGrid>
-        <FeatureTile
-          layout="grid"
-          glyph={GLYPHS.detect}
-          title={t(lang, 'detect')}
-          subtitle={t(lang, 'identifyObjectsHint')}
-          hint={t(lang, 'detectHint')}
-          onPress={() => pushOnce('/detect')}
-        />
-        <FeatureTile
-          layout="grid"
-          glyph={GLYPHS.read}
-          title={t(lang, 'readText')}
-          subtitle={t(lang, 'readTextHint')}
-          hint={t(lang, 'readTextHint')}
-          onPress={() => pushOnce('/read')}
-        />
-        <FeatureTile
-          layout="grid"
-          glyph={GLYPHS.places}
-          title={t(lang, 'places')}
-          subtitle={t(lang, 'placesHint')}
-          hint={t(lang, 'placesHint')}
-          onPress={() => pushOnce('/places')}
-        />
-        <FeatureTile
-          layout="grid"
-          glyph={GLYPHS.alerts}
-          title={t(lang, 'viewAlerts')}
-          subtitle={t(lang, 'alertsSubtitle')}
-          onPress={() => pushOnce('/alerts')}
-        />
-      </FeatureGrid>
 
       {/* Family safety — the REAL sharing state, one tappable row. */}
       <StatusStrip
@@ -183,13 +181,6 @@ export default function HomeScreen() {
         ) : null}
       </QuietGroup>
 
-      {!guardianConfigured && (
-        <Banner tone="warning" title={t(lang, 'serviceNoteTitle')}>
-          <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-            {t(lang, 'guardianNotConfigured')}
-          </Text>
-        </Banner>
-      )}
     </Screen>
   );
 }

@@ -28,7 +28,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettings } from '../state/SettingsContext';
 import { forwardChevron, GLYPHS } from '../theme/glyphs';
-import { elevation, radius, spacing } from '../theme/tokens';
+import { elevation, iconSize, radius, spacing } from '../theme/tokens';
 
 export type Tone = 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 
@@ -63,6 +63,60 @@ const TONE_GLYPHS: Record<Tone, string> = {
   info: GLYPHS.info,
   neutral: GLYPHS.empty,
 };
+
+/* ------------------------------------------------------------------ */
+/* Icon — the ONLY way a glyph renders (polish pass, docs/POLISH.md)   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Icon tone: `default` = main text color, `muted` = secondary text,
+ * `accent` = the single muted accent, or a semantic Tone (rendered in
+ * its solid color, no soft fill). Icons are NEVER placed inside a
+ * filled decorative tile.
+ */
+export type IconTone = Tone | 'default' | 'muted' | 'accent';
+
+/**
+ * A system-font glyph rendered small and light: size from the
+ * iconSize tokens only (16/20/24; 32 reserved for control glyphs),
+ * regular/medium weight (never 800), monochrome or one accent.
+ * Decorative by definition — hidden from screen readers; the paired
+ * text label always carries the meaning.
+ */
+export function Icon({
+  glyph,
+  size = iconSize.md,
+  tone = 'default',
+  color,
+}: {
+  glyph: string;
+  size?: number;
+  tone?: IconTone;
+  color?: string;
+}) {
+  const { colors } = useSettings();
+  let resolved = color;
+  if (!resolved) {
+    if (tone === 'default') resolved = colors.text;
+    else if (tone === 'muted') resolved = colors.textSecondary;
+    else if (tone === 'accent') resolved = colors.accent;
+    else resolved = toneColors(colors, tone).solid;
+  }
+  return (
+    <Text
+      accessibilityElementsHidden
+      style={{
+        color: resolved,
+        fontSize: size,
+        fontWeight: '500',
+        lineHeight: Math.round(size * 1.3),
+        textAlign: 'center',
+      }}
+    >
+      {glyph}
+    </Text>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /* Screen scaffold                                                     */
@@ -116,7 +170,7 @@ export function BrandMark({ size = 52 }: { size?: number }) {
         },
       ]}
     >
-      <Text style={{ color: colors.primaryText, fontSize: size * 0.52, fontWeight: '800', lineHeight: size * 0.62 }}>
+      <Text style={{ color: colors.primaryText, fontSize: size * 0.52, fontWeight: '700', lineHeight: size * 0.62 }}>
         {GLYPHS.brand}
       </Text>
       {/* The letter's own dot, in accent — the "eye" of the mark. It
@@ -150,9 +204,9 @@ export function AppHeader({
   return (
     <View style={styles.appHeader}>
       <View style={styles.brandRow}>
-        <BrandMark size={44} />
+        <BrandMark size={28} />
         <View style={styles.brandText}>
-          <Text accessibilityRole="header" style={[styles.brandName, { color: colors.text, fontSize: type.bodyLarge }]}>
+          <Text accessibilityRole="header" style={[styles.brandName, { color: colors.text, fontSize: type.body }]}>
             {brandName}
           </Text>
           <Text style={{ color: colors.textSecondary, fontSize: type.caption, lineHeight: type.caption * 1.3 }}>
@@ -160,8 +214,8 @@ export function AppHeader({
           </Text>
         </View>
       </View>
-      {/* The greeting is the display element; the date stays a quiet caption. */}
-      <Text style={[styles.greeting, { color: colors.text, fontSize: type.title }]}>{greeting}</Text>
+      {/* The greeting is the page title; the date stays a quiet caption. */}
+      <Text style={[styles.greeting, { color: colors.text, fontSize: type.heading }]}>{greeting}</Text>
       <Text style={{ color: colors.textSecondary, fontSize: type.caption, lineHeight: type.caption * 1.35 }}>
         {dateLine}
       </Text>
@@ -179,14 +233,9 @@ export function SectionHeader({
   tone?: Tone;
 }) {
   const { colors, type } = useSettings();
-  const tc = toneColors(colors, tone);
   return (
     <View style={styles.sectionHeader} accessible accessibilityRole="header" accessibilityLabel={title}>
-      {glyph ? (
-        <View style={[styles.sectionGlyph, { backgroundColor: tc.soft }]}>
-          <Text style={{ color: tc.on, fontSize: 17, fontWeight: '800' }}>{glyph}</Text>
-        </View>
-      ) : null}
+      {glyph ? <Icon glyph={glyph} size={iconSize.md} tone={tone} /> : null}
       <Text style={[styles.sectionTitle, { color: colors.text, fontSize: type.heading }]}>{title}</Text>
     </View>
   );
@@ -260,12 +309,10 @@ export function Banner({
       ]}
     >
       <View style={styles.bannerTitleRow}>
-        <Text style={{ color: tc.on, fontSize: type.bodyLarge, fontWeight: '800' }}>
-          {glyph ?? TONE_GLYPHS[tone]}
-        </Text>
+        <Icon glyph={glyph ?? TONE_GLYPHS[tone]} size={iconSize.md} color={tc.on} />
         <Text
           accessibilityRole="header"
-          style={{ color: tc.on, fontSize: type.body, fontWeight: '800', flex: 1, lineHeight: type.body * 1.4 }}
+          style={{ color: tc.on, fontSize: type.body, fontWeight: '700', flex: 1, lineHeight: type.body * 1.4 }}
         >
           {title}
         </Text>
@@ -280,7 +327,7 @@ export function EmptyState({ glyph = GLYPHS.empty, title, body }: { glyph?: stri
   return (
     <Card accessibilityLabel={body ? `${title}. ${body}` : title}>
       <View style={styles.emptyState}>
-        <Text style={{ color: colors.textSecondary, fontSize: 40, lineHeight: 48 }}>{glyph}</Text>
+        <Icon glyph={glyph} size={iconSize.lg} tone="muted" />
         <Text style={[styles.emptyTitle, { color: colors.text, fontSize: type.bodyLarge }]}>{title}</Text>
         {body ? (
           <Text style={{ color: colors.textSecondary, fontSize: type.body, lineHeight: type.body * 1.45, textAlign: 'center' }}>
@@ -305,7 +352,7 @@ export function StatusPill({ tone, label, glyph }: { tone: Tone; label: string; 
       accessibilityLabel={label}
       style={[styles.pill, { backgroundColor: tc.soft, borderColor: tc.solid }]}
     >
-      <Text style={{ color: tc.on, fontSize: type.caption, fontWeight: '800' }}>{glyph ?? TONE_GLYPHS[tone]}</Text>
+      <Text style={{ color: tc.on, fontSize: type.caption, fontWeight: '600' }}>{glyph ?? TONE_GLYPHS[tone]}</Text>
       <Text
         style={{
           color: tc.on,
@@ -322,22 +369,14 @@ export function StatusPill({ tone, label, glyph }: { tone: Tone; label: string; 
   );
 }
 
-export function IconTile({ glyph, tone = 'primary', size = 52 }: { glyph: string; tone?: Tone; size?: number }) {
-  const { colors } = useSettings();
-  const tc = toneColors(colors, tone);
-  return (
-    <View
-      accessibilityElementsHidden
-      style={[
-        styles.iconTile,
-        { width: size, height: size, borderRadius: size * 0.3, backgroundColor: tc.soft },
-      ]}
-    >
-      <Text style={{ color: tc.on, fontSize: size * 0.46, fontWeight: '700', lineHeight: size * 0.56 }}>
-        {glyph}
-      </Text>
-    </View>
-  );
+/**
+ * IconTile — legacy name kept for existing call sites. Since the
+ * polish pass it renders NO tile: just the small, light `Icon` at
+ * the lg token. The `size` prop is accepted for compatibility with
+ * pre-polish callers and no longer affects rendering.
+ */
+export function IconTile({ glyph, tone = 'primary' }: { glyph: string; tone?: Tone; size?: number }) {
+  return <Icon glyph={glyph} size={iconSize.lg} tone={tone} />;
 }
 
 export function FeatureTile({
@@ -382,9 +421,9 @@ export function FeatureTile({
         },
       ]}
     >
-      <IconTile glyph={glyph} tone={tone} size={layout === 'grid' ? 48 : 52} />
+      <IconTile glyph={glyph} tone={tone} />
       <View style={styles.tileText}>
-        <Text style={{ color: colors.text, fontSize: type.body, fontWeight: '700', lineHeight: type.body * 1.3 }}>
+        <Text style={{ color: colors.text, fontSize: type.body, fontWeight: '600', lineHeight: type.body * 1.3 }}>
           {title}
         </Text>
         {subtitle ? (
@@ -400,9 +439,7 @@ export function FeatureTile({
         ) : null}
       </View>
       {layout === 'row' ? (
-        <Text style={{ color: colors.textSecondary, fontSize: 26, fontWeight: '700' }}>
-          {forwardChevron(isRTL)}
-        </Text>
+        <Icon glyph={forwardChevron(isRTL)} size={iconSize.md} tone="muted" />
       ) : null}
     </Pressable>
   );
@@ -443,7 +480,7 @@ export function ListRow({
   const pressOpacity = settings.reducedMotion ? 1 : 0.86;
   const inner = (
     <>
-      {glyph ? <IconTile glyph={glyph} tone={tone} size={46} /> : null}
+      {glyph ? <IconTile glyph={glyph} tone={tone} /> : null}
       <View style={styles.tileText}>
         <Text style={{ color: colors.text, fontSize: type.body, fontWeight: '600', lineHeight: type.body * 1.35 }}>
           {title}
@@ -455,11 +492,7 @@ export function ListRow({
         ) : null}
       </View>
       {right}
-      {onPress && !right ? (
-        <Text style={{ color: colors.textSecondary, fontSize: 26, fontWeight: '700' }}>
-          {forwardChevron(isRTL)}
-        </Text>
-      ) : null}
+      {onPress && !right ? <Icon glyph={forwardChevron(isRTL)} size={iconSize.md} tone="muted" /> : null}
     </>
   );
   const quiet = variant === 'quiet';
@@ -550,18 +583,14 @@ export function StatusStrip({
   const pressOpacity = settings.reducedMotion ? 1 : 0.86;
   const inner = (
     <>
-      <IconTile glyph={glyph} tone={glyphTone} size={40} />
+      <IconTile glyph={glyph} tone={glyphTone} />
       <Text
-        style={{ color: colors.text, fontSize: type.body, fontWeight: '700', lineHeight: type.body * 1.3, flex: 1 }}
+        style={{ color: colors.text, fontSize: type.body, fontWeight: '600', lineHeight: type.body * 1.3, flex: 1 }}
       >
         {title}
       </Text>
       <StatusPill tone={pillTone} glyph={pillGlyph} label={pillLabel} />
-      {onPress ? (
-        <Text style={{ color: colors.textSecondary, fontSize: 24, fontWeight: '700' }}>
-          {forwardChevron(isRTL)}
-        </Text>
-      ) : null}
+      {onPress ? <Icon glyph={forwardChevron(isRTL)} size={iconSize.md} tone="muted" /> : null}
     </>
   );
   const label = accessibilityLabel ?? `${title}. ${pillLabel}`;
@@ -648,13 +677,9 @@ export function HeroAction({
         },
       ]}
     >
-      <View style={[styles.heroDisc, { backgroundColor: colors.heroText }]}>
-        <Text style={{ color: colors.heroBackground, fontSize: 30, fontWeight: '800', lineHeight: 36 }}>
-          {glyph}
-        </Text>
-      </View>
+      <Icon glyph={glyph} size={iconSize.lg} color={colors.heroText} />
       <View style={styles.tileText}>
-        <Text style={{ color: colors.heroText, fontSize: type.bodyLarge, fontWeight: '800', lineHeight: type.bodyLarge * 1.3 }}>
+        <Text style={{ color: colors.heroText, fontSize: type.bodyLarge, fontWeight: '700', lineHeight: type.bodyLarge * 1.3 }}>
           {label}
         </Text>
         {stateLabel ? (
@@ -794,15 +819,8 @@ const styles = StyleSheet.create({
   },
   brandText: { flex: 1, gap: 2 },
   brandName: { fontWeight: '800' },
-  greeting: { fontWeight: '800', marginTop: spacing.md },
+  greeting: { fontWeight: '700', marginTop: spacing.md },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
-  sectionGlyph: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   sectionTitle: { fontWeight: '800', flex: 1 },
   card: {
     borderRadius: radius.card,
@@ -829,7 +847,6 @@ const styles = StyleSheet.create({
     // compress and wrap instead of pushing content off-screen.
     flexShrink: 1,
   },
-  iconTile: { alignItems: 'center', justifyContent: 'center' },
   tileRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -893,20 +910,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    minHeight: 96,
+    minHeight: 80,
     borderRadius: radius.hero,
-    padding: spacing.lg,
+    padding: spacing.md,
     elevation: elevation.hero,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 8,
-  },
-  heroDisc: {
-    width: 60,
-    height: 60,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   segmentWrap: {
     flexDirection: 'row',

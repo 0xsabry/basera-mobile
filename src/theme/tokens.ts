@@ -26,6 +26,18 @@ export const MIN_TOUCH = 60;
 export const BUTTON_HEIGHT = 64;
 
 /**
+ * Icon sizes — the ONLY sizes a glyph icon may render at (polish
+ * pass, docs/POLISH.md). Icons support the interface quietly: small,
+ * light-weight, monochrome or one muted accent, never inside filled
+ * decorative tiles. `control` is reserved for the glyph inside an
+ * actual control surface (voice disc, camera shutter) — decoration
+ * may never use it. Touch targets stay ≥48dp via padding/layout;
+ * the visible glyph stays small.
+ */
+export const iconSize = { sm: 16, md: 20, lg: 24, control: 32 } as const;
+export type IconSize = (typeof iconSize)[keyof typeof iconSize];
+
+/**
  * Elevation discipline — the default card is FLAT (elevation 0, a 1px
  * border carries the separation). Elevation is spent only on the one
  * `raised` surface per screen and on the hero action.
