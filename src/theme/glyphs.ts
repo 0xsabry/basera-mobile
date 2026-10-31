@@ -52,7 +52,6 @@ export const GLYPHS = {
   glasses: '◌',
   camera: '◎',
   gallery: '▦',
-  sample: '▦',
   mic: '◉',
   location: '⌖',
   notifications: '✧',

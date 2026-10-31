@@ -5,7 +5,7 @@ const en = {
   onboardingBody:
     'BASERA describes your surroundings, reads text aloud, and answers voice commands. Core features run on your phone, with no internet needed.',
   onboardingGlassesNote:
-    'The smart glasses are still in development and not connected. For now, use the gallery, sample photos, or the phone camera as a test input; the glasses will work with this same app later.',
+    'The smart glasses are still in development and not connected. For now, use the gallery or the phone camera as a test input; the glasses will work with this same app later.',
   onboardingPickLanguage: 'Choose your language',
   start: 'Start',
   skip: 'Skip',
@@ -65,11 +65,10 @@ const en = {
   noResultYet: 'Nothing analyzed yet.',
   chooseImageSource: 'Choose an image source',
   sourceGallery: 'Gallery',
-  sourceSample: 'Sample photos',
   sourceCameraTest: 'Phone camera (test input)',
   sourceGlasses: 'Smart glasses (future)',
   glassesNotAvailable:
-    'Smart glasses are not connected — the hardware is in development. Use the gallery, samples, or phone camera instead.',
+    'Smart glasses are not connected — the hardware is in development. Use the gallery or the phone camera instead.',
   analyzing: 'Analyzing…',
   saveAction: 'Save',
   detectionsFound: 'Detected objects',
@@ -135,7 +134,6 @@ const en = {
   detectionUnavailableTitle: 'Requires the full app build',
   featureUnavailableInBuild:
     'This feature requires the full BASERA build with its AI models. It does not run in Expo Go or on the web.',
-  samplePhotos: 'Sample photos',
   imagePreview: 'Selected image',
   replay: 'Replay',
   openDetail: 'Open details',
@@ -411,7 +409,7 @@ const ar: Record<StringKey, string> = {
   onboardingBody:
     'يصف التطبيق ما حولك، ويقرأ النصوص بصوت عالٍ، ويستجيب لأوامرك الصوتية. تعمل المزايا الأساسية على هاتفك دون حاجة إلى الإنترنت.',
   onboardingGlassesNote:
-    'النظارة الذكية قيد التطوير وغير متصلة بعد. استخدم حاليًا المعرض أو الصور التجريبية أو كاميرا الهاتف كمدخل اختبار؛ وستعمل النظارة مع هذا التطبيق لاحقًا.',
+    'النظارة الذكية قيد التطوير وغير متصلة بعد. استخدم حاليًا المعرض أو كاميرا الهاتف كمدخل اختبار؛ وستعمل النظارة مع هذا التطبيق لاحقًا.',
   onboardingPickLanguage: 'اختر لغتك',
   start: 'ابدأ',
   skip: 'تخطي',
@@ -471,11 +469,10 @@ const ar: Record<StringKey, string> = {
   noResultYet: 'لا توجد نتيجة بعد.',
   chooseImageSource: 'اختر مصدر الصورة',
   sourceGallery: 'المعرض',
-  sourceSample: 'صور تجريبية',
   sourceCameraTest: 'كاميرا الهاتف (مدخل اختبار)',
   sourceGlasses: 'النظارة الذكية (مستقبلًا)',
   glassesNotAvailable:
-    'النظارة الذكية غير متصلة؛ الجهاز قيد التطوير. استخدم المعرض أو الصور التجريبية أو كاميرا الهاتف حاليًا.',
+    'النظارة الذكية غير متصلة؛ الجهاز قيد التطوير. استخدم المعرض أو كاميرا الهاتف حاليًا.',
   analyzing: 'جارٍ التحليل…',
   saveAction: 'حفظ',
   detectionsFound: 'الأشياء المكتشفة',
@@ -538,7 +535,6 @@ const ar: Record<StringKey, string> = {
   detectionUnavailableTitle: 'يتطلب النسخة الكاملة من التطبيق',
   featureUnavailableInBuild:
     'تتطلب هذه الميزة النسخة الكاملة من بصيرة مع نماذج الذكاء الاصطناعي. لا تعمل في Expo Go أو الويب.',
-  samplePhotos: 'صور تجريبية',
   imagePreview: 'الصورة المختارة',
   replay: 'إعادة التشغيل',
   openDetail: 'فتح التفاصيل',
