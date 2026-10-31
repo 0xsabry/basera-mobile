@@ -100,6 +100,6 @@ describe('formatFixAge (qualitative only, per docs/COPY.md)', () => {
   it('thresholds hold in Arabic too', () => {
     expect(formatFixAge('ar', 30_000)).toBe('الآن');
     expect(formatFixAge('ar', 90_000)).toBe('قبل دقيقة');
-    expect(formatFixAge('ar', 600_000)).toBe('قبل دقائق');
+    expect(formatFixAge('ar', 600_000)).toBe('قبل بضع دقائق');
   });
 });

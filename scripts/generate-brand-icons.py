@@ -71,7 +71,9 @@ def letter_layer(canvas: int) -> Image.Image:
 def classic(canvas: int) -> Image.Image:
     out = Image.new("RGBA", (canvas, canvas), FIELD)
     out.alpha_composite(letter_layer(canvas))
-    return out
+    # Fully opaque by construction — store as RGB so the file itself
+    # carries no alpha channel (guarded in iconography.test.ts).
+    return out.convert("RGB")
 
 
 def tile_logo(canvas: int) -> Image.Image:

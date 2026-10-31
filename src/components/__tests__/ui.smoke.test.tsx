@@ -28,8 +28,7 @@ import VoiceScreen from '../../app/voice';
 import { TAB_SCREENS } from '../../app/(tabs)/_layout';
 import { t, type StringKey } from '../../i18n/strings';
 import { SettingsProvider } from '../../state/SettingsContext';
-import { GLYPHS } from '../../theme/glyphs';
-import { forwardChevron } from '../../theme/glyphs';
+import { forwardChevron, GLYPHS } from '../../theme/glyphs';
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
