@@ -10,17 +10,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-jest.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
-}));
 
-// The real package loads RN native-component internals (ESM) that the
-// node harness cannot execute; the slider's behavior is device-tested.
-jest.mock('@react-native-community/slider', () => ({
-  __esModule: true,
-  default: () => null,
-}));
 
 import AlertsScreen from '../../app/alerts';
 import AssistanceScreen from '../../app/(tabs)/assistance';
@@ -39,6 +29,17 @@ import { TAB_SCREENS } from '../../app/(tabs)/_layout';
 import { t, type StringKey } from '../../i18n/strings';
 import { SettingsProvider } from '../../state/SettingsContext';
 import { forwardChevron } from '../../theme/glyphs';
+
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+// The real package loads RN native-component internals (ESM) that the
+// node harness cannot execute; the slider's behavior is device-tested.
+jest.mock('@react-native-community/slider', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 
 function renderScreen(node: React.ReactNode): string {
   return renderToStaticMarkup(<SettingsProvider systemDark={false}>{node}</SettingsProvider>);
