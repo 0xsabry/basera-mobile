@@ -15,9 +15,14 @@
  * grey while the active tint stays brand green (theme tokens),
  * (2) the active tab carries a short indicator BAR above its glyph —
  * a shape cue that survives color-vision differences — and
- * (3) weights stay 800/600. Labels never wrap or clip: one line,
- * shrink-to-fit (the «المساعد الذكي» / "Smart Assistant" label is
- * wider than its tab at full size).
+ * (3) weights stay 800/600. Labels live in a fixed two-line zone:
+ * «المساعد الذكي» / "Smart Assistant" is wider than its tab on one
+ * line at a readable size, so it wraps at its word boundary inside
+ * the zone (short labels stay on line one — glyph columns align
+ * across all five tabs, nothing clips, nothing shrinks to
+ * illegibility). An earlier shrink-to-fit attempt was reverted: it
+ * is not honored by every renderer and silently ellipsized the
+ * mandated label in the web preview.
  *
  * Sub-screens (detect, read, voice, updates, guardian-auth, places,
  * alerts, onboarding) are stack routes in the root layout, pushed above
@@ -105,13 +110,14 @@ export default function TabsLayout() {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: StyleSheet.hairlineWidth,
-          // 78 (was 70): Arabic labels need the extra line room so
-          // descenders/dots never crowd the bar's bottom edge.
-          height: 78 + insets.bottom,
+          // 88: indicator (6.5) + glyph (30) + the fixed two-line
+          // label zone (41.6) + breathing room. Arabic labels need
+          // the line room so descenders/dots never crowd the edge.
+          height: 88 + insets.bottom,
           paddingBottom: insets.bottom + 8,
           paddingTop: 8,
         },
-        tabBarItemStyle: { minHeight: 58 },
+        tabBarItemStyle: { minHeight: 68 },
         tabBarLabelStyle: { fontSize: Math.min(type.caption, 17), fontWeight: '700' },
         sceneStyle: { backgroundColor: colors.background },
       }}
@@ -127,22 +133,32 @@ export default function TabsLayout() {
               <TabGlyph glyph={def.glyph} color={color} focused={focused} />
             ),
             tabBarLabel: ({ focused, color }: { focused: boolean; color: ColorValue }) => (
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.75}
+              // Fixed two-line zone: every tab reserves the same label
+              // height, so a label that wraps («المساعد الذكي»,
+              // "Smart Assistant") never pushes its glyph out of line
+              // with the others, and a short label simply uses line 1.
+              <View
                 style={{
-                  color,
-                  // Capped: at text scale 1.3 the uncapped caption size
-                  // makes the five localized labels crowd and overlap.
-                  fontSize: Math.min(type.caption, 17),
-                  fontWeight: focused ? '800' : '600',
-                  lineHeight: Math.min(type.caption, 17) * 1.3,
-                  textAlign: 'center',
+                  height: Math.min(type.caption, 17) * 1.3 * 2,
+                  justifyContent: 'flex-start',
+                  alignItems: 'center',
                 }}
               >
-                {t(lang, def.titleKey)}
-              </Text>
+                <Text
+                  numberOfLines={2}
+                  style={{
+                    color,
+                    // Capped: at text scale 1.3 the uncapped caption
+                    // size makes the five localized labels crowd.
+                    fontSize: Math.min(type.caption, 17),
+                    fontWeight: focused ? '800' : '600',
+                    lineHeight: Math.min(type.caption, 17) * 1.3,
+                    textAlign: 'center',
+                  }}
+                >
+                  {t(lang, def.titleKey)}
+                </Text>
+              </View>
             ),
           }}
         />
