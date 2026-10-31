@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import { AccessibleButton } from '../components/AccessibleButton';
-import { Card, Screen, SectionHeader, StatusPill, type Tone } from '../components/ui';
+import { Card, QuietGroup, Screen, SectionHeader, StatusPill, type Tone } from '../components/ui';
 import { t } from '../i18n/strings';
 import { isAccessibilityBusy } from '../state/accessibilityBusy';
 import { useSettings } from '../state/SettingsContext';
@@ -97,7 +97,7 @@ export default function UpdatesScreen() {
     <Screen>
       <SectionHeader title={t(lang, 'updates')} glyph={GLYPHS.updates} />
 
-      <Card>
+      <QuietGroup>
         {infoRow(t(lang, 'updateRuntime'), status.runtimeVersion ?? '—')}
         {infoRow(t(lang, 'updateChannel'), status.channel ?? '—')}
         {infoRow(
@@ -105,13 +105,7 @@ export default function UpdatesScreen() {
           status.isEmbeddedLaunch || !status.currentUpdateId ? t(lang, 'updateEmbedded') : status.currentUpdateId,
         )}
         {infoRow(t(lang, 'updateLastCheck'), status.lastCheckAt ?? t(lang, 'updateNeverChecked'))}
-        <View style={styles.infoRow}>
-          <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
-            {t(lang, 'assistantStatus')}
-          </Text>
-          <StatusPill tone={phaseTone(status.phase)} glyph={GLYPHS.updates} label={phaseText} />
-        </View>
-      </Card>
+      </QuietGroup>
 
       {status.phase === 'ready' && busyNow && (
         <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
@@ -134,10 +128,17 @@ export default function UpdatesScreen() {
         />
       )}
 
-      {note && (
-        <>
-          <SectionHeader title={t(lang, 'updateReleaseNotes')} glyph={GLYPHS.info} tone="info" />
-          <Card>
+      {/* The one raised surface on this screen: phase + release note. */}
+      {note && <SectionHeader title={t(lang, 'updateReleaseNotes')} glyph={GLYPHS.info} />}
+      <Card variant="raised">
+        <View style={styles.infoRow}>
+          <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
+            {t(lang, 'assistantStatus')}
+          </Text>
+          <StatusPill tone={phaseTone(status.phase)} glyph={GLYPHS.updates} label={phaseText} />
+        </View>
+        {note && (
+          <>
             <Text style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
               {lang === 'ar' ? note.titleAr : note.titleEn}
             </Text>
@@ -145,9 +146,9 @@ export default function UpdatesScreen() {
             <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
               {lang === 'ar' ? note.bodyAr : note.bodyEn}
             </Text>
-          </Card>
-        </>
-      )}
+          </>
+        )}
+      </Card>
     </Screen>
   );
 }

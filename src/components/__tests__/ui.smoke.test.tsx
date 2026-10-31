@@ -52,7 +52,7 @@ function expectKeys(html: string, keys: StringKey[]) {
 }
 
 describe('screen render smoke (Arabic defaults, design system)', () => {
-  it('Home: brand header, hero, glasses honesty card, explore grid', () => {
+  it('Home: brand header, hero, glasses status strip, 2x2 grid, family strip', () => {
     const html = renderScreen(<HomeScreen />);
     expectKeys(html, [
       'appName',
@@ -61,8 +61,7 @@ describe('screen render smoke (Arabic defaults, design system)', () => {
       'voiceHeroState',
       'glassesCardTitle',
       'glassesCardStatus',
-      'deviceStatusTitle',
-      'exploreTitle',
+      'familySafety',
       'detect',
       'readText',
       'places',

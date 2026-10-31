@@ -14,13 +14,23 @@
 
 /** 4pt spacing scale. */
 export const spacing = { xxs: 4, xs: 6, sm: 10, md: 16, lg: 24, xl: 32, xxl: 40 };
-export const radius = { xs: 6, sm: 10, md: 14, lg: 20, xl: 24, pill: 999 };
+/**
+ * Radius hierarchy — surfaces must be distinguishable by shape, not
+ * just by borders: hero 24, card 16, row/tile 14, chip/pill full.
+ * `xl` stays 24 (hero alias) so existing hero references keep meaning;
+ * `card` / `row` are the workhorse values for the quiet surfaces.
+ */
+export const radius = { xs: 6, sm: 10, md: 14, lg: 20, xl: 24, hero: 24, card: 16, row: 14, pill: 999 };
 /** Minimum touch target: 60dp (above the 48dp platform minimum). */
 export const MIN_TOUCH = 60;
 export const BUTTON_HEIGHT = 64;
 
-/** Android elevation steps for cards / raised / hero surfaces. */
-export const elevation = { card: 2, raised: 5, hero: 8 };
+/**
+ * Elevation discipline — the default card is FLAT (elevation 0, a 1px
+ * border carries the separation). Elevation is spent only on the one
+ * `raised` surface per screen and on the hero action.
+ */
+export const elevation = { card: 0, flat: 0, raised: 5, hero: 8 };
 
 export const typeScale = {
   display: 34,

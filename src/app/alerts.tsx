@@ -16,6 +16,7 @@ import { speechService } from '../ai/SpeechService';
 import { AccessibleButton } from '../components/AccessibleButton';
 import {
   ActionGrid,
+  Banner,
   Card,
   CompactAction,
   EmptyState,
@@ -126,14 +127,8 @@ export default function AlertsScreen() {
 
   return (
     <Screen>
-      <Card>
-        <View style={styles.pillRow}>
-          <Text style={[styles.body, { color: colors.text, fontSize: type.body, flex: 1 }]}>
-            {t(lang, 'hazardScanNote')}
-          </Text>
-          <StatusPill tone="info" glyph={GLYPHS.detect} label={t(lang, 'detect')} />
-        </View>
-      </Card>
+      {/* The limitation comes FIRST, as a slim banner — before any event. */}
+      <Banner tone="info" glyph={GLYPHS.detect} title={t(lang, 'hazardScanNote')} />
       <Card tone="danger">
         <AccessibleButton label={t(lang, 'sosButton')} glyph={GLYPHS.sos} variant="danger" onPress={() => void onSos()} />
         {!!sosMessage && (

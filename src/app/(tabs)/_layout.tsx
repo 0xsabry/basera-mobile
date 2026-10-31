@@ -2,11 +2,12 @@
  * Main bottom navigation — five destinations, always reachable:
  * Home, Assistance, History, Family, Settings.
  *
- * V1.1 premium redesign: the active tab is marked three ways (tinted
- * pill behind the glyph, accent glyph color, bold label) — never by
- * color alone. Accessibility contract unchanged: every tab is a ≥64dp
- * touch target with a text label (never icon-only), an explicit
- * screen-reader label, and the bar respects the device safe area.
+ * V1.1 premium redesign: the active tab is marked by accent glyph
+ * color + bold label (no filled pill background — the bar stays
+ * quiet) under a top hairline — never by color alone. Accessibility
+ * contract unchanged: every tab is a ≥64dp touch target with a text
+ * label (never icon-only), an explicit screen-reader label, and the
+ * bar respects the device safe area.
  *
  * Sub-screens (detect, read, voice, updates, guardian-auth, places,
  * alerts, onboarding) are stack routes in the root layout, pushed above
@@ -14,12 +15,11 @@
  */
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Text, View, type ColorValue } from 'react-native';
+import { StyleSheet, Text, View, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { t, type StringKey } from '../../i18n/strings';
 import { useSettings } from '../../state/SettingsContext';
 import { GLYPHS } from '../../theme/glyphs';
-import { radius } from '../../theme/tokens';
 
 export interface TabScreenDef {
   name: string;
@@ -39,12 +39,10 @@ export const TAB_SCREENS: TabScreenDef[] = [
 const TAB_ICON_SIZE = 24;
 
 function TabGlyph({ glyph, color, focused }: { glyph: string; color: ColorValue; focused: boolean }) {
-  const { colors } = useSettings();
   return (
     <View
       style={{
-        backgroundColor: focused ? colors.primarySoft : 'transparent',
-        borderRadius: radius.pill,
+        backgroundColor: 'transparent',
         paddingHorizontal: 14,
         paddingVertical: 3,
         alignItems: 'center',
@@ -77,7 +75,7 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
-          borderTopWidth: 1,
+          borderTopWidth: StyleSheet.hairlineWidth,
           height: 70 + insets.bottom,
           paddingBottom: insets.bottom + 6,
           paddingTop: 6,

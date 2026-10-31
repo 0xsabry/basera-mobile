@@ -10,7 +10,7 @@ import { useSettings } from '../state/SettingsContext';
 import { GLYPHS } from '../theme/glyphs';
 import { radius, spacing } from '../theme/tokens';
 import { AccessibleButton } from './AccessibleButton';
-import { FeatureTile, SectionHeader } from './ui';
+import { CompactAction, SectionHeader, StatusPill } from './ui';
 
 interface Props {
   onImage: (image: CapturedImage) => void;
@@ -21,9 +21,10 @@ interface Props {
 
 /**
  * Shared source chooser used by Detection + Text Reader screens.
- * V1.1 redesign: design-system tiles with distinct glyphs; the four
- * sources and their behavior (incl. the honest glasses NotAvailable
- * alert) are unchanged.
+ * V1.1 redesign: a slim horizontal control bar (compact actions, the
+ * phone camera is the single filled primary) sitting UNDER the large
+ * preview area on its screen; the four sources and their behavior
+ * (incl. the honest glasses NotAvailable alert) are unchanged.
  */
 export function ImageSourcePicker({ onImage, onError, disabled = false }: Props) {
   const { settings, colors } = useSettings();
@@ -53,42 +54,42 @@ export function ImageSourcePicker({ onImage, onError, disabled = false }: Props)
   return (
     <View style={styles.wrap}>
       <SectionHeader title={t(lang, 'chooseImageSource')} glyph={GLYPHS.camera} />
-      <FeatureTile
-        glyph={GLYPHS.gallery}
-        title={t(lang, 'sourceGallery')}
-        disabled={off}
-        onPress={() => run(() => new GalleryImageSource().getImage())}
-      />
-      <FeatureTile
-        glyph={GLYPHS.camera}
-        tone="info"
-        title={t(lang, 'sourceCameraTest')}
-        disabled={off}
-        onPress={() => run(() => new PhoneCameraTestSource().getImage())}
-      />
-      <FeatureTile
-        glyph={GLYPHS.sample}
-        tone="neutral"
-        title={t(lang, 'sourceSample')}
-        disabled={off}
-        onPress={() => setShowSamples((v) => !v)}
-      />
-      <FeatureTile
-        glyph={GLYPHS.glasses}
-        tone="neutral"
-        title={t(lang, 'sourceGlasses')}
-        subtitle={t(lang, 'glassesCardStatus')}
-        disabled={off}
-        onPress={async () => {
-          try {
-            await new SmartGlassesCameraSource().getImage();
-          } catch {
-            // Typed NotAvailable error by design — explain honestly.
-            Alert.alert(t(lang, 'sourceGlasses'), t(lang, 'glassesNotAvailable'));
-            onError(t(lang, 'glassesNotAvailable'));
-          }
-        }}
-      />
+      <View style={styles.controlBar}>
+        <CompactAction
+          glyph={GLYPHS.camera}
+          label={t(lang, 'sourceCameraTest')}
+          variant="primary"
+          disabled={off}
+          onPress={() => run(() => new PhoneCameraTestSource().getImage())}
+        />
+        <CompactAction
+          glyph={GLYPHS.gallery}
+          label={t(lang, 'sourceGallery')}
+          disabled={off}
+          onPress={() => run(() => new GalleryImageSource().getImage())}
+        />
+        <CompactAction
+          glyph={GLYPHS.sample}
+          label={t(lang, 'sourceSample')}
+          disabled={off}
+          onPress={() => setShowSamples((v) => !v)}
+        />
+        <CompactAction
+          glyph={GLYPHS.glasses}
+          label={t(lang, 'sourceGlasses')}
+          disabled={off}
+          onPress={async () => {
+            try {
+              await new SmartGlassesCameraSource().getImage();
+            } catch {
+              // Typed NotAvailable error by design — explain honestly.
+              Alert.alert(t(lang, 'sourceGlasses'), t(lang, 'glassesNotAvailable'));
+              onError(t(lang, 'glassesNotAvailable'));
+            }
+          }}
+        />
+      </View>
+      <StatusPill tone="neutral" glyph={GLYPHS.glasses} label={t(lang, 'glassesCardStatus')} />
       {showSamples && (
         <ScrollView horizontal contentContainerStyle={styles.sampleRow}>
           {SAMPLES.map((s) => (
@@ -112,7 +113,8 @@ export function ImageSourcePicker({ onImage, onError, disabled = false }: Props)
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: spacing.md },
+  wrap: { gap: spacing.sm },
+  controlBar: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   sampleRow: { gap: spacing.md, paddingVertical: spacing.sm },
   sampleItem: { width: 220 },
   sampleThumb: { width: 220, height: 150, borderRadius: radius.md, borderWidth: 1, marginBottom: spacing.xs },

@@ -16,7 +16,7 @@ import {
 } from '../ai/VoiceCommandService';
 import { voiceCommandService } from '../ai/voiceSingleton';
 import { AccessibleButton } from '../components/AccessibleButton';
-import { Banner, Card, ListRow, Screen, SectionHeader, StatusPill } from '../components/ui';
+import { Banner, ListRow, QuietGroup, Screen, SectionHeader, StatusPill } from '../components/ui';
 import { acknowledgeHazards, triggerSos } from '../hazards/HazardService';
 import { t } from '../i18n/strings';
 import { getCurrentFix } from '../places/currentFix';
@@ -240,7 +240,7 @@ export default function VoiceScreen() {
           ]}
         >
           <View style={[styles.disc, { backgroundColor: discColor, shadowColor: colors.shadow }]}>
-            <Text style={{ color: discTextColor, fontSize: 52, fontWeight: '800', lineHeight: 62 }}>
+            <Text style={{ color: discTextColor, fontSize: 56, fontWeight: '800', lineHeight: 66 }}>
               {GLYPHS.voice}
             </Text>
           </View>
@@ -257,18 +257,18 @@ export default function VoiceScreen() {
       </View>
 
       {!!transcript && (
-        <Card>
+        <QuietGroup>
           <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
             {t(lang, 'yourCommand')}: {transcript}
           </Text>
-        </Card>
+        </QuietGroup>
       )}
       {!!feedback && (
-        <Card>
+        <QuietGroup>
           <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
             {feedback}
           </Text>
-        </Card>
+        </QuietGroup>
       )}
       {!!error && (
         <Banner tone="danger" title={t(lang, 'errorGeneric')}>
@@ -283,21 +283,24 @@ export default function VoiceScreen() {
       <AccessibleButton label={t(lang, 'stopSpeaking')} glyph={GLYPHS.stop} onPress={() => void speechService.stop()} variant="secondary" />
 
       <SectionHeader title={t(lang, 'supportedCommands')} glyph={GLYPHS.voice} />
-      {COMMAND_REGISTRY.map((c) => (
-        <ListRow
-          key={c.action}
-          glyph={GLYPHS.voice}
-          tone={c.implemented ? 'primary' : 'neutral'}
-          title={lang === 'ar' ? c.exampleAr : c.exampleEn}
-          accessibilityLabel={`${lang === 'ar' ? c.exampleAr : c.exampleEn} — ${c.implemented ? t(lang, 'implemented') : t(lang, 'planned')}`}
-          right={
-            <StatusPill
-              tone={c.implemented ? 'success' : 'neutral'}
-              label={c.implemented ? t(lang, 'implemented') : t(lang, 'planned')}
-            />
-          }
-        />
-      ))}
+      <QuietGroup>
+        {COMMAND_REGISTRY.map((c) => (
+          <ListRow
+            key={c.action}
+            variant="quiet"
+            glyph={GLYPHS.voice}
+            tone={c.implemented ? 'primary' : 'neutral'}
+            title={lang === 'ar' ? c.exampleAr : c.exampleEn}
+            accessibilityLabel={`${lang === 'ar' ? c.exampleAr : c.exampleEn} — ${c.implemented ? t(lang, 'implemented') : t(lang, 'planned')}`}
+            right={
+              <StatusPill
+                tone={c.implemented ? 'success' : 'neutral'}
+                label={c.implemented ? t(lang, 'implemented') : t(lang, 'planned')}
+              />
+            }
+          />
+        ))}
+      </QuietGroup>
     </Screen>
   );
 }
@@ -310,8 +313,8 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   disc: {
-    width: 128,
-    height: 128,
+    width: 132,
+    height: 132,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',

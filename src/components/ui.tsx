@@ -100,6 +100,7 @@ export function Screen({
 
 export function BrandMark({ size = 52 }: { size?: number }) {
   const { colors } = useSettings();
+  const dotSize = Math.max(6, size * 0.16);
   return (
     <View
       accessibilityElementsHidden
@@ -110,6 +111,7 @@ export function BrandMark({ size = 52 }: { size?: number }) {
           height: size,
           borderRadius: size * 0.3,
           backgroundColor: colors.primary,
+          borderColor: colors.accent,
           shadowColor: colors.shadow,
         },
       ]}
@@ -117,6 +119,18 @@ export function BrandMark({ size = 52 }: { size?: number }) {
       <Text style={{ color: colors.primaryText, fontSize: size * 0.52, fontWeight: '800', lineHeight: size * 0.62 }}>
         {GLYPHS.brand}
       </Text>
+      {/* The letter's own dot, in accent — the "eye" of the mark. It
+          sits below the «ب» exactly where its dot belongs. */}
+      <View
+        style={{
+          position: 'absolute',
+          bottom: size * 0.16,
+          width: dotSize,
+          height: dotSize,
+          borderRadius: radius.pill,
+          backgroundColor: colors.accent,
+        }}
+      />
     </View>
   );
 }
@@ -136,18 +150,19 @@ export function AppHeader({
   return (
     <View style={styles.appHeader}>
       <View style={styles.brandRow}>
-        <BrandMark />
+        <BrandMark size={44} />
         <View style={styles.brandText}>
-          <Text accessibilityRole="header" style={[styles.brandName, { color: colors.text, fontSize: type.heading }]}>
+          <Text accessibilityRole="header" style={[styles.brandName, { color: colors.text, fontSize: type.bodyLarge }]}>
             {brandName}
           </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: type.caption, lineHeight: type.caption * 1.35 }}>
+          <Text style={{ color: colors.textSecondary, fontSize: type.caption, lineHeight: type.caption * 1.3 }}>
             {tagline}
           </Text>
         </View>
       </View>
+      {/* The greeting is the display element; the date stays a quiet caption. */}
       <Text style={[styles.greeting, { color: colors.text, fontSize: type.title }]}>{greeting}</Text>
-      <Text style={{ color: colors.textSecondary, fontSize: type.body, lineHeight: type.body * 1.4 }}>
+      <Text style={{ color: colors.textSecondary, fontSize: type.caption, lineHeight: type.caption * 1.35 }}>
         {dateLine}
       </Text>
     </View>
@@ -186,14 +201,22 @@ export function Card({
   tone,
   style,
   accessibilityLabel,
+  variant = 'flat',
 }: {
   children: React.ReactNode;
   tone?: Tone;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
+  /**
+   * `flat` (default) is the disciplined surface: 1px border, no
+   * elevation. `raised` is reserved for the ONE hero-adjacent surface
+   * on a screen (a form, the release-note card) that must stand out.
+   */
+  variant?: 'flat' | 'raised';
 }) {
   const { colors } = useSettings();
   const borderColor = tone ? toneColors(colors, tone).solid : colors.border;
+  const raised = variant === 'raised';
   return (
     <View
       accessible={!!accessibilityLabel}
@@ -205,6 +228,8 @@ export function Card({
           borderColor,
           shadowColor: colors.shadow,
           borderWidth: tone ? 2 : 1,
+          elevation: raised ? elevation.raised : elevation.flat,
+          shadowOpacity: raised ? 0.3 : 0,
         },
         style,
       ]}
@@ -387,6 +412,7 @@ export function ListRow({
   onPress,
   accessibilityLabel,
   accessibilityHint,
+  variant = 'card',
 }: {
   glyph?: string;
   tone?: Tone;
@@ -396,6 +422,12 @@ export function ListRow({
   onPress?: () => void;
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  /**
+   * `card` (default) is a standalone flat row with its own border.
+   * `quiet` drops the border/background entirely — for rows living
+   * inside a QuietGroup, where hairline dividers do the separation.
+   */
+  variant?: 'card' | 'quiet';
 }) {
   const { colors, type, settings } = useSettings();
   const isRTL = settings.language === 'ar';
@@ -421,6 +453,10 @@ export function ListRow({
       ) : null}
     </>
   );
+  const quiet = variant === 'quiet';
+  const rowStyle: ViewStyle = quiet
+    ? { backgroundColor: 'transparent', borderWidth: 0, elevation: 0, shadowOpacity: 0 }
+    : { backgroundColor: colors.surface, borderColor: colors.border, shadowColor: colors.shadow };
   if (onPress) {
     return (
       <Pressable
@@ -428,15 +464,7 @@ export function ListRow({
         accessibilityLabel={accessibilityLabel ?? title}
         accessibilityHint={accessibilityHint}
         onPress={onPress}
-        style={({ pressed }) => [
-          styles.listRow,
-          {
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-            shadowColor: colors.shadow,
-            opacity: pressed ? pressOpacity : 1,
-          },
-        ]}
+        style={({ pressed }) => [styles.listRow, rowStyle, { opacity: pressed ? pressOpacity : 1 }]}
       >
         {inner}
       </Pressable>
@@ -446,12 +474,129 @@ export function ListRow({
     <View
       accessible
       accessibilityLabel={accessibilityLabel ?? (subtitle ? `${title}. ${subtitle}` : title)}
-      style={[
-        styles.listRow,
-        { backgroundColor: colors.surface, borderColor: colors.border, shadowColor: colors.shadow },
-      ]}
+      style={[styles.listRow, rowStyle]}
     >
       {inner}
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Quiet groups, status strips, timeline                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * QuietGroup — a section without a card box: children stacked on the
+ * screen background, separated by hairline dividers. This is the
+ * default grouping for Settings, History detail, permissions and
+ * other list-like content; cards are reserved for forms and the one
+ * raised surface per screen.
+ */
+export function QuietGroup({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+  const { colors } = useSettings();
+  const items = React.Children.toArray(children).filter(Boolean);
+  return (
+    <View style={[styles.quietGroup, style]}>
+      {items.map((child, i) => (
+        <React.Fragment key={i}>
+          {i > 0 ? (
+            <View style={[styles.hairline, { backgroundColor: colors.border }]} accessibilityElementsHidden />
+          ) : null}
+          {child}
+        </React.Fragment>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * StatusStrip — a single slim status row: a 40dp glyph tile, a title,
+ * and a StatusPill. Flat (border only, no elevation). Tappable when
+ * `onPress` is given, in which case a forward chevron closes the row.
+ * Status is always glyph + pill text, never color alone.
+ */
+export function StatusStrip({
+  glyph,
+  glyphTone = 'neutral',
+  title,
+  pillLabel,
+  pillTone = 'neutral',
+  pillGlyph,
+  onPress,
+  accessibilityLabel,
+  accessibilityHint,
+}: {
+  glyph: string;
+  glyphTone?: Tone;
+  title: string;
+  pillLabel: string;
+  pillTone?: Tone;
+  pillGlyph?: string;
+  onPress?: () => void;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+}) {
+  const { colors, type, settings } = useSettings();
+  const isRTL = settings.language === 'ar';
+  const pressOpacity = settings.reducedMotion ? 1 : 0.86;
+  const inner = (
+    <>
+      <IconTile glyph={glyph} tone={glyphTone} size={40} />
+      <Text
+        style={{ color: colors.text, fontSize: type.body, fontWeight: '700', lineHeight: type.body * 1.3, flex: 1 }}
+      >
+        {title}
+      </Text>
+      <StatusPill tone={pillTone} glyph={pillGlyph} label={pillLabel} />
+      {onPress ? (
+        <Text style={{ color: colors.textSecondary, fontSize: 24, fontWeight: '700' }}>
+          {forwardChevron(isRTL)}
+        </Text>
+      ) : null}
+    </>
+  );
+  const label = accessibilityLabel ?? `${title}. ${pillLabel}`;
+  if (onPress) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint={accessibilityHint}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.statusStrip,
+          { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? pressOpacity : 1 },
+        ]}
+      >
+        {inner}
+      </Pressable>
+    );
+  }
+  return (
+    <View
+      accessible
+      accessibilityLabel={label}
+      style={[styles.statusStrip, { backgroundColor: colors.surface, borderColor: colors.border }]}
+    >
+      {inner}
+    </View>
+  );
+}
+
+/**
+ * TimelineRow — a history entry on a date rail: a dot on a vertical
+ * line, with the entry content beside it. The rail is decorative
+ * (hidden from screen readers); the content carries the semantics.
+ */
+export function TimelineRow({ children, last = false }: { children: React.ReactNode; last?: boolean }) {
+  const { colors } = useSettings();
+  return (
+    <View style={styles.timelineRow}>
+      <View style={styles.timelineRail} accessibilityElementsHidden>
+        <View style={[styles.timelineDot, { backgroundColor: colors.primarySoft, borderColor: colors.primary }]} />
+        {!last ? <View style={[styles.timelineLine, { backgroundColor: colors.border }]} /> : null}
+      </View>
+      <View style={styles.timelineContent}>{children}</View>
     </View>
   );
 }
@@ -527,7 +672,7 @@ export function SegmentedControl<T extends string>({
   const { colors, type, settings } = useSettings();
   const pressOpacity = settings.reducedMotion ? 1 : 0.86;
   return (
-    <View style={styles.segmentWrap} accessibilityLabel={accessibilityLabel}>
+    <View style={[styles.segmentWrap, { backgroundColor: colors.surfaceAlt }]} accessibilityLabel={accessibilityLabel}>
       {options.map((opt) => {
         const selected = opt.value === value;
         return (
@@ -540,8 +685,7 @@ export function SegmentedControl<T extends string>({
             style={({ pressed }) => [
               styles.segment,
               {
-                backgroundColor: selected ? colors.primary : colors.surfaceAlt,
-                borderColor: selected ? colors.primary : colors.border,
+                backgroundColor: selected ? colors.primary : 'transparent',
                 opacity: pressed ? pressOpacity : 1,
               },
             ]}
@@ -633,6 +777,7 @@ const styles = StyleSheet.create({
   brandMark: {
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
     elevation: elevation.raised,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.35,
@@ -651,12 +796,12 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontWeight: '800', flex: 1 },
   card: {
-    borderRadius: radius.xl,
+    borderRadius: radius.card,
     padding: spacing.md,
     gap: spacing.sm,
     elevation: elevation.card,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0,
     shadowRadius: 5,
   },
   bannerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -679,11 +824,11 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     minHeight: 76,
     borderWidth: 1,
-    borderRadius: radius.xl,
+    borderRadius: radius.row,
     padding: spacing.md,
-    elevation: elevation.card,
+    elevation: elevation.flat,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0,
     shadowRadius: 5,
   },
   tileGrid: {
@@ -692,11 +837,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     minHeight: 118,
     borderWidth: 1,
-    borderRadius: radius.xl,
+    borderRadius: radius.row,
     padding: spacing.md,
-    elevation: elevation.card,
+    elevation: elevation.flat,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0,
     shadowRadius: 5,
   },
   tileText: { flex: 1, gap: 3 },
@@ -707,19 +852,37 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     minHeight: 72,
     borderWidth: 1,
-    borderRadius: radius.xl,
+    borderRadius: radius.row,
     padding: spacing.md,
-    elevation: elevation.card,
+    elevation: elevation.flat,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0,
     shadowRadius: 5,
   },
+  quietGroup: { gap: spacing.sm, paddingVertical: spacing.xs },
+  hairline: { height: StyleSheet.hairlineWidth, opacity: 0.55, marginHorizontal: spacing.xs },
+  statusStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 64,
+    borderWidth: 1,
+    borderRadius: radius.row,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    elevation: elevation.flat,
+  },
+  timelineRow: { flexDirection: 'row', gap: spacing.md },
+  timelineRail: { width: 18, alignItems: 'center' },
+  timelineDot: { width: 13, height: 13, borderRadius: radius.pill, borderWidth: 2, marginTop: spacing.sm },
+  timelineLine: { flex: 1, width: 2, opacity: 0.5, marginTop: spacing.xxs },
+  timelineContent: { flex: 1, gap: spacing.sm, paddingBottom: spacing.md },
   hero: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     minHeight: 96,
-    borderRadius: radius.xl,
+    borderRadius: radius.hero,
     padding: spacing.lg,
     elevation: elevation.hero,
     shadowOffset: { width: 0, height: 4 },
@@ -733,13 +896,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  segmentWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  segmentWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    borderRadius: radius.row,
+    padding: spacing.xxs,
+  },
   segment: {
     flexGrow: 1,
     flexBasis: '30%',
-    minHeight: 56,
-    borderWidth: 1.5,
-    borderRadius: radius.lg,
+    minHeight: 52,
+    borderWidth: 0,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
@@ -750,7 +919,7 @@ const styles = StyleSheet.create({
     flexBasis: '46%',
     minHeight: 56,
     borderWidth: 1,
-    borderRadius: radius.lg,
+    borderRadius: radius.row,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,

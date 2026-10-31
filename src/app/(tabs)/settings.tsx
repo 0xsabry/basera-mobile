@@ -30,6 +30,7 @@ import { AccessibleButton } from '../../components/AccessibleButton';
 import {
   Card,
   ListRow,
+  QuietGroup,
   Screen,
   SectionHeader,
   SegmentedControl,
@@ -126,7 +127,7 @@ export default function SettingsScreen() {
     onRequest: () => void,
     customAction?: React.ReactNode,
   ) => (
-    <Card>
+    <View style={styles.permBlock}>
       <View style={styles.permHead}>
         <Text style={[styles.body, { color: colors.text, fontSize: type.body, flex: 1, fontWeight: '700' }]}>
           {t(lang, titleKey)}
@@ -147,7 +148,7 @@ export default function SettingsScreen() {
             onPress={() => void Linking.openSettings()}
           />
         ) : null)}
-    </Card>
+    </View>
   );
 
   const doSync = async () => {
@@ -182,6 +183,7 @@ export default function SettingsScreen() {
     hint?: string,
   ) => (
     <ListRow
+      variant="quiet"
       glyph={glyph}
       title={label}
       subtitle={hint}
@@ -228,6 +230,7 @@ export default function SettingsScreen() {
           </>
         )}
         <ListRow
+          variant="quiet"
           glyph={GLYPHS.family}
           title={t(lang, 'familyManage')}
           subtitle={`${t(lang, 'sharingConsentLabel')}: ${settings.guardianSharingEnabled ? t(lang, 'sharingStateOn') : t(lang, 'sharingStateOff')}`}
@@ -237,177 +240,202 @@ export default function SettingsScreen() {
 
       {/* ---------- B) Language & Appearance ---------- */}
       <SectionHeader title={t(lang, 'language')} glyph={GLYPHS.language} />
-      <SegmentedControl
-        accessibilityLabel={t(lang, 'language')}
-        value={lang}
-        onChange={(v) => void update({ language: v })}
-        options={[
-          { value: 'ar' as const, label: 'العربية' },
-          { value: 'en' as const, label: 'English' },
-        ]}
-      />
+      <QuietGroup>
+        <SegmentedControl
+          accessibilityLabel={t(lang, 'language')}
+          value={lang}
+          onChange={(v) => void update({ language: v })}
+          options={[
+            { value: 'ar' as const, label: 'العربية' },
+            { value: 'en' as const, label: 'English' },
+          ]}
+        />
+      </QuietGroup>
       <SectionHeader title={t(lang, 'theme')} glyph={GLYPHS.glasses} />
-      <SegmentedControl
-        accessibilityLabel={t(lang, 'theme')}
-        value={settings.theme}
-        onChange={(v) => void update({ theme: v })}
-        options={[
-          { value: 'light' as const, label: t(lang, 'themeLight') },
-          { value: 'dark' as const, label: t(lang, 'themeDark') },
-          { value: 'system' as const, label: t(lang, 'themeSystem') },
-        ]}
-      />
-      {switchRow(GLYPHS.check, t(lang, 'highContrast'), settings.highContrast, (v) => void update({ highContrast: v }))}
-      <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>{t(lang, 'textSize')}</Text>
-      <SegmentedControl
-        accessibilityLabel={t(lang, 'textSize')}
-        value={String(settings.textScale)}
-        onChange={(v) => void update({ textScale: Number(v) as 1 | 1.15 | 1.3 })}
-        options={[
-          { value: '1', label: t(lang, 'textSizeNormal') },
-          { value: '1.15', label: t(lang, 'textSizeLarge') },
-          { value: '1.3', label: t(lang, 'textSizeXL') },
-        ]}
-      />
-      {switchRow(
-        GLYPHS.stop,
-        t(lang, 'reducedMotion'),
-        settings.reducedMotion,
-        (v) => void update({ reducedMotion: v }),
-        t(lang, 'reducedMotionExpl'),
-      )}
+      <QuietGroup>
+        <SegmentedControl
+          accessibilityLabel={t(lang, 'theme')}
+          value={settings.theme}
+          onChange={(v) => void update({ theme: v })}
+          options={[
+            { value: 'light' as const, label: t(lang, 'themeLight') },
+            { value: 'dark' as const, label: t(lang, 'themeDark') },
+            { value: 'system' as const, label: t(lang, 'themeSystem') },
+          ]}
+        />
+        {switchRow(GLYPHS.check, t(lang, 'highContrast'), settings.highContrast, (v) => void update({ highContrast: v }))}
+        <View style={styles.fieldBlock}>
+          <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>{t(lang, 'textSize')}</Text>
+          <SegmentedControl
+            accessibilityLabel={t(lang, 'textSize')}
+            value={String(settings.textScale)}
+            onChange={(v) => void update({ textScale: Number(v) as 1 | 1.15 | 1.3 })}
+            options={[
+              { value: '1', label: t(lang, 'textSizeNormal') },
+              { value: '1.15', label: t(lang, 'textSizeLarge') },
+              { value: '1.3', label: t(lang, 'textSizeXL') },
+            ]}
+          />
+        </View>
+        {switchRow(
+          GLYPHS.stop,
+          t(lang, 'reducedMotion'),
+          settings.reducedMotion,
+          (v) => void update({ reducedMotion: v }),
+          t(lang, 'reducedMotionExpl'),
+        )}
+      </QuietGroup>
 
       {/* ---------- C) Voice & Accessibility ---------- */}
       <SectionHeader title={t(lang, 'voicePickerTitle')} glyph={GLYPHS.voice} />
-      {switchRow(
-        GLYPHS.speak,
-        t(lang, 'speechTitle'),
-        settings.speechEnabled,
-        (v) => void update({ speechEnabled: v }),
-        t(lang, 'speechExpl'),
-      )}
-      <Card>
-        <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
-          {t(lang, 'speechRate')}: {settings.speechRate.toFixed(2)}x
-        </Text>
-        <Slider
-          accessibilityLabel={t(lang, 'speechRate')}
-          minimumValue={0.5}
-          maximumValue={2}
-          step={0.25}
-          value={settings.speechRate}
-          minimumTrackTintColor={colors.primary}
-          thumbTintColor={colors.primary}
-          style={{ minHeight: MIN_TOUCH }}
-          onValueChange={(v) => {
-            speechService.setRate(v);
-            void update({ speechRate: v });
-          }}
-        />
-      </Card>
-      {voices !== null && voices.length > 0 && (
-        <SegmentedControl
-          accessibilityLabel={t(lang, 'voicePickerTitle')}
-          value={settings.voiceIdentifier ?? ''}
-          onChange={(v) => void update({ voiceIdentifier: v === '' ? null : v })}
-          options={[
-            { value: '', label: t(lang, 'voiceDefault') },
-            ...voices.map((v) => ({ value: v.identifier, label: `${v.name} — ${v.language}` })),
-          ]}
-        />
-      )}
-      {switchRow(GLYPHS.notifications, t(lang, 'announcements'), settings.announcements, (v) =>
-        void update({ announcements: v }),
-      )}
-      {switchRow(
-        GLYPHS.alerts,
-        t(lang, 'hapticsTitle'),
-        settings.hapticsEnabled,
-        (v) => void update({ hapticsEnabled: v }),
-        t(lang, 'hapticsExpl'),
-      )}
-      <Card>
-        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'repeatExpl')}</Text>
-        <AccessibleButton label={t(lang, 'repeat')} glyph={GLYPHS.repeat} variant="secondary" onPress={() => void speechService.repeatLast()} />
-      </Card>
+      <QuietGroup>
+        {switchRow(
+          GLYPHS.speak,
+          t(lang, 'speechTitle'),
+          settings.speechEnabled,
+          (v) => void update({ speechEnabled: v }),
+          t(lang, 'speechExpl'),
+        )}
+        <View style={styles.fieldBlock}>
+          <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
+            {t(lang, 'speechRate')}: {settings.speechRate.toFixed(2)}x
+          </Text>
+          <Slider
+            accessibilityLabel={t(lang, 'speechRate')}
+            minimumValue={0.5}
+            maximumValue={2}
+            step={0.25}
+            value={settings.speechRate}
+            minimumTrackTintColor={colors.primary}
+            thumbTintColor={colors.primary}
+            style={{ minHeight: MIN_TOUCH }}
+            onValueChange={(v) => {
+              speechService.setRate(v);
+              void update({ speechRate: v });
+            }}
+          />
+        </View>
+        {voices !== null && voices.length > 0 && (
+          <SegmentedControl
+            accessibilityLabel={t(lang, 'voicePickerTitle')}
+            value={settings.voiceIdentifier ?? ''}
+            onChange={(v) => void update({ voiceIdentifier: v === '' ? null : v })}
+            options={[
+              { value: '', label: t(lang, 'voiceDefault') },
+              ...voices.map((v) => ({ value: v.identifier, label: `${v.name} — ${v.language}` })),
+            ]}
+          />
+        )}
+        {switchRow(GLYPHS.notifications, t(lang, 'announcements'), settings.announcements, (v) =>
+          void update({ announcements: v }),
+        )}
+        {switchRow(
+          GLYPHS.alerts,
+          t(lang, 'hapticsTitle'),
+          settings.hapticsEnabled,
+          (v) => void update({ hapticsEnabled: v }),
+          t(lang, 'hapticsExpl'),
+        )}
+        <View style={styles.fieldBlock}>
+          <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'repeatExpl')}</Text>
+          <AccessibleButton label={t(lang, 'repeat')} glyph={GLYPHS.repeat} variant="secondary" onPress={() => void speechService.repeatLast()} />
+        </View>
+      </QuietGroup>
 
       {/* ---------- D) Privacy & Permissions ---------- */}
       <SectionHeader title={t(lang, 'permissionsTitle')} glyph={GLYPHS.shield} />
-      {permRow(GLYPHS.camera, 'cameraPermission', 'permWhyCamera', perms.camera, () => {
-        void Camera.requestCameraPermissionsAsync().then(refresh);
-      })}
-      {permRow(GLYPHS.mic, 'micPermission', 'permWhyMic', perms.mic, () => {
-        void Camera.requestMicrophonePermissionsAsync().then(refresh);
-      })}
-      {permRow(GLYPHS.location, 'locationPermission', 'permWhyLocationFg', perms.locFg, () => {
-        void Location.requestForegroundPermissionsAsync().then(refresh);
-      })}
-      {permRow(
-        GLYPHS.location,
-        'locationPermissionBg',
-        'permWhyLocationBg',
-        perms.locBg,
-        () => undefined,
-        perms.locBg.state !== 'granted' ? (
-          <AccessibleButton label={t(lang, 'manageInFamily')} variant="secondary" onPress={() => router.push('/(tabs)/family')} />
-        ) : undefined,
-      )}
-      {permRow(GLYPHS.notifications, 'notifPermission', 'permWhyNotifications', perms.notif, () => {
-        void (async () => {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const Notifications = require('expo-notifications');
-            await Notifications.requestPermissionsAsync();
-          } catch {
-            /* module unavailable in this build */
-          }
-          await refresh();
-        })();
-      })}
+      <QuietGroup>
+        {permRow(GLYPHS.camera, 'cameraPermission', 'permWhyCamera', perms.camera, () => {
+          void Camera.requestCameraPermissionsAsync().then(refresh);
+        })}
+        {permRow(GLYPHS.mic, 'micPermission', 'permWhyMic', perms.mic, () => {
+          void Camera.requestMicrophonePermissionsAsync().then(refresh);
+        })}
+        {permRow(GLYPHS.location, 'locationPermission', 'permWhyLocationFg', perms.locFg, () => {
+          void Location.requestForegroundPermissionsAsync().then(refresh);
+        })}
+        {permRow(
+          GLYPHS.location,
+          'locationPermissionBg',
+          'permWhyLocationBg',
+          perms.locBg,
+          () => undefined,
+          perms.locBg.state !== 'granted' ? (
+            <AccessibleButton label={t(lang, 'manageInFamily')} variant="secondary" onPress={() => router.push('/(tabs)/family')} />
+          ) : undefined,
+        )}
+        {permRow(GLYPHS.notifications, 'notifPermission', 'permWhyNotifications', perms.notif, () => {
+          void (async () => {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              const Notifications = require('expo-notifications');
+              await Notifications.requestPermissionsAsync();
+            } catch {
+              /* module unavailable in this build */
+            }
+            await refresh();
+          })();
+        })}
+      </QuietGroup>
       <SectionHeader title={t(lang, 'privacy')} glyph={GLYPHS.privacy} />
-      <Card>
-        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'privacyBody')}</Text>
-        <AccessibleButton label={t(lang, 'clearAll')} variant="danger" onPress={confirmClearHistory} />
-      </Card>
+      <QuietGroup>
+        <View style={styles.fieldBlock}>
+          <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'privacyBody')}</Text>
+          <AccessibleButton label={t(lang, 'clearAll')} variant="danger" onPress={confirmClearHistory} />
+        </View>
+      </QuietGroup>
 
       {/* ---------- E) Places ---------- */}
       <SectionHeader title={t(lang, 'placesProximityTitle')} glyph={GLYPHS.places} />
-      <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'placesProximityExpl')}</Text>
-      <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
-        {t(lang, 'placesRadiusLabel')}
-      </Text>
-      <SegmentedControl
-        accessibilityLabel={t(lang, 'placesRadiusLabel')}
-        value={String(settings.proximityRadiusM)}
-        onChange={(v) => void update({ proximityRadiusM: Number(v) })}
-        options={RADII.map((r) => ({ value: String(r), label: `${r} m` }))}
-      />
-      <ListRow glyph={GLYPHS.places} title={t(lang, 'places')} subtitle={t(lang, 'placesHint')} onPress={() => router.push('/places')} />
-      {switchRow(
-        GLYPHS.updates,
-        t(lang, 'placesSyncTitle'),
-        settings.placesSyncEnabled,
-        (v) => void update({ placesSyncEnabled: v }),
-        t(lang, 'placesSyncExpl'),
-      )}
-      {settings.placesSyncEnabled && (
-        <AccessibleButton label={t(lang, 'placesSyncNow')} variant="secondary" onPress={() => void doSync()} />
-      )}
-      {!!syncMessage && (
-        <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-          {syncMessage}
-        </Text>
-      )}
+      <QuietGroup>
+        <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'placesProximityExpl')}</Text>
+        <View style={styles.fieldBlock}>
+          <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
+            {t(lang, 'placesRadiusLabel')}
+          </Text>
+          <SegmentedControl
+            accessibilityLabel={t(lang, 'placesRadiusLabel')}
+            value={String(settings.proximityRadiusM)}
+            onChange={(v) => void update({ proximityRadiusM: Number(v) })}
+            options={RADII.map((r) => ({ value: String(r), label: `${r} m` }))}
+          />
+        </View>
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.places}
+          title={t(lang, 'places')}
+          subtitle={t(lang, 'placesHint')}
+          onPress={() => router.push('/places')}
+        />
+        {switchRow(
+          GLYPHS.updates,
+          t(lang, 'placesSyncTitle'),
+          settings.placesSyncEnabled,
+          (v) => void update({ placesSyncEnabled: v }),
+          t(lang, 'placesSyncExpl'),
+        )}
+        {settings.placesSyncEnabled && (
+          <AccessibleButton label={t(lang, 'placesSyncNow')} variant="secondary" onPress={() => void doSync()} />
+        )}
+        {!!syncMessage && (
+          <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+            {syncMessage}
+          </Text>
+        )}
+      </QuietGroup>
 
       {/* ---------- F) Updates ---------- */}
       <SectionHeader title={t(lang, 'updates')} glyph={GLYPHS.updates} />
-      <ListRow
-        glyph={GLYPHS.updates}
-        title={t(lang, 'updates')}
-        subtitle={`${t(lang, 'runtimeLabel')}: ${updateStatus.runtimeVersion ?? '—'} · ${t(lang, 'channelLabel')}: ${updateStatus.channel ?? '—'}`}
-        accessibilityHint={t(lang, 'updatesHint')}
-        onPress={() => router.push('/updates')}
-      />
+      <QuietGroup>
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.updates}
+          title={t(lang, 'updates')}
+          subtitle={`${t(lang, 'runtimeLabel')}: ${updateStatus.runtimeVersion ?? '—'} · ${t(lang, 'channelLabel')}: ${updateStatus.channel ?? '—'}`}
+          accessibilityHint={t(lang, 'updatesHint')}
+          onPress={() => router.push('/updates')}
+        />
+      </QuietGroup>
 
       {/* ---------- G) About ---------- */}
       <SectionHeader title={t(lang, 'about')} glyph={GLYPHS.info} />
@@ -427,4 +455,6 @@ const styles = StyleSheet.create({
   body: { lineHeight: 29 },
   label: { fontWeight: '600' },
   permHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  permBlock: { gap: spacing.sm, paddingVertical: spacing.xs },
+  fieldBlock: { gap: spacing.sm },
 });

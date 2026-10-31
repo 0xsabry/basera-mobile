@@ -16,12 +16,10 @@ import { speechService } from '../../ai/SpeechService';
 import { voiceCommandService } from '../../ai/voiceSingleton';
 import { AccessibleButton } from '../../components/AccessibleButton';
 import {
-  ActionGrid,
-  Card,
-  CompactAction,
-  FeatureTile,
+  Banner,
   HeroAction,
   ListRow,
+  QuietGroup,
   Screen,
   SectionHeader,
   StatusPill,
@@ -90,59 +88,78 @@ export default function AssistanceScreen() {
         glyph={GLYPHS.voice}
         onPress={() => pushOnce('/voice')}
       />
-      <FeatureTile
-        glyph={GLYPHS.detect}
-        title={t(lang, 'detect')}
-        subtitle={t(lang, 'identifyObjectsHint')}
-        hint={t(lang, 'detectHint')}
-        onPress={() => pushOnce('/detect')}
-      />
-      <FeatureTile
-        glyph={GLYPHS.read}
-        tone="info"
-        title={t(lang, 'readText')}
-        subtitle={t(lang, 'readTextHint')}
-        hint={t(lang, 'readTextHint')}
-        onPress={() => pushOnce('/read')}
-      />
-      <FeatureTile
-        glyph={GLYPHS.places}
-        tone="info"
-        title={t(lang, 'places')}
-        subtitle={t(lang, 'placesHint')}
-        hint={t(lang, 'placesHint')}
-        onPress={() => pushOnce('/places')}
-      />
-      <FeatureTile
-        glyph={GLYPHS.alerts}
-        tone="warning"
-        title={t(lang, 'viewAlerts')}
-        subtitle={t(lang, 'alertsSubtitle')}
-        onPress={() => pushOnce('/alerts')}
-      />
+      {/* Core actions — the same four as Home, as quiet list rows. */}
+      <QuietGroup>
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.detect}
+          title={t(lang, 'detect')}
+          subtitle={t(lang, 'identifyObjectsHint')}
+          accessibilityHint={t(lang, 'detectHint')}
+          onPress={() => pushOnce('/detect')}
+        />
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.read}
+          title={t(lang, 'readText')}
+          subtitle={t(lang, 'readTextHint')}
+          accessibilityHint={t(lang, 'readTextHint')}
+          onPress={() => pushOnce('/read')}
+        />
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.places}
+          title={t(lang, 'places')}
+          subtitle={t(lang, 'placesHint')}
+          accessibilityHint={t(lang, 'placesHint')}
+          onPress={() => pushOnce('/places')}
+        />
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.alerts}
+          title={t(lang, 'viewAlerts')}
+          subtitle={t(lang, 'alertsSubtitle')}
+          onPress={() => pushOnce('/alerts')}
+        />
+      </QuietGroup>
 
       <SectionHeader title={t(lang, 'speak')} glyph={GLYPHS.speak} />
-      <ActionGrid>
-        <CompactAction label={t(lang, 'repeat')} glyph={GLYPHS.repeat} onPress={() => void speechService.repeatLast()} />
-        <CompactAction label={t(lang, 'stopSpeaking')} glyph={GLYPHS.stop} onPress={() => void speechService.stop()} />
-        <CompactAction
-          label={t(lang, 'stopListening')}
+      <QuietGroup>
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.repeat}
+          title={t(lang, 'repeat')}
+          onPress={() => void speechService.repeatLast()}
+        />
+        <ListRow
+          variant="quiet"
           glyph={GLYPHS.stop}
+          title={t(lang, 'stopSpeaking')}
+          onPress={() => void speechService.stop()}
+        />
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.stop}
+          title={t(lang, 'stopListening')}
           onPress={() => void voiceCommandService.stopListening()}
         />
-      </ActionGrid>
+      </QuietGroup>
 
       <SectionHeader title={t(lang, 'permissionsTitle')} glyph={GLYPHS.shield} />
-      <ListRow
-        glyph={GLYPHS.camera}
-        title={t(lang, 'cameraPermission')}
-        right={<StatusPill tone={permTone(cameraPerm)} label={permLabel(lang, cameraPerm)} />}
-      />
-      <ListRow
-        glyph={GLYPHS.mic}
-        title={t(lang, 'micPermission')}
-        right={<StatusPill tone={permTone(micPerm)} label={permLabel(lang, micPerm)} />}
-      />
+      <QuietGroup>
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.camera}
+          title={t(lang, 'cameraPermission')}
+          right={<StatusPill tone={permTone(cameraPerm)} label={permLabel(lang, cameraPerm)} />}
+        />
+        <ListRow
+          variant="quiet"
+          glyph={GLYPHS.mic}
+          title={t(lang, 'micPermission')}
+          right={<StatusPill tone={permTone(micPerm)} label={permLabel(lang, micPerm)} />}
+        />
+      </QuietGroup>
       {(cameraPerm === 'denied' || micPerm === 'denied') && (
         <AccessibleButton
           label={t(lang, 'openSystemSettings')}
@@ -151,8 +168,8 @@ export default function AssistanceScreen() {
         />
       )}
 
-      <SectionHeader title={t(lang, 'sosTitle')} glyph={GLYPHS.sos} tone="danger" />
-      <Card tone="danger">
+      {/* SOS — one distinct danger strip at the bottom. */}
+      <Banner tone="danger" glyph={GLYPHS.sos} title={t(lang, 'sosTitle')}>
         <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'sosExpl')}</Text>
         <AccessibleButton label={t(lang, 'sosButton')} glyph={GLYPHS.sos} variant="danger" onPress={() => void onSos()} />
         {!!sosMessage && (
@@ -160,7 +177,7 @@ export default function AssistanceScreen() {
             {sosMessage}
           </Text>
         )}
-      </Card>
+      </Banner>
     </Screen>
   );
 }

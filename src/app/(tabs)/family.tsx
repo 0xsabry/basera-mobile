@@ -1,8 +1,11 @@
 /**
  * Family & guardian — pairing, sharing consent, background tracking,
- * SOS. V1.1 redesign: design-system cards/pills/section headers; every
- * service call, consent flow and honest status derivation is unchanged
- * (see git history — presentation only).
+ * SOS. V1.1 redesign: STATUS FIRST — My Location, then the derived
+ * sharing-status card, then account, consent, privacy/deletion,
+ * background, the SOS strip, pairing, requests and guardians — so the
+ * actual state is readable before any management block. Every service
+ * call, consent flow and honest status derivation is unchanged
+ * (see git history — presentation + order only).
  */
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -12,9 +15,11 @@ import { AccessibleButton } from '../../components/AccessibleButton';
 import { MyLocationCard } from '../../components/MyLocationCard';
 import { QrCodeView } from '../../components/QrCodeView';
 import {
+  Banner,
   Card,
   EmptyState,
   ListRow,
+  QuietGroup,
   Screen,
   SectionHeader,
   StatusPill,
@@ -322,6 +327,28 @@ export default function GuardianScreen() {
 
       {user && (
         <>
+          {/* Sharing status — derived from REAL signals only. */}
+          <SectionHeader title={t(lang, 'sharingStateLabel')} glyph={GLYPHS.updates} />
+          <Card>
+            <View style={styles.pillRow}>
+              <Text accessibilityLiveRegion="polite" style={[body(), styles.flex1]}>
+                {t(lang, SHARING_STATE_KEY[sharingState])}
+              </Text>
+              <StatusPill tone={SHARING_STATE_TONE[sharingState]} label={t(lang, SHARING_STATE_KEY[sharingState])} />
+            </View>
+            <Text style={body()}>
+              {t(lang, 'lastUpdateLabel')}:{' '}
+              {lastUploadAt
+                ? new Date(lastUploadAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')
+                : t(lang, 'lastUpdateNever')}
+            </Text>
+            {queueLen > 0 && (
+              <Text style={body()}>
+                {t(lang, 'queuedPointsLabel')}: {queueLen}
+              </Text>
+            )}
+          </Card>
+
           <Card>
             <Text style={body()}>
               {t(lang, 'guardianSignedInAs')}: {user.email ?? user.id}
@@ -350,6 +377,7 @@ export default function GuardianScreen() {
             <Text style={body()}>{t(lang, 'guardianSharingExpl')}</Text>
             <Text style={bodySecondary()}>{t(lang, 'guardianPermissionExpl')}</Text>
             <ListRow
+              variant="quiet"
               glyph={GLYPHS.location}
               title={settings.guardianSharingEnabled ? t(lang, 'guardianSharingOn') : t(lang, 'guardianSharingOff')}
               accessibilityLabel={t(lang, 'guardianSharing')}
@@ -398,30 +426,8 @@ export default function GuardianScreen() {
             )}
           </Card>
 
-          {/* Sharing status — derived from REAL signals only. */}
-          <SectionHeader title={t(lang, 'sharingStateLabel')} glyph={GLYPHS.updates} />
-          <Card>
-            <View style={styles.pillRow}>
-              <Text accessibilityLiveRegion="polite" style={[body(), styles.flex1]}>
-                {t(lang, SHARING_STATE_KEY[sharingState])}
-              </Text>
-              <StatusPill tone={SHARING_STATE_TONE[sharingState]} label={t(lang, SHARING_STATE_KEY[sharingState])} />
-            </View>
-            <Text style={body()}>
-              {t(lang, 'lastUpdateLabel')}:{' '}
-              {lastUploadAt
-                ? new Date(lastUploadAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')
-                : t(lang, 'lastUpdateNever')}
-            </Text>
-            {queueLen > 0 && (
-              <Text style={body()}>
-                {t(lang, 'queuedPointsLabel')}: {queueLen}
-              </Text>
-            )}
-          </Card>
-
           {/* Background tracking — separate, explained opt-in. */}
-          <SectionHeader title={t(lang, 'bgTrackingTitle')} glyph={GLYPHS.location} tone="info" />
+          <SectionHeader title={t(lang, 'bgTrackingTitle')} glyph={GLYPHS.location} />
           <Card>
             <Text style={body()}>{t(lang, 'bgTrackingExpl')}</Text>
             <View style={styles.pillRow}>
@@ -457,9 +463,10 @@ export default function GuardianScreen() {
           </Card>
 
           {/* SOS — stored locally; guardian notification attempted only
-              when configured, and the outcome is stated honestly. */}
-          <SectionHeader title={t(lang, 'sosTitle')} glyph={GLYPHS.sos} tone="danger" />
-          <Card tone="danger">
+              when configured, and the outcome is stated honestly. The
+              outcome message renders in the background card above via
+              bgMessage — that display path is unchanged. */}
+          <Banner tone="danger" glyph={GLYPHS.sos} title={t(lang, 'sosTitle')}>
             <Text style={body()}>{t(lang, 'sosExpl')}</Text>
             <AccessibleButton
               label={t(lang, 'sosButton')}
@@ -472,7 +479,7 @@ export default function GuardianScreen() {
                 })();
               }}
             />
-          </Card>
+          </Banner>
 
           <SectionHeader title={t(lang, 'guardianPairingTitle')} glyph={GLYPHS.family} />
           <Card>
@@ -499,27 +506,35 @@ export default function GuardianScreen() {
           {requests.length === 0 && (
             <Text style={bodySecondary()}>{t(lang, 'guardianNoRequests')}</Text>
           )}
-          {requests.map((link) => (
-            <Card key={link.id}>
-              <Text style={body()}>{link.otherPartyName ?? link.guardianId}</Text>
-              <AccessibleButton label={t(lang, 'guardianApprove')} onPress={() => void actOnRequest(link, true)} />
-              <AccessibleButton label={t(lang, 'guardianDeny')} variant="danger" onPress={() => void actOnRequest(link, false)} />
-            </Card>
-          ))}
+          {requests.length > 0 && (
+            <QuietGroup>
+              {requests.map((link) => (
+                <View key={link.id} style={styles.listBlock}>
+                  <Text style={body()}>{link.otherPartyName ?? link.guardianId}</Text>
+                  <AccessibleButton label={t(lang, 'guardianApprove')} onPress={() => void actOnRequest(link, true)} />
+                  <AccessibleButton label={t(lang, 'guardianDeny')} variant="danger" onPress={() => void actOnRequest(link, false)} />
+                </View>
+              ))}
+            </QuietGroup>
+          )}
 
-          <SectionHeader title={t(lang, 'guardianMyGuardians')} glyph={GLYPHS.family} tone="success" />
+          <SectionHeader title={t(lang, 'guardianMyGuardians')} glyph={GLYPHS.family} />
           {guardians.length === 0 && (
             <Text style={bodySecondary()}>{t(lang, 'guardianNoGuardians')}</Text>
           )}
-          {guardians.map((link) => (
-            <Card key={link.id}>
-              <View style={styles.pillRow}>
-                <Text style={[body(), styles.flex1]}>{link.otherPartyName ?? link.guardianId}</Text>
-                <StatusPill tone="success" label={t(lang, 'guardianStatusApproved')} />
-              </View>
-              <AccessibleButton label={t(lang, 'guardianRevoke')} variant="danger" onPress={() => revoke(link)} />
-            </Card>
-          ))}
+          {guardians.length > 0 && (
+            <QuietGroup>
+              {guardians.map((link) => (
+                <View key={link.id} style={styles.listBlock}>
+                  <View style={styles.pillRow}>
+                    <Text style={[body(), styles.flex1]}>{link.otherPartyName ?? link.guardianId}</Text>
+                    <StatusPill tone="success" label={t(lang, 'guardianStatusApproved')} />
+                  </View>
+                  <AccessibleButton label={t(lang, 'guardianRevoke')} variant="danger" onPress={() => revoke(link)} />
+                </View>
+              ))}
+            </QuietGroup>
+          )}
         </>
       )}
 
@@ -538,5 +553,6 @@ const styles = StyleSheet.create({
   pillRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   codeText: { fontSize: 40, fontWeight: '800', textAlign: 'center', letterSpacing: 4 },
   codeBox: { gap: spacing.sm, alignItems: 'center' },
+  listBlock: { gap: spacing.sm, paddingVertical: spacing.xs },
   qrFrame: { padding: spacing.md, borderRadius: 16, borderWidth: 1 },
 });

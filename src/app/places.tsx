@@ -22,6 +22,7 @@ import {
   CompactAction,
   EmptyState,
   IconTile,
+  QuietGroup,
   Screen,
   SectionHeader,
   SegmentedControl,
@@ -69,9 +70,9 @@ const PlaceCard = React.memo(function PlaceCard({
   onDelete: (place: Place) => void;
 }) {
   return (
-    <Card>
+    <View style={styles.placeRow}>
       <View style={styles.placeHead}>
-        <IconTile glyph={PLACE_CATEGORY_GLYPHS[place.category] ?? GLYPHS.places} tone="info" size={46} />
+        <IconTile glyph={PLACE_CATEGORY_GLYPHS[place.category] ?? GLYPHS.places} size={46} />
         <Text style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge, flex: 1 }]}>
           {place.name}
           {place.favorite ? ` ${GLYPHS.star}` : ''}
@@ -123,7 +124,7 @@ const PlaceCard = React.memo(function PlaceCard({
         <CompactAction label={t(lang, 'placesEdit')} onPress={() => onEdit(place)} />
         <CompactAction label={t(lang, 'delete')} variant="danger" onPress={() => onDelete(place)} />
       </ActionGrid>
-    </Card>
+    </View>
   );
 });
 
@@ -323,20 +324,21 @@ export default function PlacesScreen() {
           <SectionHeader
             title={categoryLabel(lang, g.category)}
             glyph={PLACE_CATEGORY_GLYPHS[g.category] ?? GLYPHS.places}
-            tone="info"
           />
-          {g.items.map((place) => (
-            <PlaceCard
-              key={place.id}
-              place={place}
-              lang={lang}
-              colors={colors}
-              type={type}
-              onChanged={handleChanged}
-              onEdit={startEdit}
-              onDelete={confirmDelete}
-            />
-          ))}
+          <QuietGroup>
+            {g.items.map((place) => (
+              <PlaceCard
+                key={place.id}
+                place={place}
+                lang={lang}
+                colors={colors}
+                type={type}
+                onChanged={handleChanged}
+                onEdit={startEdit}
+                onDelete={confirmDelete}
+              />
+            ))}
+          </QuietGroup>
         </View>
       ))}
     </Screen>
@@ -350,5 +352,6 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1.5, borderRadius: radius.md, padding: spacing.md, minHeight: 56 },
   field: { gap: spacing.xs },
   group: { gap: spacing.md },
+  placeRow: { gap: spacing.sm, paddingVertical: spacing.xs },
   placeHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
 });

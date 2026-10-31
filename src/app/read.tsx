@@ -14,6 +14,7 @@ import {
   Banner,
   Card,
   CompactAction,
+  QuietGroup,
   Screen,
   SectionHeader,
   StatusPill,
@@ -90,6 +91,28 @@ export default function ReadScreen() {
 
   return (
     <Screen>
+      {/* Viewfinder first — the large preview area leads the screen. */}
+      {image ? (
+        <ViewfinderFrame>
+          <Image
+            source={{ uri: image.uri }}
+            style={[styles.preview, { aspectRatio: image.width / Math.max(1, image.height) }]}
+            resizeMode="contain"
+            accessibilityLabel={t(lang, 'imagePreview')}
+          />
+        </ViewfinderFrame>
+      ) : (
+        <ViewfinderFrame>
+          <View style={[styles.previewPlaceholder, { backgroundColor: colors.surfaceAlt }]}>
+            <Text style={{ color: colors.textSecondary, fontSize: 44, lineHeight: 52 }}>{GLYPHS.read}</Text>
+            <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
+              {t(lang, 'imagePreview')}
+            </Text>
+          </View>
+        </ViewfinderFrame>
+      )}
+
+      {/* Slim source control bar under the preview. */}
       <ImageSourcePicker onImage={handleImage} onError={setError} disabled={busy} />
       {busy && (
         <Card>
@@ -106,24 +129,15 @@ export default function ReadScreen() {
           </Text>
         </Banner>
       )}
-      {image && (
-        <ViewfinderFrame>
-          <Image
-            source={{ uri: image.uri }}
-            style={[styles.preview, { aspectRatio: image.width / Math.max(1, image.height) }]}
-            resizeMode="contain"
-            accessibilityLabel={t(lang, 'imagePreview')}
-          />
-        </ViewfinderFrame>
-      )}
       {result && (
-        <Card>
+        <>
           <SectionHeader title={t(lang, 'ocrResult')} glyph={GLYPHS.read} />
+          <QuietGroup>
           <View style={styles.row}>
             <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
               {t(lang, 'detectedLanguage')}:
             </Text>
-            <StatusPill tone="info" glyph={GLYPHS.language} label={langLabel(result.language)} />
+            <StatusPill tone="neutral" glyph={GLYPHS.language} label={langLabel(result.language)} />
           </View>
           {result.text ? (
             <Text selectable style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
@@ -134,7 +148,8 @@ export default function ReadScreen() {
           ) : (
             <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'noTextFound')}</Text>
           )}
-        </Card>
+          </QuietGroup>
+        </>
       )}
       <ActionGrid>
         <CompactAction
@@ -155,5 +170,13 @@ const styles = StyleSheet.create({
   body: { lineHeight: 29 },
   bodyLarge: { lineHeight: 34 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  previewPlaceholder: {
+    width: '100%',
+    minHeight: 240,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
   preview: { width: '100%', borderRadius: radius.md },
 });

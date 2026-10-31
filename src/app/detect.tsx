@@ -18,6 +18,7 @@ import {
   Banner,
   Card,
   CompactAction,
+  QuietGroup,
   Screen,
   SectionHeader,
   StatusPill,
@@ -112,25 +113,8 @@ export default function DetectScreen() {
 
   return (
     <Screen>
-      <ImageSourcePicker onImage={handleImage} onError={setError} disabled={busy} />
-
-      {busy && (
-        <Card>
-          <View style={styles.row}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'analyzing')}</Text>
-          </View>
-        </Card>
-      )}
-      {!!error && (
-        <Banner tone="danger" title={t(lang, 'errorGeneric')}>
-          <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-            {error}
-          </Text>
-        </Banner>
-      )}
-
-      {image && (
+      {/* Viewfinder first — the large preview area leads the screen. */}
+      {image ? (
         <View style={styles.section}>
           <SectionHeader title={t(lang, 'imagePreview')} glyph={GLYPHS.camera} />
           <ViewfinderFrame>
@@ -168,6 +152,34 @@ export default function DetectScreen() {
             </View>
           </ViewfinderFrame>
         </View>
+      ) : (
+        <ViewfinderFrame>
+          <View style={[styles.previewPlaceholder, { backgroundColor: colors.surfaceAlt }]}>
+            <Text style={{ color: colors.textSecondary, fontSize: 44, lineHeight: 52 }}>{GLYPHS.camera}</Text>
+            <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
+              {t(lang, 'imagePreview')}
+            </Text>
+          </View>
+        </ViewfinderFrame>
+      )}
+
+      {/* Slim source control bar under the preview. */}
+      <ImageSourcePicker onImage={handleImage} onError={setError} disabled={busy} />
+
+      {busy && (
+        <Card>
+          <View style={styles.row}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'analyzing')}</Text>
+          </View>
+        </Card>
+      )}
+      {!!error && (
+        <Banner tone="danger" title={t(lang, 'errorGeneric')}>
+          <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+            {error}
+          </Text>
+        </Banner>
       )}
 
       {hazardAlerts.length > 0 && (
@@ -198,31 +210,35 @@ export default function DetectScreen() {
       )}
 
       {!!description && (
-        <Card>
+        <QuietGroup>
           <Text accessibilityLiveRegion="polite" style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
             {description}
           </Text>
-        </Card>
+        </QuietGroup>
       )}
 
       {detections.length > 0 && (
-        <Card>
+        <>
           <SectionHeader title={t(lang, 'detectionsFound')} glyph={GLYPHS.detect} />
-          {detections.map((d, i) => (
-            <View key={i} style={styles.detRow}>
-              <Text style={[styles.body, { color: colors.text, fontSize: type.body, flex: 1 }]}>
-                {describeDetection(d, lang)}
+          <QuietGroup>
+            {detections.map((d, i) => (
+              <View key={i} style={styles.detRow}>
+                <Text style={[styles.body, { color: colors.text, fontSize: type.body, flex: 1 }]}>
+                  {describeDetection(d, lang)}
+                </Text>
+                <StatusPill tone="neutral" glyph={GLYPHS.check} label={`${Math.round(d.confidence * 100)}%`} />
+              </View>
+            ))}
+          </QuietGroup>
+          <SectionHeader title={t(lang, 'obstacleSummary')} glyph={GLYPHS.alerts} />
+          <QuietGroup>
+            {obstacles.slice(0, 5).map((o, i) => (
+              <Text key={i} style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+                • {lang === 'ar' ? o.detection.labelAr : o.detection.labelEn} — {posLabel(o.position)} — {proxLabel(o.proximity)}
               </Text>
-              <StatusPill tone="info" glyph={GLYPHS.check} label={`${Math.round(d.confidence * 100)}%`} />
-            </View>
-          ))}
-          <SectionHeader title={t(lang, 'obstacleSummary')} glyph={GLYPHS.alerts} tone="warning" />
-          {obstacles.slice(0, 5).map((o, i) => (
-            <Text key={i} style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-              • {lang === 'ar' ? o.detection.labelAr : o.detection.labelEn} — {posLabel(o.position)} — {proxLabel(o.proximity)}
-            </Text>
-          ))}
-        </Card>
+            ))}
+          </QuietGroup>
+        </>
       )}
 
       <ActionGrid>
@@ -246,6 +262,14 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   section: { gap: spacing.sm },
   previewWrap: { position: 'relative', width: '100%' },
+  previewPlaceholder: {
+    width: '100%',
+    minHeight: 240,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
   preview: { width: '100%', borderRadius: radius.md },
   box: { position: 'absolute', borderWidth: 3, borderRadius: 4 },
   boxLabel: { fontSize: 14, fontWeight: '700', paddingHorizontal: 4, alignSelf: 'flex-start' },

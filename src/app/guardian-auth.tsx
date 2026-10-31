@@ -65,7 +65,7 @@ export default function GuardianAuthScreen() {
         <BrandMark size={44} />
         <SectionHeader title={t(lang, 'guardianOpenSignIn')} glyph={GLYPHS.family} />
       </View>
-      <Card>
+      <Card variant="raised">
         <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
           {t(lang, 'guardianEmail')}
         </Text>

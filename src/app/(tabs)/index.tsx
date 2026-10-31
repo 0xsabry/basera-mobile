@@ -1,32 +1,31 @@
 /**
  * Home — the command center, rebuilt on the V1.1 design system.
  *
- * Structure: brand header (greeting + today's date), one hero voice
- * action, an honest smart-glasses status card (not connected — the
- * phone camera is the active input), a device status card built from
- * REAL signals (assistant readiness + the real family sharing state),
- * a two-column feature grid with distinct glyphs/subtitles, then the
- * contextual cards (latest unacknowledged high alert, last result
- * with Repeat). Nothing here fakes a status: the service note appears
- * ONLY when the guardian service is actually unconfigured.
+ * Strict priority order: slim brand header (the greeting is the
+ * display element), one hero voice action (assistant readiness lives
+ * in its state label), an honest one-row glasses StatusStrip (not
+ * connected — no paragraph), a 2×2 core action grid (detect, read,
+ * places, alerts — ONE accent, tones are not decorative), a family
+ * StatusStrip carrying the REAL sharing state, then the contextual
+ * items: the active-alert banner, the last result as a quiet row
+ * with Repeat, and — only when the guardian service is actually
+ * unconfigured — the service note banner last.
  */
 import { Redirect, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { speechService } from '../../ai/SpeechService';
 import { AccessibleButton } from '../../components/AccessibleButton';
 import {
   AppHeader,
   Banner,
-  Card,
-  CompactAction,
   FeatureGrid,
   FeatureTile,
   HeroAction,
-  IconTile,
+  QuietGroup,
   Screen,
   SectionHeader,
-  StatusPill,
+  StatusStrip,
 } from '../../components/ui';
 import { historyStore, type HistoryItem } from '../../data/HistoryStore';
 import { getGuardianService } from '../../guardian/GuardianService';
@@ -36,7 +35,6 @@ import { announceNearbyPlaces } from '../../places/proximity';
 import { pushOnce } from '../../state/navGuard';
 import { useSettings } from '../../state/SettingsContext';
 import { GLYPHS } from '../../theme/glyphs';
-import { spacing } from '../../theme/tokens';
 
 export default function HomeScreen() {
   const { settings, colors, type, loaded } = useSettings();
@@ -111,45 +109,16 @@ export default function HomeScreen() {
         onPress={() => pushOnce('/voice')}
       />
 
-      {/* Smart glasses — honest NotAvailable state, never faked. */}
-      <Card accessibilityLabel={`${t(lang, 'glassesCardTitle')}. ${t(lang, 'glassesCardStatus')}. ${t(lang, 'glassesCardBody')}`}>
-        <View style={styles.statusRow}>
-          <IconTile glyph={GLYPHS.glasses} tone="neutral" />
-          <View style={styles.flexText}>
-            <Text style={[styles.cardTitle, { color: colors.text, fontSize: type.bodyLarge }]}>
-              {t(lang, 'glassesCardTitle')}
-            </Text>
-            <StatusPill tone="neutral" glyph={GLYPHS.glasses} label={t(lang, 'glassesCardStatus')} />
-          </View>
-        </View>
-        <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
-          {t(lang, 'glassesCardBody')}
-        </Text>
-      </Card>
+      {/* Smart glasses — honest NotAvailable state, one slim row. */}
+      <StatusStrip
+        glyph={GLYPHS.glasses}
+        title={t(lang, 'glassesCardTitle')}
+        pillLabel={t(lang, 'glassesCardStatus')}
+        pillTone="neutral"
+        pillGlyph={GLYPHS.glasses}
+      />
 
-      {/* Device status — real signals only. */}
-      <Card>
-        <SectionHeader title={t(lang, 'deviceStatusTitle')} glyph={GLYPHS.detect} />
-        <View style={styles.statusStack}>
-          <Text style={[styles.body, { color: colors.text, fontSize: type.body, fontWeight: '700' }]}>
-            {t(lang, 'assistantStatus')}
-          </Text>
-          <StatusPill tone="success" label={`${t(lang, 'statusReady')} — ${t(lang, 'modeReady')}`} />
-        </View>
-        <View style={styles.statusStack}>
-          <Text style={[styles.body, { color: colors.text, fontSize: type.body, fontWeight: '700' }]}>
-            {t(lang, 'familySafety')}
-          </Text>
-          <StatusPill tone={sharingTone} label={sharingText} />
-        </View>
-        <CompactAction
-          label={t(lang, 'family')}
-          glyph={GLYPHS.family}
-          onPress={() => pushOnce('/family')}
-        />
-      </Card>
-
-      <SectionHeader title={t(lang, 'exploreTitle')} glyph={GLYPHS.assistance} />
+      {/* Core actions — exactly 2×2, one accent for all four. */}
       <FeatureGrid>
         <FeatureTile
           layout="grid"
@@ -162,7 +131,6 @@ export default function HomeScreen() {
         <FeatureTile
           layout="grid"
           glyph={GLYPHS.read}
-          tone="info"
           title={t(lang, 'readText')}
           subtitle={t(lang, 'readTextHint')}
           hint={t(lang, 'readTextHint')}
@@ -170,16 +138,7 @@ export default function HomeScreen() {
         />
         <FeatureTile
           layout="grid"
-          glyph={GLYPHS.voice}
-          title={t(lang, 'voice')}
-          subtitle={t(lang, 'voiceHint')}
-          hint={t(lang, 'voiceHint')}
-          onPress={() => pushOnce('/voice')}
-        />
-        <FeatureTile
-          layout="grid"
           glyph={GLYPHS.places}
-          tone="info"
           title={t(lang, 'places')}
           subtitle={t(lang, 'placesHint')}
           hint={t(lang, 'placesHint')}
@@ -188,21 +147,21 @@ export default function HomeScreen() {
         <FeatureTile
           layout="grid"
           glyph={GLYPHS.alerts}
-          tone="warning"
           title={t(lang, 'viewAlerts')}
           subtitle={t(lang, 'alertsSubtitle')}
           onPress={() => pushOnce('/alerts')}
         />
-        <FeatureTile
-          layout="grid"
-          glyph={GLYPHS.family}
-          tone="success"
-          title={t(lang, 'family')}
-          subtitle={t(lang, 'familySubtitle')}
-          hint={t(lang, 'guardianHint')}
-          onPress={() => pushOnce('/family')}
-        />
       </FeatureGrid>
+
+      {/* Family safety — the REAL sharing state, one tappable row. */}
+      <StatusStrip
+        glyph={GLYPHS.family}
+        glyphTone="primary"
+        title={t(lang, 'familySafety')}
+        pillLabel={sharingText}
+        pillTone={sharingTone}
+        onPress={() => pushOnce('/family')}
+      />
 
       {activeAlert && (
         <Banner tone="danger" glyph={GLYPHS.alerts} title={t(lang, 'alertsLatest')}>
@@ -214,15 +173,15 @@ export default function HomeScreen() {
         </Banner>
       )}
 
-      <Card>
-        <SectionHeader title={t(lang, 'lastResult')} glyph={GLYPHS.history} />
+      <SectionHeader title={t(lang, 'lastResult')} glyph={GLYPHS.history} />
+      <QuietGroup>
         <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
           {lastSummary || t(lang, 'noResultYet')}
         </Text>
-        {last && (
+        {last ? (
           <AccessibleButton label={t(lang, 'repeat')} glyph={GLYPHS.repeat} onPress={repeatLastResult} variant="secondary" />
-        )}
-      </Card>
+        ) : null}
+      </QuietGroup>
 
       {!guardianConfigured && (
         <Banner tone="warning" title={t(lang, 'serviceNoteTitle')}>
@@ -236,9 +195,5 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  statusStack: { gap: spacing.xs },
-  flexText: { flex: 1, gap: spacing.xs },
-  cardTitle: { fontWeight: '800', lineHeight: 28 },
   body: { lineHeight: 29 },
 });

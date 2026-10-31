@@ -8,7 +8,7 @@ import React, { useCallback, useState } from 'react';
 import { Alert, Image, StyleSheet, Text, View } from 'react-native';
 import { speechService } from '../../ai/SpeechService';
 import { AccessibleButton } from '../../components/AccessibleButton';
-import { Card, CompactAction, EmptyState, Screen, SectionHeader } from '../../components/ui';
+import { CompactAction, EmptyState, QuietGroup, Screen, SectionHeader, TimelineRow } from '../../components/ui';
 import { historyStore, type HistoryItem } from '../../data/HistoryStore';
 import { t } from '../../i18n/strings';
 import { useSettings } from '../../state/SettingsContext';
@@ -21,18 +21,20 @@ const HistoryRow = React.memo(function HistoryRow({
   colors,
   type,
   onOpen,
+  isLast = false,
 }: {
   item: HistoryItem;
   lang: 'ar' | 'en';
   colors: ThemeColors;
   type: TypeScale;
   onOpen: (item: HistoryItem) => void;
+  isLast?: boolean;
 }) {
   const summary =
     item.kind === 'detection' ? (item.description ?? '') : (item.ocrText ?? '').slice(0, 120);
   const label = `${item.kind === 'detection' ? t(lang, 'detect') : t(lang, 'readText')} — ${new Date(item.timestamp).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')} — ${summary}`;
   return (
-    <Card>
+    <TimelineRow last={isLast}>
       <View style={styles.rowInner}>
         <Image source={{ uri: item.imageUri }} style={styles.thumb} accessibilityLabel={t(lang, 'imagePreview')} />
         <View style={styles.rowText}>
@@ -51,7 +53,7 @@ const HistoryRow = React.memo(function HistoryRow({
       <CompactAction label={t(lang, 'openDetail')} glyph={item.kind === 'detection' ? GLYPHS.detect : GLYPHS.read} onPress={() => onOpen(item)} />
       {/* Screen-reader summary for the whole entry stays available. */}
       <Text accessibilityLabel={label} style={styles.srOnly} />
-    </Card>
+    </TimelineRow>
   );
 });
 
@@ -105,21 +107,21 @@ export default function HistoryScreen() {
           onPress={() => setSelected(null)}
           variant="secondary"
         />
-        <Card>
-          <Image
-            source={{ uri: selected.imageUri }}
-            style={styles.detailImage}
-            resizeMode="contain"
-            accessibilityLabel={t(lang, 'imagePreview')}
-          />
-          <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
-            {new Date(selected.timestamp).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')} — {selected.sourceKind}
-          </Text>
-          {selected.kind === 'detection' ? (
-            <>
-              <Text style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
-                {selected.description}
-              </Text>
+        <Image
+          source={{ uri: selected.imageUri }}
+          style={styles.detailImage}
+          resizeMode="contain"
+          accessibilityLabel={t(lang, 'imagePreview')}
+        />
+        <Text style={[styles.body, { color: colors.textSecondary, fontSize: type.body }]}>
+          {new Date(selected.timestamp).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')} — {selected.sourceKind}
+        </Text>
+        {selected.kind === 'detection' ? (
+          <>
+            <Text style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
+              {selected.description}
+            </Text>
+            <QuietGroup>
               {(selected.detections ?? []).map((d, i) => (
                 <View key={i} style={styles.detRow}>
                   <Text style={[styles.body, { color: colors.text, fontSize: type.body, flex: 1 }]}>
@@ -130,13 +132,13 @@ export default function HistoryScreen() {
                   </Text>
                 </View>
               ))}
-            </>
-          ) : (
-            <Text selectable style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
-              {selected.ocrText}
-            </Text>
-          )}
-        </Card>
+            </QuietGroup>
+          </>
+        ) : (
+          <Text selectable style={[styles.bodyLarge, { color: colors.text, fontSize: type.bodyLarge }]}>
+            {selected.ocrText}
+          </Text>
+        )}
         <AccessibleButton label={t(lang, 'replay')} glyph={GLYPHS.repeat} onPress={() => replay(selected)} />
         <AccessibleButton
           label={t(lang, 'delete')}
@@ -170,8 +172,16 @@ export default function HistoryScreen() {
       {groups.map((group) => (
         <View key={group.day} style={styles.group}>
           <SectionHeader title={group.day} glyph={GLYPHS.history} />
-          {group.items.map((item) => (
-            <HistoryRow key={item.id} item={item} lang={lang} colors={colors} type={type} onOpen={openItem} />
+          {group.items.map((item, i) => (
+            <HistoryRow
+              key={item.id}
+              item={item}
+              lang={lang}
+              colors={colors}
+              type={type}
+              onOpen={openItem}
+              isLast={i === group.items.length - 1}
+            />
           ))}
         </View>
       ))}
