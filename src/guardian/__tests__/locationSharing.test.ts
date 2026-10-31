@@ -106,7 +106,9 @@ describe('LocationSharingService', () => {
     const a = fakeAdapter(true);
     const svc = new LocationSharingService(g.service, a.adapter, null);
     await expect(svc.start()).resolves.toBe('started');
-    expect(g.sharingCalls).toEqual([true]);
+    // Deployed contract: starting collection does NOT grant consent —
+    // consent changes only via the explicit Family-screen toggles.
+    expect(g.sharingCalls).toEqual([]);
     a.emit(pt(1));
     a.emit(pt(2));
     expect(g.uploads).toHaveLength(0);
@@ -148,7 +150,7 @@ describe('LocationSharingService', () => {
     expect(r1).toBe('started');
     expect(r2).toBe('started');
     expect(watchCalls).toBe(1);
-    expect(g.sharingCalls).toEqual([true]);
+    expect(g.sharingCalls).toEqual([]);
     await svc.stopWatching();
   });
 
@@ -160,6 +162,6 @@ describe('LocationSharingService', () => {
     await svc.disableSharing();
     expect(svc.isRunning).toBe(false);
     expect(a.watching()).toBe(false);
-    expect(g.sharingCalls).toEqual([true, false]);
+    expect(g.sharingCalls).toEqual([false]);
   });
 });

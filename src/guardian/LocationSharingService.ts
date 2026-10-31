@@ -232,7 +232,11 @@ export class LocationSharingService {
     // attempted first on this contact, and if it still fails it stays
     // queued (its purge deletes points stored up to the moment it runs).
     await this.deletion.init().catch(() => undefined);
-    await this.guardian.setSharingEnabled(true);
+    // NOTE (deployed contract): starting collection does NOT change
+    // consent. Consent is per-link and changes only through the
+    // explicit toggles on the Family screen (GuardianService
+    // setSharingEnabled / setLinkConsent); uploads are gated by the
+    // aggregate link consent inside uploadLocationPoints.
     await this.subscribeWatch();
     this.running = true;
     this.watchAppState();

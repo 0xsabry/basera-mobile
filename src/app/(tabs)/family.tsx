@@ -1,15 +1,23 @@
 /**
  * Family & guardian — pairing, sharing consent, background tracking,
- * SOS. V1.1 redesign: STATUS FIRST — My Location, then the derived
- * sharing-status card, then account, consent, privacy/deletion,
- * background, the SOS strip, pairing, requests and guardians — so the
- * actual state is readable before any management block. Every service
- * call, consent flow and honest status derivation is unchanged
- * (see git history — presentation + order only).
+ * SOS. DEPLOYED-contract edition (docs/SUPABASE_INTEGRATION.md):
+ *
+ * - Pairing: the wearer creates an invite code (Edge Function); the
+ *   guardian accepts it (here or in the Guardian PWA) and the link is
+ *   PAIRED immediately — the deployed backend has no approval step,
+ *   so this screen shows none.
+ * - Consent is PER-LINK and wearer-controlled: each guardian row has
+ *   its own location + SOS switches, both starting OFF at pairing.
+ *   The master switches fan out to all links. Turning the last
+ *   location consent off stops collection and deletes the stored
+ *   latest location (PendingDeletion confirms server-side).
+ * - Status first: My Location, derived sharing status, account,
+ *   consent, privacy/deletion, background, SOS, pairing, guardians,
+ *   people I guard.
  */
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { speechService } from '../../ai/SpeechService';
 import { AccessibleButton } from '../../components/AccessibleButton';
 import { MyLocationCard } from '../../components/MyLocationCard';
@@ -26,6 +34,7 @@ import {
   type Tone,
 } from '../../components/ui';
 import {
+  GuardianInviteError,
   getGuardianService,
   type GuardianLink,
   type GuardianUser,
@@ -38,7 +47,8 @@ import {
 import { getBackgroundLocationService } from '../../guardian/BackgroundLocationService';
 import { offlineLocationQueue } from '../../guardian/OfflineLocationQueue';
 import { deletionServerMessageKey } from '../../guardian/PendingDeletion';
-import { formatPairingCode } from '../../guardian/pairing';
+import { formatPairingCode, normalizePairingCodeInput } from '../../guardian/pairing';
+import { getPushTokenService } from '../../guardian/PushTokenService';
 import { deriveSharingState, type SharingState } from '../../guardian/sharingState';
 import { getSupabaseClient } from '../../guardian/supabaseClient';
 import { getLastSuccessfulUploadAt } from '../../guardian/uploadMeta';
@@ -46,7 +56,7 @@ import { triggerSos } from '../../hazards/HazardService';
 import { t, type StringKey } from '../../i18n/strings';
 import { useSettings } from '../../state/SettingsContext';
 import { GLYPHS } from '../../theme/glyphs';
-import { spacing } from '../../theme/tokens';
+import { radius, spacing } from '../../theme/tokens';
 
 const SHARING_STATE_KEY: Record<SharingState, StringKey> = {
   off: 'sharingStateOff',
@@ -73,16 +83,21 @@ export default function GuardianScreen() {
   const lang = settings.language;
   const service = getGuardianService();
   const [sharing] = useState(() => getLocationSharingService());
+  const [push] = useState(() => getPushTokenService(service));
   const sharingRef = useRef(sharing);
   const [deletion, setDeletion] = useState<DeletionStatus>(() => sharing.deletionStatus);
 
   const [user, setUser] = useState<GuardianUser | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [code, setCode] = useState<PairingCode | null>(null);
-  const [requests, setRequests] = useState<GuardianLink[]>([]);
   const [guardians, setGuardians] = useState<GuardianLink[]>([]);
+  const [peopleIGuard, setPeopleIGuard] = useState<GuardianLink[]>([]);
+  const [sosOn, setSosOn] = useState(false);
+  const [acceptCode, setAcceptCode] = useState('');
+  const [acceptError, setAcceptError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [, setNowTick] = useState(0);
 
   // Background tracking + derived sharing state (real signal reads).
   const [bgStarted, setBgStarted] = useState(false);
@@ -170,19 +185,49 @@ export default function GuardianScreen() {
     const u = await service.getCurrentUser();
     setUser(u);
     if (u) {
-      const [req, mine] = await Promise.all([
-        service.listPendingRequests().catch(() => []),
+      const [mine, guarding, consent] = await Promise.all([
         service.listMyGuardians().catch(() => []),
+        service.listPeopleIGuard().catch(() => []),
+        service
+          .getConsent()
+          .catch(() => ({ locationSharingEnabled: false, sosSharingEnabled: false })),
       ]);
-      setRequests(req);
       setGuardians(mine);
+      setPeopleIGuard(guarding);
+      setSosOn(consent.sosSharingEnabled);
+      // Server consent is the truth for the master switch: if every
+      // link's location consent is off (e.g. changed from another
+      // device), the local intent follows it down; if a link grants
+      // it, local intent follows up so collection can resume.
+      if (consent.locationSharingEnabled !== settings.guardianSharingEnabled) {
+        await update({
+          guardianSharingEnabled: consent.locationSharingEnabled,
+          ...(consent.locationSharingEnabled ? {} : { backgroundSharingEnabled: false }),
+        });
+      }
+      // Push-token registration (registration only — delivery is not
+      // claimed; never prompts, skips silently without permission).
+      void push.registerCurrentToken();
+      push.startTokenListener();
     }
     setLoaded(true);
-  }, [service]);
+  }, [service, push, settings.guardianSharingEnabled, update]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Live link changes (pairing completed elsewhere, consent changed,
+  // a guardian unlinked) refresh the lists without a manual reload.
+  useEffect(() => {
+    if (!user) return;
+    const sub = service.subscribeLinks(() => {
+      void refresh();
+    });
+    return () => {
+      void sub?.unsubscribe();
+    };
+  }, [user, service, refresh]);
 
   // Server-deletion state: subscribe for live updates and retry any
   // persisted pending deletion whenever this screen mounts (one of the
@@ -208,6 +253,13 @@ export default function GuardianScreen() {
     };
   }, [sharing]);
 
+  // Expiry display for a created invite (re-render every 30 s).
+  useEffect(() => {
+    if (!code?.expiresAt) return;
+    const timer = setInterval(() => setNowTick((n) => n + 1), 30_000);
+    return () => clearInterval(timer);
+  }, [code]);
+
   const toggleSharing = async (on: boolean) => {
     if (busy) return;
     setBusy(true);
@@ -221,6 +273,9 @@ export default function GuardianScreen() {
           await update({ guardianSharingEnabled: false });
           return;
         }
+        // Explicit consent write (fans out to all my links). Starting
+        // collection alone never grants consent in the deployed model.
+        await service.setSharingEnabled(true);
         await update({ guardianSharingEnabled: true });
         if (settings.announcements) {
           void speechService.speakAnnouncement(t(lang, 'guardianSharingOn'), lang);
@@ -237,6 +292,66 @@ export default function GuardianScreen() {
           void speechService.speakAnnouncement(t(lang, 'guardianSharingOff'), lang);
         }
       }
+    } catch {
+      setMessage(t(lang, 'errorGeneric'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleSos = async (on: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      await service.setSosSharingEnabled(on);
+      // Re-read the aggregate: with no guardians the fan-out is a
+      // no-op and the switch honestly stays off.
+      const consent = await service.getConsent().catch(() => null);
+      if (consent) setSosOn(consent.sosSharingEnabled);
+    } catch {
+      setMessage(t(lang, 'errorGeneric'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setLinkLocation = async (link: GuardianLink, on: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      if (on) {
+        await service.setLinkConsent(link.id, { locationSharingEnabled: true });
+        if (!settings.guardianSharingEnabled) {
+          await update({ guardianSharingEnabled: true });
+          void sharingRef.current?.start();
+        }
+      } else {
+        const othersOn = guardians.some((g) => g.id !== link.id && g.locationSharingEnabled);
+        if (!othersOn) {
+          // Last consenting link: full stop — collection halts and the
+          // stored latest location is deleted (PendingDeletion path).
+          await sharingRef.current?.disableSharing();
+          await update({ guardianSharingEnabled: false, backgroundSharingEnabled: false });
+        } else {
+          await service.setLinkConsent(link.id, { locationSharingEnabled: false });
+        }
+      }
+      await refresh();
+    } catch {
+      setMessage(t(lang, 'errorGeneric'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setLinkSos = async (link: GuardianLink, on: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await service.setLinkConsent(link.id, { sosSharingEnabled: on });
+      await refresh();
     } catch {
       setMessage(t(lang, 'errorGeneric'));
     } finally {
@@ -261,13 +376,39 @@ export default function GuardianScreen() {
     }
   };
 
-  const actOnRequest = async (link: GuardianLink, approve: boolean) => {
+  const acceptInvite = async () => {
+    const normalized = normalizePairingCodeInput(acceptCode);
+    if (!normalized) {
+      setAcceptError(t(lang, 'guardianInviteErrorInvalidOrExpired'));
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    setAcceptError('');
+    setMessage('');
     try {
-      if (approve) await service.approveLink(link.id);
-      else await service.denyLink(link.id);
+      await service.redeemPairingCode(normalized);
+      setAcceptCode('');
+      setMessage(t(lang, 'guardianAcceptSuccess'));
       await refresh();
-    } catch {
-      setMessage(t(lang, 'errorGeneric'));
+    } catch (e) {
+      if (e instanceof GuardianInviteError) {
+        setAcceptError(
+          e.kind === 'invalid-or-expired'
+            ? t(lang, 'guardianInviteErrorInvalidOrExpired')
+            : e.kind === 'already-used'
+              ? t(lang, 'guardianInviteErrorUsed')
+              : e.kind === 'self-pairing'
+                ? t(lang, 'guardianInviteErrorSelf')
+                : lang === 'en'
+                  ? e.message
+                  : t(lang, 'errorGeneric'),
+        );
+      } else {
+        setAcceptError(t(lang, 'errorGeneric'));
+      }
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -280,11 +421,11 @@ export default function GuardianScreen() {
         onPress: () => {
           void (async () => {
             try {
-              if (guardians.length === 1) {
-                // Last guardian: record the persisted deletion obligation
-                // FIRST (works offline), which re-drives the revoke +
-                // purge and retries until the server confirms — never
-                // fire-and-forget.
+              if (guardians.length === 1 && link.locationSharingEnabled) {
+                // Last guardian WITH location consent: record the
+                // persisted deletion obligation FIRST (works offline),
+                // which re-drives the revoke + purge and retries until
+                // the server confirms — never fire-and-forget.
                 await sharingRef.current?.requestServerDeletion('last-guardian-revoked', link.id);
               } else {
                 await service.revokeLink(link.id);
@@ -293,6 +434,75 @@ export default function GuardianScreen() {
             } catch {
               setMessage(t(lang, 'errorGeneric'));
             }
+          })();
+        },
+      },
+    ]);
+  };
+
+  const unlinkGuarding = (link: GuardianLink) => {
+    Alert.alert(t(lang, 'guardianRemoveMyAccess'), t(lang, 'guardianRevokeConfirm'), [
+      { text: t(lang, 'cancel'), style: 'cancel' },
+      {
+        text: t(lang, 'confirm'),
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            try {
+              await service.revokeLink(link.id);
+              await refresh();
+            } catch {
+              setMessage(t(lang, 'errorGeneric'));
+            }
+          })();
+        },
+      },
+    ]);
+  };
+
+  const signOutFlow = async () => {
+    // Token rows first (needs the session), then the sharing purge,
+    // then sign out.
+    await push.unregister().catch(() => undefined);
+    if (settings.guardianSharingEnabled) {
+      await sharingRef.current?.disableSharing().catch(() => undefined);
+      await update({ guardianSharingEnabled: false, backgroundSharingEnabled: false });
+    } else {
+      await sharingRef.current?.stopWatching();
+    }
+    await service.signOut().catch(() => undefined);
+    setUser(null);
+    setGuardians([]);
+    setPeopleIGuard([]);
+    await refresh();
+  };
+
+  const deleteMyData = () => {
+    Alert.alert(t(lang, 'guardianDeleteData'), t(lang, 'guardianDeleteDataConfirm'), [
+      { text: t(lang, 'cancel'), style: 'cancel' },
+      {
+        text: t(lang, 'confirm'),
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            await push.unregister().catch(() => undefined);
+            await sharingRef.current?.stopWatching().catch(() => undefined);
+            try {
+              await service.deleteMyAccountData();
+            } catch {
+              setMessage(t(lang, 'errorGeneric'));
+              return;
+            }
+            await service.signOut().catch(() => undefined);
+            await update({ guardianSharingEnabled: false, backgroundSharingEnabled: false });
+            setUser(null);
+            setGuardians([]);
+            setPeopleIGuard([]);
+            // Honest scope: data rows deleted; SOS alert records are
+            // retained server-side and the auth account itself needs
+            // the service owner (see the confirm copy).
+            setMessage(t(lang, 'guardianDataDeleted'));
+            await refresh();
           })();
         },
       },
@@ -311,6 +521,8 @@ export default function GuardianScreen() {
       </Screen>
     );
   }
+
+  const codeExpired = code?.expiresAt ? Date.now() > Date.parse(code.expiresAt) : false;
 
   return (
     <Screen>
@@ -356,19 +568,12 @@ export default function GuardianScreen() {
             <AccessibleButton
               label={t(lang, 'guardianSignOut')}
               variant="secondary"
-              onPress={() => {
-                void (async () => {
-                  // Purge first (needs the session), then sign out.
-                  if (settings.guardianSharingEnabled) {
-                    await sharingRef.current?.disableSharing().catch(() => undefined);
-                    await update({ guardianSharingEnabled: false });
-                  } else {
-                    await sharingRef.current?.stopWatching();
-                  }
-                  await service.signOut().catch(() => undefined);
-                  await refresh();
-                })();
-              }}
+              onPress={() => void signOutFlow()}
+            />
+            <AccessibleButton
+              label={t(lang, 'guardianDeleteData')}
+              variant="danger"
+              onPress={deleteMyData}
             />
           </Card>
 
@@ -392,6 +597,25 @@ export default function GuardianScreen() {
             />
           </Card>
 
+          <SectionHeader title={t(lang, 'guardianSosSharing')} glyph={GLYPHS.sos} />
+          <Card>
+            <Text style={body()}>{t(lang, 'guardianSosSharingExpl')}</Text>
+            <ListRow
+              variant="quiet"
+              glyph={GLYPHS.sos}
+              title={t(lang, 'guardianSosSharing')}
+              accessibilityLabel={t(lang, 'guardianSosSharing')}
+              right={
+                <Switch
+                  accessibilityLabel={t(lang, 'guardianSosSharing')}
+                  value={sosOn}
+                  onValueChange={(v) => void toggleSos(v)}
+                  trackColor={{ true: colors.primary }}
+                />
+              }
+            />
+          </Card>
+
           <SectionHeader title={t(lang, 'guardianPrivacyTitle')} glyph={GLYPHS.privacy} />
           <Card>
             {/* Local truth — always exact, works offline. */}
@@ -404,7 +628,7 @@ export default function GuardianScreen() {
                 label={settings.guardianSharingEnabled ? t(lang, 'guardianSharingOn') : t(lang, 'guardianLocalOff')}
               />
             </View>
-            {/* Server truth — 'confirmed' renders only after the purge RPC
+            {/* Server truth — 'confirmed' renders only after the purge
                 actually succeeded (see PendingDeletion success branch). */}
             {deletionServerMessageKey(deletion) !== null && (
               <Text accessibilityLiveRegion="polite" style={body()}>
@@ -462,10 +686,9 @@ export default function GuardianScreen() {
             )}
           </Card>
 
-          {/* SOS — stored locally; guardian notification attempted only
-              when configured, and the outcome is stated honestly. The
-              outcome message renders in the background card above via
-              bgMessage — that display path is unchanged. */}
+          {/* SOS — recorded locally; a server alert is created only
+              while SOS sharing is on for at least one guardian, and the
+              outcome is stated honestly. */}
           <Banner tone="danger" glyph={GLYPHS.sos} title={t(lang, 'sosTitle')}>
             <Text style={body()}>{t(lang, 'sosExpl')}</Text>
             <AccessibleButton
@@ -498,25 +721,46 @@ export default function GuardianScreen() {
                   <QrCodeView value={code.code} accessibilityLabel={`${t(lang, 'guardianYourCode')}: ${code.code}`} />
                 </View>
                 <Text style={bodySecondary()}>{t(lang, 'guardianCodeExpires')}</Text>
+                {code.expiresAt && !codeExpired && (
+                  <Text style={bodySecondary()}>
+                    {t(lang, 'guardianInviteExpiresAt')}:{' '}
+                    {new Date(code.expiresAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}
+                  </Text>
+                )}
+                {code.expiresAt && codeExpired && (
+                  <Text style={[body(), { color: colors.danger }]}>{t(lang, 'guardianInviteExpired')}</Text>
+                )}
               </View>
             )}
           </Card>
 
-          <SectionHeader title={t(lang, 'guardianRequestsTitle')} glyph={GLYPHS.notifications} />
-          {requests.length === 0 && (
-            <Text style={bodySecondary()}>{t(lang, 'guardianNoRequests')}</Text>
-          )}
-          {requests.length > 0 && (
-            <QuietGroup>
-              {requests.map((link) => (
-                <View key={link.id} style={styles.listBlock}>
-                  <Text style={body()}>{link.otherPartyName ?? link.guardianId}</Text>
-                  <AccessibleButton label={t(lang, 'guardianApprove')} onPress={() => void actOnRequest(link, true)} />
-                  <AccessibleButton label={t(lang, 'guardianDeny')} variant="danger" onPress={() => void actOnRequest(link, false)} />
-                </View>
-              ))}
-            </QuietGroup>
-          )}
+          <SectionHeader title={t(lang, 'guardianAcceptTitle')} glyph={GLYPHS.family} />
+          <Card>
+            <Text style={body()}>{t(lang, 'guardianAcceptExpl')}</Text>
+            <TextInput
+              accessibilityLabel={t(lang, 'guardianInviteCodeLabel')}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              placeholder={t(lang, 'guardianInviteCodeLabel')}
+              placeholderTextColor={colors.textSecondary}
+              value={acceptCode}
+              onChangeText={setAcceptCode}
+              style={[
+                styles.input,
+                { color: colors.text, borderColor: colors.border, backgroundColor: colors.surfaceAlt, fontSize: type.body },
+              ]}
+            />
+            {!!acceptError && (
+              <Text accessibilityLiveRegion="assertive" style={[body(), { color: colors.danger }]}>
+                {acceptError}
+              </Text>
+            )}
+            <AccessibleButton
+              label={t(lang, 'guardianAcceptAction')}
+              onPress={() => void acceptInvite()}
+              disabled={busy || !acceptCode.trim()}
+            />
+          </Card>
 
           <SectionHeader title={t(lang, 'guardianMyGuardians')} glyph={GLYPHS.family} />
           {guardians.length === 0 && (
@@ -530,7 +774,57 @@ export default function GuardianScreen() {
                     <Text style={[body(), styles.flex1]}>{link.otherPartyName ?? link.guardianId}</Text>
                     <StatusPill tone="success" label={t(lang, 'guardianStatusApproved')} />
                   </View>
+                  <ListRow
+                    variant="quiet"
+                    glyph={GLYPHS.location}
+                    title={t(lang, 'guardianLinkLocation')}
+                    accessibilityLabel={t(lang, 'guardianLinkLocation')}
+                    right={
+                      <Switch
+                        accessibilityLabel={t(lang, 'guardianLinkLocation')}
+                        value={link.locationSharingEnabled}
+                        onValueChange={(v) => void setLinkLocation(link, v)}
+                        trackColor={{ true: colors.primary }}
+                      />
+                    }
+                  />
+                  <ListRow
+                    variant="quiet"
+                    glyph={GLYPHS.sos}
+                    title={t(lang, 'guardianLinkSos')}
+                    accessibilityLabel={t(lang, 'guardianLinkSos')}
+                    right={
+                      <Switch
+                        accessibilityLabel={t(lang, 'guardianLinkSos')}
+                        value={link.sosSharingEnabled}
+                        onValueChange={(v) => void setLinkSos(link, v)}
+                        trackColor={{ true: colors.primary }}
+                      />
+                    }
+                  />
                   <AccessibleButton label={t(lang, 'guardianRevoke')} variant="danger" onPress={() => revoke(link)} />
+                </View>
+              ))}
+            </QuietGroup>
+          )}
+
+          <SectionHeader title={t(lang, 'guardianPeopleIGuard')} glyph={GLYPHS.family} />
+          {peopleIGuard.length === 0 && (
+            <Text style={bodySecondary()}>{t(lang, 'guardianNoPeopleIGuard')}</Text>
+          )}
+          {peopleIGuard.length > 0 && (
+            <QuietGroup>
+              {peopleIGuard.map((link) => (
+                <View key={link.id} style={styles.listBlock}>
+                  <View style={styles.pillRow}>
+                    <Text style={[body(), styles.flex1]}>{link.otherPartyName ?? link.ownerId}</Text>
+                    <StatusPill tone="success" label={t(lang, 'guardianStatusApproved')} />
+                  </View>
+                  <AccessibleButton
+                    label={t(lang, 'guardianRemoveMyAccess')}
+                    variant="danger"
+                    onPress={() => unlinkGuarding(link)}
+                  />
                 </View>
               ))}
             </QuietGroup>
@@ -555,4 +849,10 @@ const styles = StyleSheet.create({
   codeBox: { gap: spacing.sm, alignItems: 'center' },
   listBlock: { gap: spacing.sm, paddingVertical: spacing.xs },
   qrFrame: { padding: spacing.md, borderRadius: 16, borderWidth: 1 },
+  input: {
+    borderWidth: 1.5,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    minHeight: 60,
+  },
 });

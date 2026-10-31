@@ -1,6 +1,12 @@
 /**
  * Guardian sign-in / sign-up — V1.1 redesign: brand header + form card
- * on the design system. Auth calls and honest error handling unchanged.
+ * on the design system.
+ *
+ * DEPLOYED contract: email confirmation is REQUIRED
+ * (mailer_autoconfirm=false), so a sign-up usually returns NO session.
+ * The screen then shows the check-your-email state instead of
+ * pretending the user is signed in; the profile row is ensured
+ * client-side at the first real sign-in (no signup trigger exists).
  */
 import { router } from 'expo-router';
 import React, { useState } from 'react';
@@ -20,16 +26,35 @@ export default function GuardianAuthScreen() {
   const service = getGuardianService();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
+  const [confirmationPending, setConfirmationPending] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const run = async (mode: 'in' | 'up') => {
     if (busy) return;
     setBusy(true);
     setError('');
+    setConfirmationPending(false);
     try {
-      if (mode === 'in') await service.signIn(email.trim(), password);
-      else await service.signUp(email.trim(), password);
+      if (mode === 'in') {
+        await service.signIn(email.trim(), password, lang);
+      } else {
+        const result = await service.signUp(
+          email.trim(),
+          password,
+          displayName.trim() || undefined,
+          lang,
+        );
+        if (result.needsConfirmation) {
+          // No session yet — do NOT navigate as if signed in.
+          setConfirmationPending(true);
+          if (settings.announcements) {
+            void speechService.speakAnnouncement(t(lang, 'guardianCheckEmail'), lang);
+          }
+          return;
+        }
+      }
       if (settings.announcements) {
         void speechService.speakAnnouncement(t(lang, 'guardianSignedInAs'), lang);
       }
@@ -81,6 +106,19 @@ export default function GuardianAuthScreen() {
           style={[styles.input, inputStyle]}
         />
         <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
+          {t(lang, 'guardianDisplayName')}
+        </Text>
+        <TextInput
+          accessibilityLabel={t(lang, 'guardianDisplayName')}
+          autoCapitalize="words"
+          autoComplete="name"
+          placeholder={t(lang, 'guardianDisplayName')}
+          placeholderTextColor={colors.textSecondary}
+          value={displayName}
+          onChangeText={setDisplayName}
+          style={[styles.input, inputStyle]}
+        />
+        <Text style={[styles.label, { color: colors.textSecondary, fontSize: type.caption }]}>
           {t(lang, 'guardianPassword')}
         </Text>
         <TextInput
@@ -94,6 +132,13 @@ export default function GuardianAuthScreen() {
           onChangeText={setPassword}
           style={[styles.input, inputStyle]}
         />
+        {confirmationPending && (
+          <Banner tone="success" title={t(lang, 'guardianSignUp')}>
+            <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text, fontSize: type.body }]}>
+              {t(lang, 'guardianCheckEmail')}
+            </Text>
+          </Banner>
+        )}
         {!!error && (
           <Banner tone="danger" title={t(lang, 'guardianAuthError')}>
             <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.text, fontSize: type.body }]}>

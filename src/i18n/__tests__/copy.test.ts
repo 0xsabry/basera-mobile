@@ -35,8 +35,6 @@ const LABEL_KEYS: StringKey[] = [
   'guardianSignIn',
   'guardianSignUp',
   'guardianSignOut',
-  'guardianApprove',
-  'guardianDeny',
   'guardianRevoke',
   'guardianCreateCode',
   'sosButton',

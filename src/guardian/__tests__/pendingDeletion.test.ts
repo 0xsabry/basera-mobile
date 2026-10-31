@@ -282,18 +282,19 @@ describe('LocationSharingService offline revocation', () => {
     g.setOffline(true);
     await svc.disableSharing();
     expect(svc.deletionStatus.state).toBe('pending');
-    // Still offline at re-enable: start() itself cannot complete (the
-    // server enable call fails too) — but the obligation is NOT dropped
+    // Still offline at re-enable: collection can start locally (the
+    // deployed contract keeps consent writes out of start()), but the
+    // deletion attempt fails offline and the obligation is NOT dropped
     // by the attempt; it is still persisted and pending.
-    await expect(svc.start()).rejects.toThrow('network offline');
-    expect(svc.isRunning).toBe(false);
+    await expect(svc.start()).resolves.toBe('started');
     expect(svc.deletionStatus.state).toBe('pending');
     expect(storage.map.has(PENDING_DELETION_KEY)).toBe(true);
-    // Online restart of sharing: purge runs BEFORE setSharingEnabled(true).
+    await svc.stopWatching();
+    // Online restart: the pending purge executes on this contact.
     g.setOffline(false);
     g.calls.length = 0;
     await expect(svc.start()).resolves.toBe('started');
-    expect(g.calls).toEqual(['setSharingEnabled(false)', 'setSharingEnabled(true)']);
+    expect(g.calls).toEqual(['setSharingEnabled(false)']);
     expect(svc.deletionStatus.state).toBe('confirmed');
   });
 });
