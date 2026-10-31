@@ -35,6 +35,12 @@
       .person { border:1.5px solid #d7e2dd; border-radius:12px; padding:12px; margin:8px 0; }
       .fresh { color:#0b3d2e; font-weight:700; }
       .stale { color:#8a6d00; font-weight:700; }
+      .freshness-updated-recently { color:#0b3d2e; font-weight:700; }
+      .freshness-last-known { color:#8a6d00; font-weight:700; }
+      .freshness-stale { color:#b3261e; font-weight:700; }
+      .freshness-no-signal { color:#5f6368; font-weight:700; }
+      .freshness-sharing-paused { color:#6a1b9a; font-weight:700; }
+      .freshness-no-internet { color:#b3261e; font-weight:700; text-decoration:underline dotted; }
       [hidden] { display:none !important; }
     </style>
   </head>
@@ -111,6 +117,7 @@
     </main>
 
     <script src="config.js"></script>
+    <script src="freshness.js"></script>
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="

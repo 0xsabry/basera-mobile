@@ -29,11 +29,15 @@ const STRINGS = {
     signedInAs: "مسجل باسم",
     codeInvalid: "الكود لازم يكون 6 أرقام.",
     requestSent: "اتُبعت الطلب. هتقدر تشوف الموقع بس بعد ما يوافق من تطبيقه.",
-    noPeople: "مفيش حد بيشارك موقعه معاك لسه. اطلب كود ربط وابعته من هنا.",
-    updatedAgo: (m) => `آخر تحديث من ${m} دقيقة`,
+    noPeople: "لا أحد يشارك موقعه معك حتى الآن. اطلب رمز ربط وأرسله من هنا.",
+    updatedAgo: (m) => `آخر تحديث منذ ${m} دقيقة`,
     updatedNow: "تم التحديث الآن",
     stale: (t) => `قديم — آخر ظهور ${t}`,
-    noLocationYet: "لسه مفيش موقع مسجل للشخص ده.",
+    stateLastKnown: (m) => `آخر موقع معروف — منذ ${m} دقيقة`,
+    stateNoSignal: "لا توجد إشارة موقع حاليًا",
+    stateSharingPaused: "مشاركة الموقع متوقفة مؤقتًا",
+    stateNoInternet: "لا يوجد اتصال بالإنترنت",
+    noLocationYet: "لا يوجد موقع مسجل لهذا الشخص حتى الآن.",
     revoked: "تمت إزالة وصولك. مش هتشوف موقع الشخص ده تاني.",
     notifyNotConfigured: "التنبيهات غير مهيأة (إعداد Firebase ناقص في config.js). باقي المزايا شغالة.",
     notifyOn: "التنبيهات مفعّلة على المتصفح ده.",
@@ -70,6 +74,10 @@ const STRINGS = {
     updatedAgo: (m) => `Updated ${m} min ago`,
     updatedNow: "Updated just now",
     stale: (t) => `Stale — last seen ${t}`,
+    stateLastKnown: (m) => `Last known location — ${m} min ago`,
+    stateNoSignal: "No location signal right now",
+    stateSharingPaused: "Location sharing is paused",
+    stateNoInternet: "No internet connection",
     noLocationYet: "No location recorded for this person yet.",
     revoked: "Your access was removed. You will no longer see this person's location.",
     notifyNotConfigured: "Notifications are not configured (Firebase config missing). Everything else works.",
@@ -127,6 +135,7 @@ let session = null;
 let selectedLink = null; // guardian_links row for the selected owner
 let map = null;
 let marker = null;
+let circle = null;
 let polyline = null;
 
 function show(id, visible) {
@@ -191,71 +200,171 @@ $("redeemBtn").addEventListener("click", async () => {
 });
 
 // ------------------------------------------------------------------- people
-function freshnessText(updatedAtIso) {
-  if (!updatedAtIso) return "";
-  const then = new Date(updatedAtIso).getTime();
-  const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
-  if (mins < 1) return { text: s().updatedNow, fresh: true };
-  if (mins <= 10) return { text: s().updatedAgo(mins), fresh: true };
-  return { text: s().stale(new Date(updatedAtIso).toLocaleString()), fresh: false };
+// Freshness state model lives in freshness.js (window.BASERA_FRESHNESS),
+// loaded as a classic script before this module. States:
+// no-internet / sharing-paused / no-signal / updated-recently /
+// last-known / stale — each gets distinct text + a distinct CSS class.
+function isNetworkError(err) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  const msg = String((err && err.message) || err || "");
+  return /failed to fetch|network|fetch failed|load failed|networkerror/i.test(msg);
+}
+
+function showNoInternet() {
+  error("");
+  const el = $("freshness");
+  el.textContent = s().stateNoInternet;
+  el.className = "msg freshness-no-internet";
+}
+
+function freshnessDisplay(latest, sharingEnabled) {
+  const classifier =
+    typeof window !== "undefined" && window.BASERA_FRESHNESS
+      ? window.BASERA_FRESHNESS.classifyGuardianLocation
+      : null;
+  if (!classifier) {
+    // Fallback if freshness.js failed to load: never claim a location
+    // we cannot classify.
+    return latest
+      ? { state: "stale", text: s().stale(new Date(latest.recorded_at || latest.updated_at).toLocaleString()), className: "freshness-stale", ageMinutes: null }
+      : { state: "no-signal", text: s().stateNoSignal, className: "freshness-no-signal", ageMinutes: null };
+  }
+  const online = typeof navigator === "undefined" ? true : navigator.onLine !== false;
+  const { state, ageMinutes } = classifier({
+    now: Date.now(),
+    latest: latest || null,
+    sharingEnabled: typeof sharingEnabled === "boolean" ? sharingEnabled : null,
+    online,
+  });
+  const stamp = latest ? latest.recorded_at || latest.updated_at : null;
+  let text;
+  switch (state) {
+    case "updated-recently":
+      text =
+        ageMinutes != null && ageMinutes >= 1
+          ? s().updatedAgo(Math.round(ageMinutes))
+          : s().updatedNow;
+      break;
+    case "last-known":
+      text =
+        typeof s().stateLastKnown === "function"
+          ? s().stateLastKnown(Math.round(ageMinutes || 0))
+          : s().stateLastKnown;
+      break;
+    case "stale":
+      text = stamp ? s().stale(new Date(stamp).toLocaleString()) : s().stateNoSignal;
+      break;
+    case "no-signal":
+      text = s().stateNoSignal;
+      break;
+    case "sharing-paused":
+      text = s().stateSharingPaused;
+      break;
+    case "no-internet":
+      text = s().stateNoInternet;
+      break;
+    default:
+      text = s().stateNoSignal;
+  }
+  return { state, text, className: `freshness-${state}`, ageMinutes };
 }
 
 async function refreshPeople() {
   if (!supabase || !session) return;
   const list = $("peopleList");
-  const { data: links, error: linkErr } = await supabase
-    .from("guardian_links")
-    .select("id, owner_id, status, created_at")
-    .eq("guardian_id", session.user.id)
-    .eq("status", "active");
-  if (linkErr) {
-    error(lang === "en" ? linkErr.message : s().genericError);
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    showNoInternet();
     return;
   }
-  list.innerHTML = "";
-  if (!links || links.length === 0) {
-    list.innerHTML = `<p>${s().noPeople}</p>`;
-    $("revokeBtn").hidden = true;
-    return;
-  }
-  const ownerIds = links.map((l) => l.owner_id);
-  const [{ data: profiles }, { data: latest }] = await Promise.all([
-    supabase.from("profiles").select("id, display_name").in("id", ownerIds),
-    supabase.from("latest_locations").select("*").in("user_id", ownerIds),
-  ]);
-  const nameOf = (id) => (profiles || []).find((p) => p.id === id)?.display_name || id;
-  const latestOf = (id) => (latest || []).find((l) => l.user_id === id) || null;
+  try {
+    const { data: links, error: linkErr } = await supabase
+      .from("guardian_links")
+      .select("id, owner_id, status, created_at")
+      .eq("guardian_id", session.user.id)
+      .eq("status", "active");
+    if (linkErr) {
+      if (isNetworkError(linkErr)) {
+        showNoInternet();
+        return;
+      }
+      error(lang === "en" ? linkErr.message : s().genericError);
+      return;
+    }
+    list.innerHTML = "";
+    if (!links || links.length === 0) {
+      list.innerHTML = `<p>${s().noPeople}</p>`;
+      $("revokeBtn").hidden = true;
+      return;
+    }
+    const ownerIds = links.map((l) => l.owner_id);
+    const [profilesRes, latestRes] = await Promise.all([
+      supabase.from("profiles").select("id, display_name, sharing_enabled").in("id", ownerIds),
+      supabase.from("latest_locations").select("*").in("user_id", ownerIds),
+    ]);
+    const queryErr = profilesRes.error || latestRes.error;
+    if (queryErr) {
+      if (isNetworkError(queryErr)) {
+        showNoInternet();
+        return;
+      }
+      error(lang === "en" ? queryErr.message : s().genericError);
+      return;
+    }
+    const profiles = profilesRes.data;
+    const latest = latestRes.data;
+    const nameOf = (id) => (profiles || []).find((p) => p.id === id)?.display_name || id;
+    const sharingOf = (id) => {
+      const p = (profiles || []).find((pr) => pr.id === id);
+      return p && typeof p.sharing_enabled === "boolean" ? p.sharing_enabled : null;
+    };
+    const latestOf = (id) => (latest || []).find((l) => l.user_id === id) || null;
 
-  for (const link of links) {
-    const loc = latestOf(link.owner_id);
-    const fresh = loc ? freshnessText(loc.updated_at) : null;
-    const div = document.createElement("div");
-    div.className = "person";
-    div.innerHTML = `<strong></strong><br/><span class="${fresh?.fresh ? "fresh" : "stale"}"></span>`;
-    div.querySelector("strong").textContent = nameOf(link.owner_id);
-    div.querySelector("span").textContent = loc ? fresh.text : s().noLocationYet;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "secondary";
-    btn.textContent = s().refresh;
-    btn.addEventListener("click", () => void selectPerson(link, loc));
-    div.appendChild(document.createElement("br"));
-    div.appendChild(btn);
-    list.appendChild(div);
+    for (const link of links) {
+      const loc = latestOf(link.owner_id);
+      const sharingEnabled = sharingOf(link.owner_id);
+      const fresh = freshnessDisplay(loc, sharingEnabled);
+      const div = document.createElement("div");
+      div.className = "person";
+      div.innerHTML = `<strong></strong><br/><span></span>`;
+      div.querySelector("strong").textContent = nameOf(link.owner_id);
+      const span = div.querySelector("span");
+      span.textContent = fresh.text;
+      span.className = fresh.className;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "secondary";
+      btn.textContent = s().refresh;
+      btn.addEventListener("click", () => void selectPerson(link, loc, sharingEnabled));
+      div.appendChild(document.createElement("br"));
+      div.appendChild(btn);
+      list.appendChild(div);
+    }
+    const first = links[0];
+    await selectPerson(first, latestOf(first.owner_id), sharingOf(first.owner_id));
+  } catch (err) {
+    if (isNetworkError(err)) {
+      showNoInternet();
+      return;
+    }
+    error(lang === "en" && err && err.message ? err.message : s().genericError);
   }
-  const first = links[0];
-  await selectPerson(first, latestOf(first.owner_id));
 }
 
-async function selectPerson(link, latest) {
+async function selectPerson(link, latest, sharingEnabled) {
   selectedLink = link;
   $("revokeBtn").hidden = false;
+  // Freshness line reflects the classifier even without a map / location.
+  const fresh = freshnessDisplay(latest || null, sharingEnabled);
+  $("freshness").textContent = fresh.text;
+  $("freshness").className = `msg ${fresh.className}`;
   if (!window.L) return;
   if (!map) {
     map = L.map("map").setView([30.0444, 31.2357], 12);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    L.tileLayer(cfg.mapTileUrl || "https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: Number.isFinite(cfg.mapMaxZoom) ? cfg.mapMaxZoom : 19,
+      attribution:
+        cfg.mapAttribution ||
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
   }
   // 24h history (RLS returns rows only while the link is active).
@@ -275,12 +384,21 @@ async function selectPerson(link, latest) {
   if (latest) {
     if (marker) marker.remove();
     marker = L.marker([latest.lat, latest.lng]).addTo(map);
+    if (circle) circle.remove();
+    circle = null;
+    if (typeof latest.accuracy_m === "number" && Number.isFinite(latest.accuracy_m) && latest.accuracy_m > 0) {
+      circle = L.circle([latest.lat, latest.lng], { radius: latest.accuracy_m }).addTo(map);
+    }
     map.setView([latest.lat, latest.lng], 15);
-    const fresh = freshnessText(latest.updated_at);
-    $("freshness").textContent = fresh.text;
-    $("freshness").className = fresh.fresh ? "fresh" : "stale";
-  } else if (latlngs.length > 0) {
-    map.setView(latlngs[latlngs.length - 1], 15);
+  } else {
+    // No latest row (sharing off/revoked or no fix yet): NEVER render a marker.
+    if (marker) marker.remove();
+    marker = null;
+    if (circle) circle.remove();
+    circle = null;
+    if (latlngs.length > 0) {
+      map.setView(latlngs[latlngs.length - 1], 15);
+    }
   }
   setTimeout(() => map.invalidateSize(), 50);
 }

@@ -20,5 +20,14 @@
     // Web Push certificate public key (Firebase -> Cloud Messaging ->
     // Web Push certificates). Public value; the private half stays server-side.
     vapidKey: "",
+    // Map tile provider — configurable. The defaults use the public
+    // OpenStreetMap tile service, which is best-effort with no SLA;
+    // see the tile usage policy at
+    // https://operations.osmfoundation.org/policies/tiles/ — for
+    // heavier use, point these at your own tile host / provider.
+    mapTileUrl: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    mapAttribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    mapMaxZoom: 19,
   };
 })(typeof self !== "undefined" ? self : window);

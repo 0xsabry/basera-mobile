@@ -1,12 +1,13 @@
 /* BASERA Guardian PWA — app-shell service worker.
    Caches the shell for offline launch; data always comes from the
    network (Supabase) so locations are never stale-cached. */
-const CACHE = "basera-guardian-v1";
+const CACHE = "basera-guardian-v2";
 const SHELL = [
   "./",
   "./index.html",
   "./app.js",
   "./config.js",
+  "./freshness.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

@@ -59,6 +59,7 @@
     "lint": "expo lint",
     "start": "expo start",
     "test": "jest",
+    "test:pwa": "node guardian-pwa/test-freshness.js",
     "typecheck": "tsc --noEmit",
     "web": "expo start --web"
   },
