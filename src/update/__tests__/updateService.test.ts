@@ -32,6 +32,15 @@ describe('UpdateService status mapping', () => {
     expect(s.phase).toBe('idle');
   });
 
+  it('maps the running update creation time (Date -> ISO; absent -> null)', () => {
+    const withDate = new UpdateService(
+      fakeNative({ createdAt: new Date('2026-10-31T18:00:00.000Z'), isEmbeddedLaunch: false }),
+    );
+    expect(withDate.getStatus().currentUpdateCreatedAt).toBe('2026-10-31T18:00:00.000Z');
+    const embedded = new UpdateService(fakeNative());
+    expect(embedded.getStatus().currentUpdateCreatedAt).toBeNull();
+  });
+
   it('reports unavailable when the native module is missing (1.0.0 build / Expo Go)', () => {
     const svc = new UpdateService(null);
     const s = svc.getStatus();

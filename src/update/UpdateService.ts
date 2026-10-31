@@ -31,6 +31,9 @@ export interface UpdatesNativeModule {
   channel: string | null;
   runtimeVersion: string | null;
   isEmbeddedLaunch: boolean;
+  /** Creation time of the currently running update (expo-updates
+   *  `createdAt`); absent/null on embedded launches and older builds. */
+  createdAt?: Date | string | null;
   checkForUpdateAsync: () => Promise<{ isUpdateAvailable: boolean; manifest?: { id?: string } }>;
   fetchUpdateAsync: () => Promise<{ isNew: boolean; manifest?: { id?: string } }>;
   reloadAsync: () => Promise<void>;
@@ -49,6 +52,10 @@ export interface UpdateStatus {
   channel: string | null;
   runtimeVersion: string | null;
   currentUpdateId: string | null;
+  /** ISO creation time of the running OTA update; null when embedded
+   *  or when the native module does not expose it. Display-only: it
+   *  describes the running bundle, never the installed version. */
+  currentUpdateCreatedAt: string | null;
   isEmbeddedLaunch: boolean;
   lastCheckAt: string | null;
   phase: UpdatePhase;
@@ -99,6 +106,12 @@ export class UpdateService {
       channel: n?.channel ?? null,
       runtimeVersion: n?.runtimeVersion ?? null,
       currentUpdateId: n?.updateId ?? null,
+      currentUpdateCreatedAt:
+        n?.createdAt instanceof Date
+          ? n.createdAt.toISOString()
+          : typeof n?.createdAt === 'string'
+            ? n.createdAt
+            : null,
       isEmbeddedLaunch: n?.isEmbeddedLaunch ?? true,
       lastCheckAt: this.lastCheckAt,
       phase: this.phase,

@@ -47,6 +47,7 @@ import { syncPlaces, type PlacesSyncOutcome } from '../../places/placesSync';
 import { useSettings } from '../../state/SettingsContext';
 import { GLYPHS } from '../../theme/glyphs';
 import { MIN_TOUCH, spacing } from '../../theme/tokens';
+import { readInstalledVersion } from '../../update/appVersion';
 import { updateService, type UpdateStatus } from '../../update/UpdateService';
 
 type PermState = 'granted' | 'denied' | 'undetermined' | 'unknown';
@@ -431,7 +432,7 @@ export default function SettingsScreen() {
           variant="quiet"
           glyph={GLYPHS.updates}
           title={t(lang, 'updates')}
-          subtitle={`${t(lang, 'runtimeLabel')}: ${updateStatus.runtimeVersion ?? '—'} · ${t(lang, 'channelLabel')}: ${updateStatus.channel ?? '—'}${updateStatus.phase === 'ready' ? ` · ${t(lang, 'updateReady')}` : ''}`}
+          subtitle={`${t(lang, 'versionLabel')}: ${readInstalledVersion().label ?? '—'} · ${t(lang, 'runtimeLabel')}: ${updateStatus.runtimeVersion ?? '—'} · ${t(lang, 'channelLabel')}: ${updateStatus.channel ?? '—'}${updateStatus.phase === 'ready' ? ` · ${t(lang, 'updateReady')}` : ''}`}
           accessibilityHint={t(lang, 'updatesHint')}
           onPress={() => router.push('/updates')}
         />
@@ -441,7 +442,7 @@ export default function SettingsScreen() {
       <SectionHeader title={t(lang, 'about')} glyph={GLYPHS.info} />
       <Card>
         <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>
-          {t(lang, 'appName')} — {t(lang, 'versionLabel')}: {updateStatus.runtimeVersion ?? '1.1.0'} · me.auramarketing.basera
+          {t(lang, 'appName')} — {t(lang, 'versionLabel')}: {readInstalledVersion().label ?? '—'} · me.auramarketing.basera
         </Text>
         <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'aboutModels')}</Text>
         <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'hardwareStatus')}</Text>

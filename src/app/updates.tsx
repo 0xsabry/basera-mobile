@@ -13,6 +13,7 @@ import { isAccessibilityBusy } from '../state/accessibilityBusy';
 import { useSettings } from '../state/SettingsContext';
 import { GLYPHS } from '../theme/glyphs';
 import { spacing } from '../theme/tokens';
+import { readInstalledVersion } from '../update/appVersion';
 import { currentReleaseNote } from '../update/releaseNotes';
 import { updateService, type UpdateStatus } from '../update/UpdateService';
 
@@ -72,6 +73,13 @@ export default function UpdatesScreen() {
     // On success the app reloads; nothing else to do here.
   };
 
+  // The installed APK's version, read from the native package — OTA
+  // bundles cannot change it, unlike the runtime string or the notes
+  // below (which describe the running bundle, not the installation).
+  const installed = readInstalledVersion();
+  const fmtDateTime = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US') : null;
+
   const note = currentReleaseNote();
   const phaseText =
     status.phase === 'checking'
@@ -98,11 +106,14 @@ export default function UpdatesScreen() {
       <SectionHeader title={t(lang, 'updates')} glyph={GLYPHS.updates} />
 
       <QuietGroup>
+        {infoRow(t(lang, 'versionLabel'), installed.label ?? '—')}
         {infoRow(t(lang, 'updateRuntime'), status.runtimeVersion ?? '—')}
         {infoRow(t(lang, 'updateChannel'), status.channel ?? '—')}
         {infoRow(
           t(lang, 'updateCurrentId'),
-          status.isEmbeddedLaunch || !status.currentUpdateId ? t(lang, 'updateEmbedded') : status.currentUpdateId,
+          status.isEmbeddedLaunch || !status.currentUpdateId
+            ? t(lang, 'updateEmbedded')
+            : `${status.currentUpdateId}${fmtDateTime(status.currentUpdateCreatedAt) ? ` · ${fmtDateTime(status.currentUpdateCreatedAt)}` : ''}`,
         )}
         {infoRow(t(lang, 'updateLastCheck'), status.lastCheckAt ?? t(lang, 'updateNeverChecked'))}
       </QuietGroup>
