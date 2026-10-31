@@ -26,6 +26,16 @@ const ActivityIndicator = host('div');
 const TextInput = function MockTextInput(props) {
   return React.createElement('input', { value: (props && props.value) || '', readOnly: true });
 };
+// StatusBar renders nothing visually; the stub records the props the
+// app drives it with so tests can assert the theme wiring.
+const StatusBar = function MockStatusBar(props) {
+  return React.createElement('div', {
+    'data-rn': 'StatusBar',
+    'data-barstyle': (props && props.barStyle) || '',
+    'data-background': (props && props.backgroundColor) || '',
+    'data-translucent': props && props.translucent ? 'true' : 'false',
+  });
+};
 
 module.exports = {
   I18nManager: { allowRTL: () => undefined, forceRTL: () => undefined, isRTL: false },
@@ -38,6 +48,7 @@ module.exports = {
   Image,
   ActivityIndicator,
   TextInput,
+  StatusBar,
   StyleSheet: {
     create: (styles) => styles,
     flatten: (s) => s,

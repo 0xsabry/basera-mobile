@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import React, { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
+import { ThemedStatusBar } from '../components/ThemedStatusBar';
 import { SettingsProvider, useSettings } from '../state/SettingsContext';
 import { getLocationSharingService } from '../guardian/LocationSharingService';
 import '../guardian/backgroundTask';
@@ -31,7 +32,13 @@ function RootStack() {
     headerTitleStyle: { fontWeight: '700' as const },
   };
   return (
-    <Stack screenOptions={{ contentStyle: { backgroundColor: colors.background } }}>
+    <>
+      {/* Status-bar icons follow the resolved theme (dark icons on the
+          light theme, light icons on dark) — without this the battery /
+          clock vanish on the ivory background. Renders inside the
+          SettingsProvider tree, so it reacts to theme changes live. */}
+      <ThemedStatusBar />
+      <Stack screenOptions={{ contentStyle: { backgroundColor: colors.background } }}>
       {/* Main tab navigation (Home / Assistance / History / Family / Settings) */}
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="onboarding" options={{ title: t(lang, 'onboardingTitle'), ...header }} />
@@ -42,7 +49,8 @@ function RootStack() {
       <Stack.Screen name="updates" options={{ title: t(lang, 'updates'), ...header }} />
       <Stack.Screen name="places" options={{ title: t(lang, 'places'), ...header }} />
       <Stack.Screen name="alerts" options={{ title: t(lang, 'alertsTitle'), ...header }} />
-    </Stack>
+      </Stack>
+    </>
   );
 }
 
