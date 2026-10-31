@@ -150,7 +150,7 @@ describe('PlacesAssistant — honest, real-data answers', () => {
     });
     const found = await assistant.findPlace('ar', 'النادي');
     expect(found).toContain('مدخل جانبي');
-    expect(await assistant.findPlace('ar', 'مكان مش موجود')).toContain('ملقيتش');
+    expect(await assistant.findPlace('ar', 'مكان مش موجود')).toContain('لم أجد');
     expect(describePlace('en', (await store.list())[0])).toContain('النادي');
   });
 

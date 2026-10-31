@@ -31,7 +31,7 @@ describe('SpeechService repeat semantics', () => {
     await svc.repeatLast();
     expect(mockSpeak).toHaveBeenCalledTimes(1);
     const [text, opts] = mockSpeak.mock.calls[0];
-    expect(text).toBe('لسه مفيش حاجة تتكرر.');
+    expect(text).toBe('لا يوجد ما يمكن تكراره بعد.');
     expect(text).not.toContain('أهلاً بك');
     expect(opts.language).toBe('ar-EG');
     // And the nothing-to-repeat message must not itself become repeatable.
