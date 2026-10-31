@@ -6,8 +6,9 @@
  * stacking, oversized repetitive cards, unbalanced spacing, weak
  * hierarchy, too much text inside cards. The recomposition keeps
  * every destination and every datum the old screen showed, in a
- * compact order: (1) compact brand header (logo + name/tagline,
- * one-line greeting, date), (2) the «المساعد الذكي» hero, (3) the
+ * compact order: (1) compact header (name/tagline text — the logo
+ * image was removed by owner order 2026-10-31 — one-line greeting,
+ * date), (2) the «المساعد الذكي» hero, (3) the
  * four core features as a 2×2 grid with ONE-line subtitles, (4) the
  * SOS safety strip (danger treatment; same trigger flow as the
  * Assistance/Alerts SOS buttons), (5) the glasses status as a

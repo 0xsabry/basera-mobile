@@ -273,7 +273,10 @@ export function AppHeader({
   return (
     <View style={styles.appHeader}>
       <View style={styles.brandRow}>
-        <BrandLogo height={36} label={brandName} />
+        {/* No logo image here — owner order 2026-10-31 (the Home
+            header logo "has no use"); the name/tagline text, the
+            greeting and the date carry the header. BrandLogo itself
+            stays in the library for onboarding. */}
         <View style={styles.brandText}>
           <Text accessibilityRole="header" style={[styles.brandName, { color: colors.text, fontSize: type.body }]}>
             {brandName}
