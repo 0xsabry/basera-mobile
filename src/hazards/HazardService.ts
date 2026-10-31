@@ -18,6 +18,14 @@
  * Guardian location is attached ONLY by the server-side flow and ONLY
  * when the user has location sharing ON; this module never sends
  * coordinates itself — it references the hazard event row.
+ *
+ * DEPLOYED-CONTRACT NOTE (owner's Supabase project): there is no
+ * hazard_events table and no notify-guardian function in the deployed
+ * project. SOS alerts are rows in `sos_alerts`, gated by the wearer's
+ * OWN sos_sharing_enabled consent; hazard (camera) events have no
+ * server destination in the deployed schema, so their guardian outcome
+ * is honestly 'unavailable' — they remain on-device events. See
+ * docs/SUPABASE_INTEGRATION.md.
  */
 import { speechService } from '../ai/SpeechService';
 import type { AppLanguage, Detection } from '../ai/types';
@@ -32,8 +40,9 @@ import { RiskEngine, type HazardAlert } from './RiskEngine';
 export type GuardianNotifyOutcome = 'sent' | 'failed' | 'unavailable';
 
 export interface HazardNotifier {
-  /** Inserts the hazard event server-side (when configured + signed in)
-   *  and invokes the notify-guardian Edge Function. */
+  /** SOS: records the alert in sos_alerts for linked guardians when
+   *  the wearer's SOS consent is on. Hazard events have no deployed
+   *  server destination and honestly report 'unavailable'. */
   notify(event: {
     className: string;
     level: 'medium' | 'high';
@@ -44,33 +53,44 @@ export interface HazardNotifier {
   }): Promise<GuardianNotifyOutcome>;
 }
 
-/** Real notifier over Supabase. Unconfigured / signed-out → 'unavailable'. */
+/**
+ * Real notifier over the DEPLOYED Supabase contract.
+ * - SOS: inserts into sos_alerts ONLY when the wearer's own
+ *   sos_sharing_enabled consent is ON (consent off ⇒ the SOS stays
+ *   local-only and the outcome says so — never fake-sent). When the
+ *   wearer also shares location, their last shared fix is attached as
+ *   the alert snapshot. 'sent' means the sos_alerts row was accepted —
+ *   linked guardians can then read it (Realtime/polling in their PWA);
+ *   delivery to a guardian's phone is never guaranteed.
+ * - Hazard (camera) events: the deployed project has no table for
+ *   them, so the outcome is 'unavailable' — the event stays on-device.
+ * Unconfigured / signed-out → 'unavailable'.
+ */
 export const supabaseHazardNotifier: HazardNotifier = {
   async notify(event) {
+    if (event.source !== 'manual-sos') return 'unavailable';
     const client = getSupabaseClient();
     if (!client) return 'unavailable';
     const guardian = getGuardianService();
     const user = await guardian.getCurrentUser().catch(() => null);
     if (!user) return 'unavailable';
     try {
-      const { data, error } = await client
-        .from('hazard_events')
-        .insert({
-          user_id: user.id,
-          hazard_class: event.className,
-          risk_level: event.level,
-          confidence: event.confidence,
-          direction: event.direction,
-          proximity_category: event.proximity,
-          source: event.source,
-        })
-        .select('id')
-        .single();
-      if (error || !data) return 'failed';
-      const { error: fnError } = await client.functions.invoke('notify-guardian', {
-        body: { type: 'hazard', ownerUserId: user.id, hazardEventId: data.id },
-      });
-      return fnError ? 'failed' : 'sent';
+      const consent = await guardian.getConsent();
+      if (!consent.sosSharingEnabled) return 'unavailable';
+      const last = consent.locationSharingEnabled
+        ? await guardian.getLatestLocation(user.id).catch(() => null)
+        : null;
+      await guardian.sendSosAlert(
+        last
+          ? {
+              lat: last.lat,
+              lng: last.lng,
+              accuracyM: last.accuracyM,
+              recordedAt: last.recordedAt,
+            }
+          : null,
+      );
+      return 'sent';
     } catch {
       return 'failed';
     }
