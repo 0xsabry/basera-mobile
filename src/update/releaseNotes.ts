@@ -23,6 +23,16 @@ export interface ReleaseNote {
 /** Newest first. */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-11-01',
+    runtimeVersion: '1.1.0',
+    titleEn: 'BASERA 1.1.7 — Silent start, true version display, automatic updates',
+    titleAr: 'بصيرة 1.1.7 — بدء صامت وعرض الإصدار الحقيقي وتحديثات تلقائية',
+    bodyEn:
+      'Three fixes from device testing. The app no longer speaks on its own when you open it or move between tabs — speech now answers only what you ask for: a scan you start, a text you read, a command you give, or a button you press. The Updates screen and Settings now show the real version of the installed app, read from the app file itself, instead of an internal runtime number. And updates now finish the job by themselves: once a new update has downloaded, it applies automatically at the next app start — no buttons to hunt for.',
+    bodyAr:
+      'ثلاثة إصلاحات بناءً على تجربة الجهاز. لم يعد التطبيق يتكلم من تلقاء نفسه عند فتحه أو عند التنقل بين التبويبات — فالنطق الآن يجيب فقط عما تطلبه: فحصًا تبدأه، أو نصًا تقرأه، أو أمرًا تعطيه، أو زرًا تضغطه. وأصبح الإصدار الحقيقي للتطبيق المثبّت يظهر الآن في شاشة التحديثات وفي الإعدادات، مقروءًا من ملف التطبيق نفسه بدلًا من رقم داخلي لوقت التشغيل. وأصبحت التحديثات تُكمل عملها بنفسها: فبمجرد تنزيل تحديث جديد يُطبّق تلقائيًا عند بدء التطبيق التالي — دون الحاجة إلى البحث عن أي أزرار.',
+  },
+  {
     date: '2026-10-31',
     runtimeVersion: '1.1.0',
     titleEn: 'BASERA 1.1.6 — Black launch screen, voice picker in Settings, samples removed',
