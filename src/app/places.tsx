@@ -38,7 +38,7 @@ import {
   type Place,
   type PlaceCategory,
 } from '../places/PlacesStore';
-import { announceNearbyPlaces, drainPendingProximityEvents, type PendingProximityEvent } from '../places/proximity';
+import { drainPendingProximityEvents, type PendingProximityEvent } from '../places/proximity';
 import { useSettings } from '../state/SettingsContext';
 import { GLYPHS, PLACE_CATEGORY_GLYPHS } from '../theme/glyphs';
 import { radius, spacing } from '../theme/tokens';
@@ -150,11 +150,11 @@ export default function PlacesScreen() {
   useFocusEffect(
     useCallback(() => {
       void refresh();
-      // Surface background-recorded proximity events, then run the
-      // foreground proximity check (speaks only with a granted fix).
+      // Surface background-recorded proximity events as TEXT only.
+      // Focus never speaks (owner order 2026-11-01): entering a screen
+      // is silent; speech answers user actions only.
       void drainPendingProximityEvents().then(setRecentNear);
-      void announceNearbyPlaces(lang, settings.proximityRadiusM);
-    }, [refresh, lang, settings.proximityRadiusM]),
+    }, [refresh]),
   );
 
   const saveWithLocation = async () => {

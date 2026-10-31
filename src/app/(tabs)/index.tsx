@@ -39,7 +39,6 @@ import { getGuardianService } from '../../guardian/GuardianService';
 import { alertHistoryStore, type AlertEvent } from '../../hazards/AlertHistoryStore';
 import { triggerSos } from '../../hazards/HazardService';
 import { t } from '../../i18n/strings';
-import { announceNearbyPlaces } from '../../places/proximity';
 import { pushOnce } from '../../state/navGuard';
 import { useSettings } from '../../state/SettingsContext';
 import { GLYPHS } from '../../theme/glyphs';
@@ -59,14 +58,14 @@ export default function HomeScreen() {
   }, []);
 
   // Tab screens stay mounted — refresh on every focus so "last result"
-  // and the family state are never stale.
+  // and the family state are never stale. Focus is SILENT (owner order
+  // 2026-11-01): no speech fires on entry or tab switches — proximity
+  // events are recorded in the background and surfaced as text in
+  // Places; speech answers user actions only.
   useFocusEffect(
     useCallback(() => {
       void refresh();
-      // Foreground proximity awareness: speaks only when a fix is
-      // already permitted and a place is newly within radius.
-      void announceNearbyPlaces(lang, settings.proximityRadiusM);
-    }, [refresh, lang, settings.proximityRadiusM]),
+    }, [refresh]),
   );
 
   if (loaded && !settings.onboardingDone) {
