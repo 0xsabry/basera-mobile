@@ -5,8 +5,11 @@
 // Supabase service-role key or an FCM server credential in this file.
 (function (root) {
   root.BASERA_CONFIG = {
-    supabaseUrl: "", // e.g. "https://abcdefgh.supabase.co"
-    supabaseAnonKey: "", // Supabase project Settings -> API -> anon public
+    // Deployed BASERA project (owner-created). The publishable key is a
+    // PUBLIC client key by design — RLS enforces all access. Never put a
+    // secret/service-role key here.
+    supabaseUrl: "https://vbvvwyeccsegfwprwrga.supabase.co",
+    supabaseAnonKey: "sb_publishable_Jt84WL6Ra7Ww_XV34Bk8eA_NwDYSecI",
     // Firebase web app config (Project settings -> Your apps -> Web app).
     // Leave null to run the PWA fully WITHOUT push notifications.
     firebase: null,

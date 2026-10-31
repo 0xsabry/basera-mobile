@@ -26,7 +26,9 @@
       },
       "eas": {
         "projectId": "f402737d-1b54-441d-8738-99ce8e9009e9"
-      }
+      },
+      "supabaseUrl": "https://vbvvwyeccsegfwprwrga.supabase.co",
+      "supabaseAnonKey": "sb_publishable_Jt84WL6Ra7Ww_XV34Bk8eA_NwDYSecI"
     },
     "icon": "./assets/icon.png",
     "ios": {
