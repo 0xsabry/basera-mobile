@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-01',
     runtimeVersion: '1.1.0',
+    titleEn: 'Update test — this note arrived over the air',
+    titleAr: 'اختبار التحديث — وصلتك هذه الملاحظة عبر الهواء',
+    bodyEn:
+      'This is a delivery test published after the 1.1.7 app file. If you are reading it, your app found, downloaded and applied an over-the-air update by itself — no reinstall and no manual check. The installed app version at the top of this screen should read 1.1.7 (9). Nothing else changed in this update.',
+    bodyAr:
+      'هذا اختبار توصيل نُشر بعد ملف التطبيق 1.1.7. إذا كنت تقرأ هذه الملاحظة، فتطبيقك وجد تحديثًا هوائيًا ونزّله وطبّقه بنفسه — دون إعادة تثبيت ودون فحص يدوي. يجب أن يظهر إصدار التطبيق المثبّت في أعلى هذه الشاشة 1.1.7 (9). لا تغييرات أخرى في هذا التحديث.',
+  },
+  {
+    date: '2026-11-01',
+    runtimeVersion: '1.1.0',
     titleEn: 'BASERA 1.1.7 — Silent start, true version display, automatic updates',
     titleAr: 'بصيرة 1.1.7 — بدء صامت وعرض الإصدار الحقيقي وتحديثات تلقائية',
     bodyEn:
