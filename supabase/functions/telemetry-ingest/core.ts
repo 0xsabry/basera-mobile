@@ -1,5 +1,5 @@
 /**
- * telemetry-ingest core — runtime-agnostic request handling (v4).
+ * telemetry-ingest core — runtime-agnostic request handling (v5).
  *
  * Everything except the Supabase client wiring lives here so the full
  * request path is testable under Deno with a fake RPC: method and
@@ -17,10 +17,10 @@
  *   missing/wrong-typed value); more than 50 entries reject the batch.
  * - `installation`, when present, must be an object with in-enum,
  *   in-range fields.
- * A Supabase user session is NOT required: the Authorization header
- * only carries the publishable key (the platform's verify_jwt layer
- * checks that a valid JWT is present). The installation secret is
- * the actual credential.
+ * A Supabase user session is NOT required: the client sends the
+ * publishable key in the apikey header only (never as a Bearer
+ * token); the platform gateway validates the key. The installation
+ * secret is the actual credential.
  */
 
 export const MAX_BODY_BYTES = 65536;
@@ -125,6 +125,13 @@ export function validateFacts(
   ) {
     return { error: 'invalid_current_update_id' };
   }
+  // is_embedded_launch is tri-state: a present value MUST be a real
+  // boolean (anything else rejects the request); an absent value
+  // stays UNKNOWN (null) end-to-end — it is never coerced to false.
+  const emb = facts.is_embedded_launch;
+  if (emb !== undefined && emb !== null && typeof emb !== 'boolean') {
+    return { error: 'invalid_is_embedded_launch' };
+  }
   return {
     facts: {
       p_platform: str(facts.platform, 16),
@@ -134,7 +141,7 @@ export function validateFacts(
       p_runtime_version: str(facts.runtime_version, 32),
       p_channel: str(facts.channel, 32),
       p_current_update_id: typeof cuid === 'string' ? cuid : null,
-      p_is_embedded_launch: facts.is_embedded_launch === true,
+      p_is_embedded_launch: typeof emb === 'boolean' ? emb : null,
     },
   };
 }
@@ -154,7 +161,11 @@ export function checkBatch(events: unknown[]): { error: string; received: number
 /** Map the database verdict to the HTTP response the client expects. */
 export function mapIngestResult(result: unknown): { status: number; body: Record<string, unknown> } {
   const r = (result ?? {}) as Record<string, unknown>;
-  if (r.error === 'secret_mismatch' || r.error === 'invalid_installation_credentials') {
+  if (
+    r.error === 'secret_mismatch' ||
+    r.error === 'invalid_installation_credentials' ||
+    r.error === 'unknown_installation'
+  ) {
     return { status: 403, body: { error: r.error } };
   }
   if (r.error === 'registration_throttled') {
@@ -184,11 +195,20 @@ export type RpcCall = (
   args: Record<string, unknown>,
 ) => Promise<{ data: unknown; error: unknown }>;
 
+export interface IngestRpcs {
+  ingest: RpcCall;
+  bootstrap: RpcCall;
+}
+
 /**
- * The full request handler. `rpc` performs the telemetry_ingest call
- * (service role) and resolves with the function's jsonb verdict.
+ * The full request handler. Two modes:
+ * - Bootstrap (header `x-telemetry-bootstrap: 1`): the client has no
+ *   identity yet — the app contains no CSPRNG, so the SERVER issues
+ *   one (telemetry_bootstrap). Body: { installation: facts } only;
+ *   an `events` member is a protocol error.
+ * - Ingest (default): id + secret headers, strict envelope, verdict.
  */
-export async function handleIngestRequest(req: Request, rpc: RpcCall): Promise<Response> {
+export async function handleIngestRequest(req: Request, rpcs: IngestRpcs): Promise<Response> {
   const json = (body: unknown, status = 200): Response =>
     new Response(JSON.stringify(body), {
       status,
@@ -196,11 +216,14 @@ export async function handleIngestRequest(req: Request, rpc: RpcCall): Promise<R
     });
 
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+  const isBootstrap = req.headers.get('x-telemetry-bootstrap') === '1';
 
   const installationId = req.headers.get('x-installation-id') ?? '';
   const secret = req.headers.get('x-installation-secret') ?? '';
-  if (!UUID_RE.test(installationId) || secret.length < 32 || secret.length > 256) {
-    return json({ error: 'invalid_installation_credentials' }, 401);
+  if (!isBootstrap) {
+    if (!UUID_RE.test(installationId) || secret.length < 32 || secret.length > 256) {
+      return json({ error: 'invalid_installation_credentials' }, 401);
+    }
   }
 
   let rawBody: string;
@@ -221,6 +244,28 @@ export async function handleIngestRequest(req: Request, rpc: RpcCall): Promise<R
   // primitives and arrays are rejected — never coerced.
   if (!isPlainObject(parsed)) return json({ error: 'invalid_body' }, 400);
 
+  if ('installation' in parsed && parsed.installation !== null && !isPlainObject(parsed.installation)) {
+    return json({ error: 'invalid_installation' }, 400);
+  }
+  const checked = validateFacts((parsed.installation ?? {}) as IngestFacts);
+  if ('error' in checked) return json({ error: checked.error }, 400);
+
+  if (isBootstrap) {
+    if ('events' in parsed) return json({ error: 'invalid_events' }, 400);
+    const { data, error } = await rpcs.bootstrap({ ...checked.facts });
+    if (error) return json({ error: 'storage_error' }, 500);
+    const d = (data ?? {}) as Record<string, unknown>;
+    if (d.error === 'registration_throttled') {
+      return json({ error: 'registration_throttled' }, 429);
+    }
+    if (typeof d.error === 'string') return json({ error: 'storage_error' }, 500);
+    return json({
+      installation_id: d.installation_id,
+      installation_secret: d.secret,
+      event_id_pool: Array.isArray(d.event_id_pool) ? d.event_id_pool : [],
+    });
+  }
+
   // `events` is required and must be an array. A missing or
   // wrong-typed value rejects the request; it is never replaced by
   // an empty array (which would fake a successful heartbeat).
@@ -233,13 +278,7 @@ export async function handleIngestRequest(req: Request, rpc: RpcCall): Promise<R
     return json({ error: batchError.error, max: MAX_EVENTS, received: batchError.received }, 400);
   }
 
-  if ('installation' in parsed && parsed.installation !== null && !isPlainObject(parsed.installation)) {
-    return json({ error: 'invalid_installation' }, 400);
-  }
-  const checked = validateFacts((parsed.installation ?? {}) as IngestFacts);
-  if ('error' in checked) return json({ error: checked.error }, 400);
-
-  const { data, error } = await rpc({
+  const { data, error } = await rpcs.ingest({
     p_installation_id: installationId,
     p_secret_hash: await sha256Hex(secret),
     ...checked.facts,

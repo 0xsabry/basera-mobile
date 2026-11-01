@@ -52,7 +52,7 @@ function collectFacts(): InstallationFacts {
   }
   const installed = readInstalledVersion();
   return {
-    platform: Platform.OS,
+    platform: Platform.OS === 'ios' ? 'ios' : 'android',
     os_version: String(Platform.Version ?? ''),
     app_version: installed.version,
     version_code: installed.build ? Number(installed.build) || null : null,
@@ -80,11 +80,42 @@ export const telemetry = new Telemetry({
         accepted?: string[];
         duplicates?: string[];
         rejected?: { client_event_id: string | null; reason: string }[];
+        event_id_pool?: string[];
       };
       return {
         accepted: data.accepted ?? [],
         duplicates: data.duplicates ?? [],
         rejected: data.rejected ?? [],
+        event_id_pool: data.event_id_pool ?? [],
+      };
+    } catch {
+      return null;
+    }
+  },
+  requestBootstrap: async (facts) => {
+    if (!endpoint || !publishableKey) return null;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          // Publishable key in the apikey header only (not a JWT).
+          apikey: publishableKey,
+          'x-telemetry-bootstrap': '1',
+        },
+        body: JSON.stringify({ installation: facts }),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as {
+        installation_id?: string;
+        installation_secret?: string;
+        event_id_pool?: string[];
+      };
+      if (!data.installation_id || !data.installation_secret) return null;
+      return {
+        installation_id: data.installation_id,
+        installation_secret: data.installation_secret,
+        event_id_pool: data.event_id_pool ?? [],
       };
     } catch {
       return null;

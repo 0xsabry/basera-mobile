@@ -66,16 +66,29 @@ never retried, never silently dropped. A failed REQUEST (oversized,
 auth, server error, offline) returns no verdict and the client keeps
 its entire queue.
 
-### Identity & privacy
-- Installation ID: random UUID v4 at first launch, persisted in
-  SecureStore (fallback AsyncStorage). A random per-install secret
-  authenticates the device's own reports; only its SHA-256 hash is
-  stored server-side; the first request pins it.
+### Identity & privacy (v5 — server-issued)
+- The app ships NO CSPRNG: expo-crypto is absent from APK 1.1.8 (and
+  from the dependency tree), no other random-values library is
+  present, and no native dependency may be added for a metric.
+  Math.random is never used for any telemetry identifier.
+- Identity is therefore issued by the SERVER: on first contact the
+  function calls `telemetry_bootstrap`, which mints the installation
+  id and a 256-bit-equivalent secret from `gen_random_uuid()` (the
+  server OS CSPRNG), returns the secret exactly once, and stores only
+  its SHA-256 hash. The client persists id + secret in SecureStore
+  (fallback AsyncStorage). Ingest REFUSES ids the server never issued
+  (`unknown_installation`) — there is no self-registration.
+- Event ids are also server-minted: bootstrap returns a pool of 100
+  and every ingest verdict tops it up by 50. Events recorded before
+  first contact queue WITHOUT ids and are assigned pooled ids —
+  persisted before sending — at that first contact.
 - Anonymous by design: no account/user link, no IMEI, no location, no
   contacts, no hardware IDs. Facts recorded: platform, OS version,
-  app version + build, runtime, channel, running update id.
-- Deduplication: installations by primary key; events by a unique
-  client-generated event id (retries/replays are idempotent).
+  app version + build, runtime, channel, running update id, and
+  embedded-launch state as a TRI-STATE (a real boolean, or null =
+  unknown — an absent fact is never coerced to false).
+- Deduplication: installations by primary key; events by their
+  unique server-issued event id (retries/replays are idempotent).
 
 ### Downloaded vs Applied
 - `update_downloaded` fires when the bundle is staged.
@@ -88,17 +101,33 @@ its entire queue.
 - Heartbeat: every flush carries the installation facts, so the same
   call registers the first launch and refreshes `last_seen_at` later.
 
-### Offline
-Events persist in a capped local queue (200). Flush is attempted at
-launch, after each update event, and on init; a failed flush leaves
-the queue intact for the next attempt.
+### Offline, durability, and overflow (v5)
+All queue mutations run through ONE serialized chain and are
+persisted before the operation counts as done: `record()` resolves
+only after its event is on disk; `flush()` first re-persists the
+whole local state and refuses to send if storage fails; events are
+removed only after a server verdict, and if the post-verdict persist
+fails the in-memory state reverts so the events resend (the server
+dedupes). Flush is attempted at launch and after each update event.
+
+The 200-event queue NEVER drops a queued event. Overflow policy
+(explicit and counted in persisted state, readable via diagnostics):
+at capacity, incoming `update_check`/`update_available` are refused
+(+counted); an incoming critical event (downloaded / applied /
+failed) evicts the oldest queued `update_check` (else oldest
+`update_available`, +counted); with nothing evictable it is refused
+(+counted). The dead-letter store rotates at 100 with a persisted
+drop counter — dead-lettered events were already definitively
+refused by the server, so rotation loses local diagnostics only.
 
 ### Measurement trust limits (honest bounds)
 - Counts are trustworthy for honest, unmodified clients.
-- Installations are anonymous and self-registered by design, so a
-  person running a modified/rooted build can register extra fake
-  installations or forge events for their OWN installation id (it is
-  bound to their installation secret). The server bounds this with a
+- Installations are anonymous by design and bootstrap is
+  unauthenticated (any genuine first launch must be able to obtain
+  an identity), so a person running a modified/rooted build can mint
+  extra fake installations (bounded by the 500/hour registration
+  circuit breaker) or forge events for their OWN installation id
+  (bound to their installation secret). The server bounds this with a
   request-size cap, batch cap, strict field validation and a
   per-installation hourly event budget, but the system does NOT claim
   to be tamper-proof against the owner of a modified device.
@@ -123,6 +152,7 @@ migration never touches).
 |---|---|---|---|---|
 | tables app_installations / app_update_events / dashboard_owners | — | revoked (all) | revoked (all) | platform default (bypass) |
 | public.telemetry_ingest (DEFINER) | revoked | revoked | revoked | **EXECUTE** |
+| public.telemetry_bootstrap (DEFINER) | revoked | revoked | revoked | **EXECUTE** |
 | basera_telemetry_private.is_dashboard_owner (DEFINER) | revoked | revoked | revoked | — |
 | basera_telemetry_private.dashboard_* (DEFINER) | revoked | revoked | **EXECUTE** (owner gate inside) | — |
 | public.dashboard_* wrappers (INVOKER) | revoked | revoked | **EXECUTE** | — |
@@ -135,10 +165,12 @@ pre-existing in production is granted, revoked, altered, or dropped.
 - Deployed with `verify_jwt = true` (config.toml
   `[functions.telemetry-ingest]`, or the dashboard equivalent): the
   gateway rejects requests with no valid JWT before the code runs.
-  The app sends the publishable key as its Bearer token with NO user
-  session — telemetry must work logged-out, and a "valid request from
-  APK 1.1.8" means exactly that shape plus the installation headers.
-  verify_jwt is anti-noise only (the key is public by design).
+  The app sends the publishable key in the `apikey` header ONLY —
+  the new Supabase keys are not JWTs and are never sent as Bearer
+  tokens — with NO user session: telemetry must work logged-out, and
+  a "valid request from APK 1.1.8" means exactly that shape plus the
+  installation headers. verify_jwt is anti-noise only (the key is
+  public by design).
 - The real credential is the per-installation secret: 256-bit random,
   stored only as a SHA-256 hash, pinned on first use; a wrong secret
   is refused (403) and can neither read nor write anything.

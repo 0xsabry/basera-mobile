@@ -2,7 +2,7 @@
  * telemetry-ingest handler tests — run with Deno:
  *   deno test --allow-read supabase/tests/telemetry/core.deno.test.ts
  * Exercises the REAL handleIngestRequest from the function's core.ts
- * with a fake RPC standing in for public.telemetry_ingest().
+ * with fake RPCs standing in for telemetry_ingest / telemetry_bootstrap.
  */
 import {
   handleIngestRequest,
@@ -19,17 +19,25 @@ function assertEquals(a: unknown, b: unknown, msg: string) {
 const ID = '12345678-1234-4234-9234-1234567890ab';
 const SECRET = 's'.repeat(40);
 
-interface RpcSpy {
-  calls: Record<string, unknown>[];
-  result: { data: unknown; error: unknown };
+interface RpcResult {
+  data: unknown;
+  error: unknown;
 }
-function spy(result: RpcSpy['result']): { rpc: (a: Record<string, unknown>) => Promise<RpcSpy['result']>; calls: Record<string, unknown>[] } {
-  const calls: Record<string, unknown>[] = [];
+function spies(ingestResult: RpcResult, bootstrapResult?: RpcResult) {
+  const ingestCalls: Record<string, unknown>[] = [];
+  const bootstrapCalls: Record<string, unknown>[] = [];
   return {
-    calls,
-    rpc: async (args: Record<string, unknown>) => {
-      calls.push(args);
-      return result;
+    ingestCalls,
+    bootstrapCalls,
+    rpcs: {
+      ingest: async (args: Record<string, unknown>) => {
+        ingestCalls.push(args);
+        return ingestResult;
+      },
+      bootstrap: async (args: Record<string, unknown>) => {
+        bootstrapCalls.push(args);
+        return bootstrapResult ?? { data: null, error: new Error('unused') };
+      },
     },
   };
 }
@@ -51,14 +59,14 @@ async function bodyJson(res: Response): Promise<Record<string, unknown>> {
 }
 
 Deno.test('valid request without any Supabase session reaches the RPC with a hashed secret', async () => {
-  const { rpc, calls } = spy(OK_VERDICT);
+  const { rpcs, ingestCalls } = spies(OK_VERDICT);
   const res = await handleIngestRequest(
     req({ installation: { platform: 'android', app_version: '1.1.8', version_code: 10 }, events: [] }),
-    rpc,
+    rpcs,
   );
   assertEquals(res.status, 200, 'status');
-  assertEquals(calls.length, 1, 'rpc called once');
-  const args = calls[0];
+  assertEquals(ingestCalls.length, 1, 'rpc called once');
+  const args = ingestCalls[0];
   assertEquals(args.p_installation_id, ID, 'installation id passed');
   assert(typeof args.p_secret_hash === 'string' && (args.p_secret_hash as string).length === 64, 'secret hashed to sha-256 hex');
   assert((args.p_secret_hash as string) !== SECRET, 'raw secret never forwarded');
@@ -66,62 +74,64 @@ Deno.test('valid request without any Supabase session reaches the RPC with a has
 });
 
 Deno.test('missing or short installation secret is 401 and never reaches the RPC', async () => {
-  const { rpc, calls } = spy(OK_VERDICT);
+  const { rpcs, ingestCalls } = spies(OK_VERDICT);
   const noSecret = new Request('https://example.test/', {
     method: 'POST',
     headers: { 'x-installation-id': ID },
     body: JSON.stringify({ events: [] }),
   });
-  assertEquals((await handleIngestRequest(noSecret, rpc)).status, 401, 'no secret');
-  assertEquals((await handleIngestRequest(req({ events: [] }, { 'x-installation-secret': 'short' }), rpc)).status, 401, 'short secret');
-  assertEquals((await handleIngestRequest(req({ events: [] }, { 'x-installation-id': 'not-a-uuid' }), rpc)).status, 401, 'bad id');
-  assertEquals(calls.length, 0, 'rpc untouched');
+  assertEquals((await handleIngestRequest(noSecret, rpcs)).status, 401, 'no secret');
+  assertEquals((await handleIngestRequest(req({ events: [] }, { 'x-installation-secret': 'short' }), rpcs)).status, 401, 'short secret');
+  assertEquals((await handleIngestRequest(req({ events: [] }, { 'x-installation-id': 'not-a-uuid' }), rpcs)).status, 401, 'bad id');
+  assertEquals(ingestCalls.length, 0, 'rpc untouched');
 });
 
-Deno.test('wrong installation secret surfaces as 403 from the database verdict', async () => {
-  const { rpc } = spy({ data: { error: 'secret_mismatch' }, error: null });
-  const res = await handleIngestRequest(req({ events: [] }), rpc);
-  assertEquals(res.status, 403, 'status');
-  assertEquals((await bodyJson(res)).error, 'secret_mismatch', 'error code');
+Deno.test('wrong secret and unknown installation surface as 403 from the verdict', async () => {
+  for (const err of ['secret_mismatch', 'unknown_installation']) {
+    const { rpcs } = spies({ data: { error: err }, error: null });
+    const res = await handleIngestRequest(req({ events: [] }), rpcs);
+    assertEquals(res.status, 403, `${err} status`);
+    assertEquals((await bodyJson(res)).error, err, 'error code');
+  }
 });
 
 Deno.test('registration throttling maps to 429 so the client keeps its queue', async () => {
-  const { rpc } = spy({ data: { error: 'registration_throttled' }, error: null });
-  const res = await handleIngestRequest(req({ events: [] }), rpc);
+  const { rpcs } = spies({ data: { error: 'registration_throttled' }, error: null });
+  const res = await handleIngestRequest(req({ events: [] }), rpcs);
   assertEquals(res.status, 429, 'status');
 });
 
 Deno.test('non-object JSON roots are rejected, never coerced', async () => {
-  const { rpc, calls } = spy(OK_VERDICT);
+  const { rpcs, ingestCalls } = spies(OK_VERDICT);
   for (const raw of ['null', '42', '"text"', '[1,2,3]', 'true']) {
-    const res = await handleIngestRequest(req(null, {}, raw), rpc);
+    const res = await handleIngestRequest(req(null, {}, raw), rpcs);
     assertEquals(res.status, 400, `root ${raw}`);
     assertEquals((await bodyJson(res)).error, 'invalid_body', `error for ${raw}`);
   }
-  assertEquals(calls.length, 0, 'rpc untouched');
+  assertEquals(ingestCalls.length, 0, 'rpc untouched');
 });
 
 Deno.test('missing or non-array events reject the request (no fake empty heartbeat)', async () => {
-  const { rpc, calls } = spy(OK_VERDICT);
+  const { rpcs, ingestCalls } = spies(OK_VERDICT);
   for (const body of [{}, { events: 'nope' }, { events: 42 }, { events: null }, { installation: {} }]) {
-    const res = await handleIngestRequest(req(body), rpc);
+    const res = await handleIngestRequest(req(body), rpcs);
     assertEquals(res.status, 400, JSON.stringify(body));
     assertEquals((await bodyJson(res)).error, 'invalid_events', 'error code');
   }
-  assertEquals(calls.length, 0, 'rpc untouched');
+  assertEquals(ingestCalls.length, 0, 'rpc untouched');
 });
 
 Deno.test('a batch over the cap hard-rejects before the RPC', async () => {
-  const { rpc, calls } = spy(OK_VERDICT);
+  const { rpcs, ingestCalls } = spies(OK_VERDICT);
   const events = Array.from({ length: MAX_EVENTS + 1 }, () => ({}));
-  const res = await handleIngestRequest(req({ events }), rpc);
+  const res = await handleIngestRequest(req({ events }), rpcs);
   assertEquals(res.status, 400, 'status');
   assertEquals((await bodyJson(res)).error, 'batch_too_large', 'error code');
-  assertEquals(calls.length, 0, 'rpc untouched');
+  assertEquals(ingestCalls.length, 0, 'rpc untouched');
 });
 
 Deno.test('an oversized streamed body is cut at the byte cap (413), RPC untouched', async () => {
-  const { rpc, calls } = spy(OK_VERDICT);
+  const { rpcs, ingestCalls } = spies(OK_VERDICT);
   const big = new ReadableStream<Uint8Array>({
     pull(controller) {
       controller.enqueue(new Uint8Array(16384).fill(97));
@@ -134,29 +144,96 @@ Deno.test('an oversized streamed body is cut at the byte cap (413), RPC untouche
     // @ts-expect-error: duplex is required by the fetch spec for stream bodies
     duplex: 'half',
   });
-  const res = await handleIngestRequest(request, rpc);
+  const res = await handleIngestRequest(request, rpcs);
   assertEquals(res.status, 413, 'status');
-  assertEquals(calls.length, 0, 'rpc untouched');
+  assertEquals(ingestCalls.length, 0, 'rpc untouched');
 });
 
 Deno.test('non-object installation facts and bad enums reject the request', async () => {
-  const { rpc, calls } = spy(OK_VERDICT);
-  const badInstall = await handleIngestRequest(req({ installation: 'x', events: [] }), rpc);
+  const { rpcs, ingestCalls } = spies(OK_VERDICT);
+  const badInstall = await handleIngestRequest(req({ installation: 'x', events: [] }), rpcs);
   assertEquals(badInstall.status, 400, 'installation shape');
   assertEquals((await bodyJson(badInstall)).error, 'invalid_installation', 'code');
-  const badPlatform = await handleIngestRequest(req({ installation: { platform: 'windows' }, events: [] }), rpc);
+  const badPlatform = await handleIngestRequest(req({ installation: { platform: 'windows' }, events: [] }), rpcs);
   assertEquals(badPlatform.status, 400, 'platform enum');
-  assertEquals(calls.length, 0, 'rpc untouched');
+  assertEquals(ingestCalls.length, 0, 'rpc untouched');
+});
+
+Deno.test('is_embedded_launch is tri-state: non-boolean rejected, absent stays null', async () => {
+  const { rpcs, ingestCalls } = spies(OK_VERDICT);
+  const bad = await handleIngestRequest(
+    req({ installation: { is_embedded_launch: 'yes' }, events: [] }),
+    rpcs,
+  );
+  assertEquals(bad.status, 400, 'string value rejected');
+  assertEquals((await bodyJson(bad)).error, 'invalid_is_embedded_launch', 'code');
+  assertEquals(ingestCalls.length, 0, 'rpc untouched for the bad request');
+
+  const absent = await handleIngestRequest(req({ installation: {}, events: [] }), rpcs);
+  assertEquals(absent.status, 200, 'absent is allowed');
+  assertEquals(ingestCalls[0].p_is_embedded_launch, null, 'absent stays unknown (null), never false');
+
+  const explicitFalse = await handleIngestRequest(
+    req({ installation: { is_embedded_launch: false }, events: [] }),
+    rpcs,
+  );
+  assertEquals(explicitFalse.status, 200, 'false is a real value');
+  assertEquals(ingestCalls[1].p_is_embedded_launch, false, 'false passes through as false');
+});
+
+Deno.test('bootstrap mode issues an identity without any secret headers', async () => {
+  const issued = {
+    data: {
+      installation_id: ID,
+      secret: 'ab'.repeat(32),
+      event_id_pool: ['11111111-2222-4333-8444-555555555555'],
+    },
+    error: null,
+  };
+  const { rpcs, bootstrapCalls, ingestCalls } = spies(OK_VERDICT, issued);
+  const request = new Request('https://example.test/', {
+    method: 'POST',
+    headers: { 'x-telemetry-bootstrap': '1' },
+    body: JSON.stringify({ installation: { platform: 'android', app_version: '1.1.8' } }),
+  });
+  const res = await handleIngestRequest(request, rpcs);
+  assertEquals(res.status, 200, 'status');
+  const body = await bodyJson(res);
+  assertEquals(body.installation_id, ID, 'id returned');
+  assertEquals(body.installation_secret, 'ab'.repeat(32), 'secret returned once');
+  assert(Array.isArray(body.event_id_pool) && body.event_id_pool.length === 1, 'pool returned');
+  assertEquals(bootstrapCalls.length, 1, 'bootstrap rpc called');
+  assertEquals(ingestCalls.length, 0, 'ingest rpc untouched');
+});
+
+Deno.test('bootstrap rejects events payloads and maps throttling to 429', async () => {
+  const { rpcs, bootstrapCalls } = spies(OK_VERDICT, { data: { error: 'registration_throttled' }, error: null });
+  const withEvents = new Request('https://example.test/', {
+    method: 'POST',
+    headers: { 'x-telemetry-bootstrap': '1' },
+    body: JSON.stringify({ events: [] }),
+  });
+  const bad = await handleIngestRequest(withEvents, rpcs);
+  assertEquals(bad.status, 400, 'events in bootstrap = protocol error');
+  assertEquals(bootstrapCalls.length, 0, 'rpc untouched');
+
+  const plain = new Request('https://example.test/', {
+    method: 'POST',
+    headers: { 'x-telemetry-bootstrap': '1' },
+    body: JSON.stringify({ installation: {} }),
+  });
+  const throttled = await handleIngestRequest(plain, rpcs);
+  assertEquals(throttled.status, 429, 'throttled maps to 429');
 });
 
 Deno.test('RPC failure maps to 500 (client keeps its queue)', async () => {
-  const { rpc } = spy({ data: null, error: new Error('db down') });
-  const res = await handleIngestRequest(req({ events: [] }), rpc);
+  const { rpcs } = spies({ data: null, error: new Error('db down') });
+  const res = await handleIngestRequest(req({ events: [] }), rpcs);
   assertEquals(res.status, 500, 'status');
 });
 
 Deno.test('GET is refused', async () => {
-  const { rpc } = spy(OK_VERDICT);
-  const res = await handleIngestRequest(new Request('https://example.test/', { method: 'GET' }), rpc);
+  const { rpcs } = spies(OK_VERDICT);
+  const res = await handleIngestRequest(new Request('https://example.test/', { method: 'GET' }), rpcs);
   assertEquals(res.status, 405, 'status');
 });

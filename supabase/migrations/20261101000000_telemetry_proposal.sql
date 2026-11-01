@@ -1,5 +1,5 @@
 -- =====================================================================
--- PROPOSAL v4 — NOT APPLIED TO PRODUCTION. DO NOT RUN without the
+-- PROPOSAL v5 — NOT APPLIED TO PRODUCTION. DO NOT RUN without the
 -- owner's explicit approval after final review (owner rule: no
 -- production migration before it is shown to him and approved).
 --
@@ -7,6 +7,21 @@
 -- Project: vbvvwyeccsegfwprwrga (the existing project — no new project).
 -- This migration is ADDITIVE ONLY: new schema objects, nothing that
 -- exists in production is altered or dropped.
+--
+-- v5 changes (owner client review round):
+--   * Installation identity is SERVER-ISSUED: the app ships no
+--     CSPRNG (expo-crypto is absent from APK 1.1.8 and no native
+--     dependency may be added for this), so a new function
+--     public.telemetry_bootstrap() generates the installation id
+--     and secret with the server's CSPRNG (gen_random_uuid) and
+--     returns the secret exactly once; only its SHA-256 is stored.
+--     telemetry_ingest no longer self-registers unknown ids — it
+--     refuses them (unknown_installation). Bootstrap also hands out
+--     a pool of server-generated event ids, so the client never
+--     mints a security-relevant identifier with Math.random.
+--   * app_installations.is_embedded_launch is NULLABLE: an absent
+--     fact stays unknown (null) instead of being coerced to a
+--     boolean; a present non-boolean fact is rejected upstream.
 --
 -- v4 changes (owner final review round):
 --   * A DEDICATED schema `basera_telemetry_private` holds the
@@ -78,7 +93,7 @@ create table if not exists public.app_installations (
   runtime_version text,
   channel text,
   current_update_id text,
-  is_embedded_launch boolean not null default true,
+  is_embedded_launch boolean,
   first_seen_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now()
 );
@@ -154,7 +169,6 @@ declare
   v_inst public.app_installations%rowtype;
   v_found boolean := false;
   v_recent bigint;
-  v_new_registrations bigint;
   v_accepted jsonb := '[]'::jsonb;
   v_duplicates jsonb := '[]'::jsonb;
   v_rejected jsonb := '[]'::jsonb;
@@ -171,7 +185,6 @@ declare
   v_field text;
   v_budget bigint := 600;
   v_new_count integer := 0;
-  v_registration_cap bigint := 500;
 begin
   if p_installation_id is null or p_secret_hash is null or length(p_secret_hash) <> 64 then
     return pg_catalog.jsonb_build_object('error', 'invalid_installation_credentials');
@@ -195,26 +208,10 @@ begin
   v_found := found;
 
   if not v_found then
-    -- Global registration circuit breaker, serialized across all new
-    -- registrations (lock ordering is consistent: per-installation
-    -- lock first, registration lock second — no cycle).
-    perform pg_advisory_xact_lock(727272);
-    select count(*) into v_new_registrations
-    from public.app_installations i
-    where i.first_seen_at > now() - interval '1 hour';
-    if v_new_registrations >= v_registration_cap then
-      return pg_catalog.jsonb_build_object('error', 'registration_throttled');
-    end if;
-    insert into public.app_installations (
-      id, secret_hash, platform, os_version, app_version, version_code,
-      runtime_version, channel, current_update_id, is_embedded_launch,
-      first_seen_at, last_seen_at
-    ) values (
-      p_installation_id, p_secret_hash, coalesce(p_platform, 'android'),
-      p_os_version, p_app_version, p_version_code, p_runtime_version,
-      p_channel, p_current_update_id, coalesce(p_is_embedded_launch, true),
-      now(), now()
-    );
+    -- Installations are created ONLY by telemetry_bootstrap (server
+    -- CSPRNG). An unknown id here was never issued: refuse it. No
+    -- row is created and no heartbeat is recorded.
+    return pg_catalog.jsonb_build_object('error', 'unknown_installation');
   elsif v_inst.secret_hash <> p_secret_hash then
     return pg_catalog.jsonb_build_object('error', 'secret_mismatch');
   end if;
@@ -350,13 +347,89 @@ begin
   return pg_catalog.jsonb_build_object(
     'accepted', v_accepted,
     'duplicates', v_duplicates,
-    'rejected', v_rejected
+    'rejected', v_rejected,
+    'event_id_pool', (
+      select coalesce(pg_catalog.jsonb_agg(g), '[]'::jsonb)
+      from (
+        select pg_catalog.gen_random_uuid()::text as g
+        from pg_catalog.generate_series(1, 50)
+      ) pool
+    )
   );
 end;
 $$;
 revoke execute on function public.telemetry_ingest(uuid, text, text, text, text, integer, text, text, text, boolean, jsonb)
   from public, anon, authenticated;
 grant execute on function public.telemetry_ingest(uuid, text, text, text, text, integer, text, text, text, boolean, jsonb)
+  to service_role;
+
+-- =====================================================================
+-- BOOTSTRAP — the only way an installation comes to exist. The app
+-- contains no CSPRNG (verified: no expo-crypto in APK 1.1.8), so the
+-- server mints the identity: id + secret from gen_random_uuid (OS
+-- CSPRNG), the secret returned exactly once to the caller and stored
+-- only as its SHA-256 hash. Also returns a pool of server-generated
+-- event ids so the client never mints identifiers locally.
+-- Registrations are capped at 500/hour under a dedicated advisory
+-- lock (fake-install flood breaker).
+-- =====================================================================
+create or replace function public.telemetry_bootstrap(
+  p_platform text,
+  p_os_version text,
+  p_app_version text,
+  p_version_code integer,
+  p_runtime_version text,
+  p_channel text,
+  p_current_update_id text,
+  p_is_embedded_launch boolean
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id uuid := pg_catalog.gen_random_uuid();
+  v_secret text := replace(
+    pg_catalog.gen_random_uuid()::text || pg_catalog.gen_random_uuid()::text,
+    '-', '');
+  v_count bigint;
+begin
+  perform pg_advisory_xact_lock(727272);
+  select count(*) into v_count
+  from public.app_installations i
+  where i.first_seen_at > now() - interval '1 hour';
+  if v_count >= 500 then
+    return pg_catalog.jsonb_build_object('error', 'registration_throttled');
+  end if;
+  insert into public.app_installations (
+    id, secret_hash, platform, os_version, app_version, version_code,
+    runtime_version, channel, current_update_id, is_embedded_launch,
+    first_seen_at, last_seen_at
+  ) values (
+    v_id,
+    encode(pg_catalog.sha256(v_secret::bytea), 'hex'),
+    coalesce(p_platform, 'android'),
+    p_os_version, p_app_version, p_version_code, p_runtime_version,
+    p_channel, p_current_update_id, p_is_embedded_launch,
+    now(), now()
+  );
+  return pg_catalog.jsonb_build_object(
+    'installation_id', v_id,
+    'secret', v_secret,
+    'event_id_pool', (
+      select coalesce(pg_catalog.jsonb_agg(g), '[]'::jsonb)
+      from (
+        select pg_catalog.gen_random_uuid()::text as g
+        from pg_catalog.generate_series(1, 100)
+      ) pool
+    )
+  );
+end;
+$$;
+revoke execute on function public.telemetry_bootstrap(text, text, text, integer, text, text, text, boolean)
+  from public, anon, authenticated;
+grant execute on function public.telemetry_bootstrap(text, text, text, integer, text, text, text, boolean)
   to service_role;
 
 -- =====================================================================
