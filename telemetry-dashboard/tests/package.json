@@ -1,0 +1,1 @@
+{"description":"Security tests for the BASERA telemetry dashboard (single-file page). Local only; never deployed.","devDependencies":{"jsdom":"30.1.3"},"name":"basera-telemetry-dashboard-tests","private":true,"scripts":{"test":"node xss.test.mjs"},"type":"module"}

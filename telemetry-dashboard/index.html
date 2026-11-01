@@ -77,7 +77,11 @@
 </main>
 
 <script type="module">
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+// supabase-js is PINNED to an exact version (2.118.0): a floating
+// major tag (@2) would let the CDN silently change the code that
+// handles the owner's session. The pinned bundle was verified to
+// serve and export createClient at deploy time.
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
 
 // Public client configuration (publishable key — safe to ship; all
 // device data is enforced server-side by owner-gated RPC functions).
@@ -86,8 +90,35 @@ const SUPABASE_ANON_KEY = 'sb_publishable_Jt84WL6Ra7Ww_XV34Bk8eA_NwDYSecI';
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const $ = (id) => document.getElementById(id);
-const short = (id) => (id ? id.slice(0, 8) + '…' : '—');
+const short = (id) => (id ? String(id).slice(0, 8) + '…' : '—');
 const fmt = (ts) => (ts ? new Date(ts).toLocaleString('ar-EG') : '—');
+
+// ------------------------------------------------------------------
+// Rendering rule (Stored-XSS defense): EVERY value returned by the
+// dashboard RPCs is treated as untrusted — app_version,
+// runtime_version, channel, update ids and event types all originate
+// on client devices, where the server enforces only length limits,
+// never HTML safety. Dynamic content is therefore built ONLY with
+// DOM APIs and textContent. innerHTML is never used with data (the
+// security tests in tests/ grep-fail the file if it reappears).
+// ------------------------------------------------------------------
+function el(tag, text, cls) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined && text !== null) n.textContent = String(text);
+  return n;
+}
+function tdOf(content) {
+  const td = document.createElement('td');
+  if (content instanceof Node) td.append(content);
+  else td.textContent = String(content ?? '—');
+  return td;
+}
+function rowOf(cells) {
+  const tr = document.createElement('tr');
+  for (const c of cells) tr.append(tdOf(c));
+  return tr;
+}
 
 async function load() {
   const [{ data: ov, error: e1 }, { data: ad, error: e2 }] = await Promise.all([
@@ -99,20 +130,34 @@ async function load() {
     $('dash').style.display = 'none';
     return;
   }
-  $('cards').innerHTML = [
+  $('cards').replaceChildren(...[
     [ov.total_installations, 'إجمالي التثبيتات الفعلية'],
     [ov.active_24h, 'نشط آخر 24 ساعة'],
     [ov.active_7d, 'نشط آخر 7 أيام'],
     [ov.dormant_7d, 'لم يفتح منذ أكثر من 7 أيام'],
     [short(ov.latest_update_id), 'أحدث Update ID'],
-  ].map(([n, l]) => `<div class="card"><div class="num">${n ?? '—'}</div><div class="lbl">${l}</div></div>`).join('');
-  $('versions').innerHTML = (ov.by_version || []).map(v =>
-    `<tr><td>${v.app_version ?? '—'}</td><td>${v.version_code ?? '—'}</td><td>${v.installations}</td></tr>`).join('');
+  ].map(([n, l]) => {
+    const card = el('div', null, 'card');
+    card.append(el('div', n ?? '—', 'num'), el('div', l, 'lbl'));
+    return card;
+  }));
+  const byVersion = ov.by_version || [];
+  $('versions').replaceChildren(...byVersion.map(v =>
+    rowOf([v.app_version ?? '—', v.version_code ?? '—', v.installations])));
   const fv = $('fVersion');
-  fv.innerHTML = '<option value="">كل الإصدارات</option>' +
-    (ov.by_version || []).map(v => `<option value="${v.app_version}">${v.app_version}</option>`).join('');
-  $('adoption').innerHTML = (ad || []).map(r =>
-    `<tr><td><code>${short(r.update_id)}</code></td><td>${r.discovered}</td><td>${r.downloaded}</td><td>${r.applied}</td><td>${r.failed}</td><td>${r.adoption_pct}%</td></tr>`).join('');
+  const allOpt = document.createElement('option');
+  allOpt.value = '';
+  allOpt.textContent = 'كل الإصدارات';
+  fv.replaceChildren(allOpt, ...byVersion.map(v => {
+    const o = document.createElement('option');
+    // Property assignment, never markup: a hostile version string
+    // stays a plain value and cannot break out of the element.
+    o.value = v.app_version ?? '';
+    o.textContent = v.app_version ?? '—';
+    return o;
+  }));
+  $('adoption').replaceChildren(...(ad || []).map(r =>
+    rowOf([el('code', short(r.update_id)), r.discovered, r.downloaded, r.applied, r.failed, `${r.adoption_pct}%`])));
   await loadDevices();
 }
 
@@ -121,17 +166,26 @@ async function loadDevices() {
     p_version: $('fVersion').value || null,
     p_status: $('fStatus').value || null,
   });
-  if (error) { $('devices').innerHTML = ''; return; }
+  if (error) { $('devices').replaceChildren(); return; }
   $('devCount').textContent = `${data.length} جهاز`;
-  $('devices').innerHTML = data.map(d => `<tr>
-    <td><code>${short(d.installation_id)}</code></td>
-    <td>${d.app_version ?? '—'} (${d.version_code ?? '—'})</td>
-    <td>${d.runtime_version ?? '—'}</td>
-    <td>${d.channel ?? '—'}</td>
-    <td>${fmt(d.last_seen_at)}</td>
-    <td><code>${d.is_embedded_launch ? 'مدمج (APK)' : short(d.current_update_id)}</code></td>
-    <td>${d.last_event_type ?? '—'}<br><span class="muted">${fmt(d.last_event_at)}</span></td>
-  </tr>`).join('');
+  $('devices').replaceChildren(...data.map(d => {
+    const lastEvent = document.createElement('td');
+    lastEvent.append(
+      document.createTextNode(String(d.last_event_type ?? '—')),
+      document.createElement('br'),
+      el('span', fmt(d.last_event_at), 'muted'),
+    );
+    const tr = rowOf([
+      el('code', short(d.installation_id)),
+      `${d.app_version ?? '—'} (${d.version_code ?? '—'})`,
+      d.runtime_version ?? '—',
+      d.channel ?? '—',
+      fmt(d.last_seen_at),
+      el('code', d.is_embedded_launch ? 'مدمج (APK)' : short(d.current_update_id)),
+    ]);
+    tr.append(lastEvent);
+    return tr;
+  }));
 }
 
 $('signin').onclick = async () => {
