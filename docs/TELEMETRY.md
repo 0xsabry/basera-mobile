@@ -27,25 +27,41 @@ native change, no runtime/package/signer change.**
 
 ```
 App (JS, via OTA)
-  src/telemetry/telemetry.ts   identity, queue, applied-detection
+  src/telemetry/telemetry.ts   identity, queue, applied-detection,
+                               verdict-aware flush + dead-letter store
   src/telemetry/index.ts       real wiring (SecureStore, fetch, facts)
   src/update/UpdateService.ts  optional telemetry sink at the
                                check/available/downloaded/failed seams
         │  HTTPS POST (publishable key + per-install secret header)
         ▼
-Supabase Edge Function  telemetry-ingest  (ONLY writer; service role
-        │                                  stays server-side)
+Supabase Edge Function  telemetry-ingest  (thin hardened transport:
+        │   streaming 64KB byte cap, batch>50 hard reject, fact
+        │   validation; service role stays server-side)
+        ▼
+DB function  public.telemetry_ingest()  (the ONLY write path; ONE
+        │   transaction: per-installation advisory lock, pin-or-verify
+        │   secret, per-event classify new/duplicate/invalid,
+        │   atomic hourly budget, heartbeat)
         ▼
 Tables  app_installations / app_update_events  (RLS on, no client
         │                                       policies at all)
         ▼
-RPCs    dashboard_overview / dashboard_adoption /
-        dashboard_installations  (SECURITY DEFINER + owner allowlist)
+private schema  dashboard logic (owner allowlist enforced inside)
+public schema   three thin RPC wrappers — the entire read surface
         ▼
 Dashboard  telemetry-dashboard/index.html  (owner email/password
            login; the page alone grants nothing — RPCs refuse
            non-owners server-side)
 ```
+
+### Verdicts and the client queue (v3)
+Every processed batch returns per-event verdicts. The client removes
+accepted + duplicate events, keeps `rate_limited` events queued for a
+later flush, and moves any other rejected event (with its reason) to
+a persisted local dead-letter store — kept on device for inspection,
+never retried, never silently dropped. A failed REQUEST (oversized,
+auth, server error, offline) returns no verdict and the client keeps
+its entire queue.
 
 ### Identity & privacy
 - Installation ID: random UUID v4 at first launch, persisted in
@@ -91,23 +107,63 @@ the queue intact for the next attempt.
   endpoint", stamped server-side; client timestamps are sanity-checked
   and never used for ordering.
 
+## Verification evidence (v3, local — nothing deployed)
+
+The mandatory review battery ran against a real PostgreSQL 16 with
+the migration applied verbatim (harness in `supabase/tests/telemetry/`,
+with `auth.uid()` emulated exactly as Supabase implements it and the
+platform roles anon/authenticated/service_role):
+
+- **33/33 database checks**: clean fresh-DB apply; registration counted
+  once; wrong secret rejected; seven strict per-event rejection
+  reasons (invalid update id / ts format / ts window / status /
+  overlong reason / event type / missing id) with nothing coerced to
+  null; duplicate resends classified and stored zero new rows; hourly
+  budget (600) blocks new events while duplicates still classify as
+  duplicates; **100 concurrent calls for one fresh installation** →
+  exactly 1 installation row and 100 events, no errors; **racing
+  first registrations with two secrets** → exactly one pinned hash,
+  the losing side fully rejected; anon cannot execute the dashboard
+  RPCs; an authenticated non-owner is refused by the owner gate; the
+  owner reads data; direct table reads denied even for the owner;
+  `telemetry_ingest` executable by service_role only; private-schema
+  functions not directly callable; adoption funnel exact (3/2/1/1 →
+  33.3%) and **unchanged after a full duplicate-batch resend**;
+  `p_limit` floored at 1.
+- **15/15 function-core checks**: the 64KB cap counts BYTES and aborts
+  the stream early (a 160KB stream is cut after ~4 chunks; a 40,000
+  char Arabic body = 80KB is rejected); batches of 51 are hard
+  rejected, 50 pass; fact validation rejects bad platform/version/id.
+- **46/46 client checks** (telemetry + update suites; full repo suite
+  570/570): queue fully retained on request failure/offline; verdict
+  accounting (accepted+duplicates removed, `rate_limited` kept
+  queued, other rejections dead-lettered and persisted).
+
+Known limits of this evidence: the harness emulates Supabase's auth
+surface on vanilla Postgres (the real project adds PostgREST + the
+Deno runtime, whose deployed smoke test belongs to the execution
+phase); the 500-row `p_limit` ceiling is enforced in code but was not
+load-tested with >500 devices; concurrency semantics were proven,
+not throughput.
+
 ## Rollout (each step gated by the owner)
 
-1. **Approve the migration** `supabase/migrations/20261101000000_telemetry_proposal.sql`
-   (proposal file; NOT applied). Apply it to project
-   `vbvvwyeccsegfwprwrga` only after approval.
-2. Register the owner: insert the owner's Supabase Auth user id into
+1. **Final approval** of the v3 SQL + function (the current review).
+2. Apply the migration to project `vbvvwyeccsegfwprwrga` (additive
+   only), then register the owner's confirmed Auth uid in
    `dashboard_owners` (one SQL line, in the migration header).
-3. Deploy the `telemetry-ingest` Edge Function (dashboard or CLI).
+3. Deploy the `telemetry-ingest` Edge Function only (the two guardian
+   functions stay untouched).
 4. Host `telemetry-dashboard/index.html` on Cloudflare Pages (owner
    decision: the dashboard is NOT served from a Supabase Edge Function
    on the default domain). One-time setup needs the owner's Cloudflare
    login in the browser; the result is a stable `*.pages.dev` link.
    The page ships only the publishable key; every data read stays
    behind Supabase Auth + the owner-gated RPCs.
-5. Publish the client via the manual preview OTA workflow
-   (owner-approved publish, acceptance gate as usual).
-6. One-device test on the owner's phone, then verify the dashboard.
+5. Acceptance test with ONE simulated + ONE real test installation.
+6. Publish the client via the manual preview OTA workflow — a
+   SEPARATE owner approval (acceptance gate as usual).
+7. One-device test on the owner's phone, then verify the dashboard.
 
 ## Acceptance mapping
 

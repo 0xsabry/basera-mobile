@@ -57,10 +57,29 @@ export interface KeyValueStore {
   set(key: string, value: string): Promise<void>;
 }
 
+/** Per-event verdict returned by the ingest endpoint (HTTP 200).
+ *  A null verdict (transport failure, oversized batch, auth or server
+ *  error) means "keep the whole queue and retry later". */
+export interface FlushVerdict {
+  accepted: string[];
+  duplicates: string[];
+  rejected: { client_event_id: string | null; reason: string }[];
+}
+
+export interface DeadLetterEntry {
+  event: QueuedEvent;
+  reason: string;
+  dead_at: string;
+}
+
 export interface TelemetryDeps {
   secureStore: KeyValueStore;
   fallbackStore: KeyValueStore;
-  post: (url: string, headers: Record<string, string>, body: unknown) => Promise<boolean>;
+  post: (
+    url: string,
+    headers: Record<string, string>,
+    body: unknown,
+  ) => Promise<FlushVerdict | null>;
   endpoint: string | null;
   publishableKey: string | null;
   facts: () => InstallationFacts;
@@ -71,7 +90,9 @@ const ID_KEY = 'basera.install.id';
 const SECRET_KEY = 'basera.install.secret';
 const QUEUE_KEY = 'basera.telemetry.queue.v1';
 const STATE_KEY = 'basera.telemetry.state.v1';
+const DEADLETTER_KEY = 'basera.telemetry.deadletter.v1';
 const QUEUE_CAP = 200;
+const DEADLETTER_CAP = 100;
 
 interface TelemetryState {
   lastRunningKey: string | null;
@@ -235,11 +256,48 @@ export class Telemetry {
     }
   }
 
+  private deadLetter: DeadLetterEntry[] = [];
+  private deadLetterLoaded = false;
+
+  private async loadDeadLetter(): Promise<void> {
+    if (this.deadLetterLoaded) return;
+    this.deadLetterLoaded = true;
+    try {
+      const raw = await (await this.kv()).get(DEADLETTER_KEY);
+      this.deadLetter = raw ? (JSON.parse(raw) as DeadLetterEntry[]) : [];
+    } catch {
+      this.deadLetter = [];
+    }
+  }
+
+  private async persistDeadLetter(): Promise<void> {
+    const kv = await this.kv();
+    await kv.set(DEADLETTER_KEY, JSON.stringify(this.deadLetter.slice(-DEADLETTER_CAP)));
+  }
+
+  /** Events the server definitively rejected (kept locally for
+   *  inspection; never retried, never silently dropped). */
+  get deadLetterCount(): number {
+    return this.deadLetter.length;
+  }
+
   /**
    * Send queued events + the installation heartbeat. Every flush
    * carries the current installation facts, so the same call is the
    * first-launch registration and every later launch's last-seen
-   * update. Returns true when the server accepted the batch.
+   * update.
+   *
+   * Queue accounting follows the server verdict exactly:
+   * - accepted + duplicates: removed (stored server-side, once).
+   * - rejected with reason 'rate_limited': KEPT in the queue (valid
+   *   events, throttled — a later flush can deliver them).
+   * - any other rejection: moved to the persisted dead-letter store
+   *   (kept locally for inspection, out of the retry path so one bad
+   *   event can never poison the queue forever).
+   * - a sent event missing from every verdict list: kept.
+   * - null verdict (transport/batch-level failure): EVERYTHING is
+   *   kept — a rejected request or a network outage loses nothing.
+   * Returns true when a verdict was applied.
    */
   async flush(): Promise<boolean> {
     if (this.flushing || !this.deps.endpoint || !this.deps.publishableKey) return false;
@@ -247,7 +305,7 @@ export class Telemetry {
     try {
       const identity = await this.ensureIdentity();
       const batch = this.queue.slice(0, 50);
-      const ok = await this.deps.post(
+      const verdict = await this.deps.post(
         this.deps.endpoint,
         {
           'content-type': 'application/json',
@@ -258,11 +316,40 @@ export class Telemetry {
         },
         { installation: this.deps.facts(), events: batch },
       );
-      if (ok) {
-        this.queue = this.queue.slice(batch.length);
-        await this.persistQueue().catch(() => undefined);
+      if (!verdict) return false;
+
+      const drop = new Set([...verdict.accepted, ...verdict.duplicates]);
+      const rejectedById = new Map(
+        verdict.rejected
+          .filter((r) => r.client_event_id)
+          .map((r) => [r.client_event_id as string, r.reason]),
+      );
+      const sentIds = new Set(batch.map((e) => e.client_event_id));
+      const remaining: QueuedEvent[] = [];
+      const newlyDead: DeadLetterEntry[] = [];
+      for (const e of this.queue) {
+        if (!sentIds.has(e.client_event_id)) {
+          remaining.push(e); // not part of this batch
+          continue;
+        }
+        if (drop.has(e.client_event_id)) continue;
+        const reason = rejectedById.get(e.client_event_id);
+        if (reason === undefined) {
+          remaining.push(e); // no verdict for it — keep
+        } else if (reason === 'rate_limited') {
+          remaining.push(e); // throttled, retry later
+        } else {
+          newlyDead.push({ event: e, reason, dead_at: this.deps.now().toISOString() });
+        }
       }
-      return ok;
+      this.queue = remaining;
+      if (newlyDead.length > 0) {
+        await this.loadDeadLetter();
+        this.deadLetter = [...this.deadLetter, ...newlyDead].slice(-DEADLETTER_CAP);
+        await this.persistDeadLetter().catch(() => undefined);
+      }
+      await this.persistQueue().catch(() => undefined);
+      return true;
     } catch {
       return false;
     } finally {

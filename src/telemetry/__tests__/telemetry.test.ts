@@ -44,6 +44,11 @@ function makeTelemetry(opts: {
   facts: InstallationFacts;
   online: boolean;
   posted: PostedBatch[];
+  verdictFor?: (events: QueuedEvent[]) => {
+    accepted: string[];
+    duplicates: string[];
+    rejected: { client_event_id: string | null; reason: string }[];
+  } | null;
 }) {
   return new Telemetry({
     secureStore: opts.store,
@@ -53,9 +58,15 @@ function makeTelemetry(opts: {
     facts: () => opts.facts,
     now: () => new Date('2026-11-01T12:00:00.000Z'),
     post: async (_url, _headers, body) => {
-      if (!opts.online) return false;
-      opts.posted.push(body as PostedBatch);
-      return true;
+      if (!opts.online) return null;
+      const batch = body as PostedBatch;
+      opts.posted.push(batch);
+      if (opts.verdictFor) return opts.verdictFor(batch.events);
+      return {
+        accepted: batch.events.map((e) => e.client_event_id),
+        duplicates: [],
+        rejected: [],
+      };
     },
   });
 }
@@ -172,5 +183,83 @@ describe('offline queue', () => {
     expect(delivered.map((e) => e.client_event_id)).toEqual(persistedIds);
     expect(delivered[1].failure_reason).toBe('network unreachable');
     expect(online.queuedCount).toBe(0);
+  });
+});
+
+describe('server verdicts', () => {
+  it('a definitively rejected event leaves the queue into the dead-letter store, kept locally', async () => {
+    const store = new MemoryStore();
+    const posted: PostedBatch[] = [];
+    const t = makeTelemetry({
+      store,
+      facts: makeFacts(),
+      online: true,
+      posted,
+      verdictFor: (events) => ({
+        accepted: [],
+        duplicates: [],
+        rejected: events.map((e) => ({
+          client_event_id: e.client_event_id,
+          reason: 'invalid_update_id',
+        })),
+      }),
+    });
+    await t.init();
+    t.handleUpdateEvent({ type: 'update_available', updateId: 'not-a-uuid' });
+    await t.flush();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(t.queuedCount).toBe(0);
+    expect(t.deadLetterCount).toBe(1);
+    const dead = JSON.parse(store.data.get('basera.telemetry.deadletter.v1') as string) as {
+      reason: string;
+    }[];
+    expect(dead[0].reason).toBe('invalid_update_id');
+  });
+
+  it('a rate_limited rejection keeps the event queued for a later flush', async () => {
+    const store = new MemoryStore();
+    const posted: PostedBatch[] = [];
+    const t = makeTelemetry({
+      store,
+      facts: makeFacts(),
+      online: true,
+      posted,
+      verdictFor: (events) => ({
+        accepted: [],
+        duplicates: [],
+        rejected: events.map((e) => ({
+          client_event_id: e.client_event_id,
+          reason: 'rate_limited',
+        })),
+      }),
+    });
+    await t.init();
+    t.handleUpdateEvent({ type: 'update_check' });
+    await t.flush();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(t.queuedCount).toBe(1);
+    expect(t.deadLetterCount).toBe(0);
+  });
+
+  it('duplicates are removed like accepted, never dead-lettered', async () => {
+    const store = new MemoryStore();
+    const posted: PostedBatch[] = [];
+    const t = makeTelemetry({
+      store,
+      facts: makeFacts(),
+      online: true,
+      posted,
+      verdictFor: (events) => ({
+        accepted: [],
+        duplicates: events.map((e) => e.client_event_id),
+        rejected: [],
+      }),
+    });
+    await t.init();
+    t.handleUpdateEvent({ type: 'update_check' });
+    await t.flush();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(t.queuedCount).toBe(0);
+    expect(t.deadLetterCount).toBe(0);
   });
 });

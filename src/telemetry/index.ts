@@ -75,9 +75,19 @@ export const telemetry = new Telemetry({
   post: async (url, headers, body) => {
     try {
       const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-      return res.ok;
+      if (!res.ok) return null; // batch-level failure: keep the whole queue
+      const data = (await res.json()) as {
+        accepted?: string[];
+        duplicates?: string[];
+        rejected?: { client_event_id: string | null; reason: string }[];
+      };
+      return {
+        accepted: data.accepted ?? [],
+        duplicates: data.duplicates ?? [],
+        rejected: data.rejected ?? [],
+      };
     } catch {
-      return false;
+      return null;
     }
   },
 });
