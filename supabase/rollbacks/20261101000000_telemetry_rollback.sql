@@ -1,5 +1,12 @@
 -- ROLLBACK for 20261101000000_telemetry_proposal.sql (BASERA Telemetry V7)
 --
+-- APPLICATION NOTE: the migration was APPLIED TO PRODUCTION
+-- 2026-11-01 ~22:41 EET via the dashboard SQL editor under the owner's
+-- limited backend-deployment approval. The migration file itself is
+-- kept byte-identical to the applied artifact (SHA-256 c7657b18…);
+-- this note lives here instead of in the migration header so the
+-- applied file stays immutable for CLI reconciliation.
+--
 -- Prepared and reviewed BEFORE the production deployment (owner GO
 -- 2026-11-01). NOT executed. Run ONLY on a real problem that requires
 -- full removal of the telemetry backend.
