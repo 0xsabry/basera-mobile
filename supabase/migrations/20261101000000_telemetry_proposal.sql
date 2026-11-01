@@ -139,13 +139,12 @@ revoke all on public.app_installations, public.app_update_events, public.dashboa
   from anon, authenticated;
 
 -- =====================================================================
--- INGEST — the only write path. One transaction per request:
---   strict envelope checks -> per-installation advisory lock ->
---   pin-or-verify secret (new registrations additionally pass a
---   global circuit breaker under a registration lock) -> classify
---   events (invalid / duplicate / new) -> atomic budget -> insert ->
---   heartbeat. A malformed envelope returns an error BEFORE any
---   write: no registration, no heartbeat.
+-- INGEST — the only write path for events. One transaction per
+--   request: strict envelope checks -> per-installation advisory
+--   lock -> verify the installation secret (ids the server never
+--   issued are refused) -> classify events (invalid / duplicate /
+--   new) -> atomic budget -> insert -> heartbeat. A malformed
+--   envelope returns an error BEFORE any write: no heartbeat.
 -- =====================================================================
 create or replace function public.telemetry_ingest(
   p_installation_id uuid,
@@ -200,8 +199,8 @@ begin
     return pg_catalog.jsonb_build_object('error', 'batch_too_large');
   end if;
 
-  -- Serialize everything for this installation: first-registration
-  -- secret pinning and the hourly budget are race-free under this lock.
+  -- Serialize everything for this installation: secret verification
+  -- and the hourly budget are race-free under this lock.
   perform pg_advisory_xact_lock(pg_catalog.hashtextextended(p_installation_id::text, 0));
 
   select * into v_inst from public.app_installations i where i.id = p_installation_id;

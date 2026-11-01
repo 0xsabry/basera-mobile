@@ -189,6 +189,56 @@ pre-existing in production is granted, revoked, altered, or dropped.
   update ids through the full funnel). No personal data is stored
   that could be used to deanonymize anyone.
 
+## Verification evidence (v5)
+
+**On a REAL Supabase project** (throwaway `basera-telemetry-smoke`,
+created only for this test — production was never opened; the
+migration and function were deployed there and exercised over
+HTTPS with curl):
+- No key at all → the GATEWAY answers 401
+  (`UNAUTHORIZED_NO_AUTH_HEADER`) before any function code.
+- Publishable key in the `apikey` header ONLY (no Authorization
+  header, no user session) + bootstrap → **200**, a server-issued
+  installation id, 64-hex secret, and a 100-id pool — the
+  session-less app request reaches the function with verify_jwt ON,
+  proving the installation secret is the real credential.
+- Ingest without secret headers → 401 (function); unissued id →
+  403 `unknown_installation`; issued secret + one event → accepted;
+  the same event replayed → duplicate; wrong secret → 403
+  `secret_mismatch`; bootstrap carrying an `events` member → 400.
+- This smoke test caught a REAL BUG the fake-RPC tests had missed:
+  `mapIngestResult` dropped the verdict's `event_id_pool`, so the
+  client's id pool could never replenish. Fixed, pinned by a Deno
+  passthrough test, redeployed to the smoke project, and re-verified
+  live (heartbeat and event verdicts now carry a fresh 50-id pool).
+
+**Local** (real PostgreSQL 16 harness + Deno + jest):
+- **53/53 database checks**, including: bootstrap issues independent
+  id+secret pairs (also under 40 concurrent calls); the issued
+  secret authenticates across the SQL/Node hash boundary; ingest
+  refuses unissued ids and creates nothing; `is_embedded_launch`
+  absent stays NULL through heartbeats until a real boolean arrives;
+  100 concurrent ingests → exactly-once; funnel 3/2/1/1 = 33.3%
+  unchanged after duplicate resend; circuit breaker throttles the
+  501st bootstrap.
+- **15/15 Deno handler tests** (+ `deno check` clean), including the
+  bootstrap mode, tri-state fact validation, and the pool
+  passthrough above.
+- **54/54 client tests** (telemetry + update suites; full repo
+  578/578): Math.random is never called (spy); identity issued once
+  and reused; two installations independent; >200 events offline —
+  200 queued, 10 refused + counted, zero queued events dropped;
+  critical-event eviction counted; dead-letter rotation counted;
+  record() resolves only after persistence; flush refuses to send
+  when storage fails; a crash before the post-verdict persist
+  resends the SAME event ids after restart; requests carry the
+  publishable key as `apikey` with NO Authorization header.
+- Not covered anywhere yet: the client running on a real Android
+  device against any backend (needs the OTA phase), and dashboard
+  RPCs exercised through PostgREST with real auth users on the
+  smoke project (their SQL-level behavior is battery-proven; the
+  hosted smoke verified the ingest path end-to-end).
+
 ## Verification evidence (v4, local — nothing deployed)
 
 The mandatory review battery ran against a real PostgreSQL 16 with
