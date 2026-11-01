@@ -33,4 +33,4 @@ jobs:
     params:
       channel: preview
       platform: android
-      message: 'OTA delivery test after 1.1.7 (runtime 1.1.0)'
+      message: 'BASERA 1.1.8 pilot launch - telemetry client (runtime 1.1.0)'

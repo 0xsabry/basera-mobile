@@ -127,6 +127,8 @@ const en = {
   privacy: 'Privacy',
   privacyBody:
     'History and images are stored only on this device and are never uploaded. Core AI runs fully on-device.',
+  telemetryBody:
+    'Update statistics: the app sends technical data only — a random pseudonymous identifier that stays fixed for this installation, the app and system versions, the update channel, and update events (checked, downloaded, applied, failed). The identifier is not linked to your name or account, and your name, phone number, location, and device IMEI are never sent. Removing the app deletes the identifier; reinstalling creates a new one.',
   about: 'About',
   hardwareStatus: 'Smart glasses: not connected — in development',
   errorGeneric: 'Something went wrong. Please try again.',
@@ -528,6 +530,8 @@ const ar: Record<StringKey, string> = {
   privacy: 'الخصوصية',
   privacyBody:
     'يُحفظ السجل والصور على هذا الجهاز فقط ولا تُرفع إلى أي جهة. يعمل الذكاء الاصطناعي الأساسي بالكامل على الجهاز.',
+  telemetryBody:
+    'إحصائيات التحديث: يرسل التطبيق بيانات تقنية فقط — معرّفًا عشوائيًا مستعارًا يبقى ثابتًا لهذا التثبيت، وإصدار التطبيق وإصدار النظام، وقناة التحديث، وأحداث التحديث (الفحص والتنزيل والتطبيق والفشل). لا يرتبط هذا المعرّف باسمك أو حسابك، ولا تُرسل أبدًا بيانات اسمك أو رقم هاتفك أو موقعك أو معرّف IMEI الخاص بجهازك. حذف التطبيق يزيل هذا المعرّف، وإعادة التثبيت تنشئ معرّفًا جديدًا.',
   about: 'حول التطبيق',
   hardwareStatus: 'النظارة الذكية: غير متصلة — قيد التطوير',
   errorGeneric: 'حدث خطأ ما. حاول مجددًا.',

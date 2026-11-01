@@ -382,6 +382,7 @@ export default function SettingsScreen() {
       <QuietGroup>
         <View style={styles.fieldBlock}>
           <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'privacyBody')}</Text>
+          <Text style={[styles.body, { color: colors.text, fontSize: type.body }]}>{t(lang, 'telemetryBody')}</Text>
           <AccessibleButton label={t(lang, 'clearAll')} variant="danger" onPress={confirmClearHistory} />
         </View>
       </QuietGroup>

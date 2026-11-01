@@ -41,8 +41,10 @@ every one of them.
 
 ## Before any publish or build
 
-1. Run `node scripts/release-guard.mjs` — it must PASS (runtime, channel
-   separation, version ladder, native-drift vs the last APK commit).
+1. Run `node scripts/release-guard.mjs ota` (before an OTA) or
+   `node scripts/release-guard.mjs apk` (before an APK build) — it must
+   PASS (runtime, channel separation, per-mode version ladder,
+   native-drift vs the last APK commit).
 2. If the guard reports native-input changes, ship an APK — never an OTA.
 3. OTA publishes happen only through the manual EAS Workflow
    `publish-preview-ota.yml` with `publish=true`, on the owner's request.

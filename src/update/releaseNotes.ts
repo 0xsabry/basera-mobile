@@ -23,14 +23,14 @@ export interface ReleaseNote {
 /** Newest first. */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    date: '2026-11-01',
+    date: '2026-11-02',
     runtimeVersion: '1.1.0',
-    titleEn: 'Update test — this note arrived over the air',
-    titleAr: 'اختبار التحديث — وصلتك هذه الملاحظة عبر الهواء',
+    titleEn: 'BASERA 1.1.8 — Pilot launch and update statistics',
+    titleAr: 'بصيرة 1.1.8 — الإطلاق التجريبي وإحصائيات التحديث',
     bodyEn:
-      'This is a delivery test published after the 1.1.7 app file. If you are reading it, your app found, downloaded and applied an over-the-air update by itself — no reinstall and no manual check. The installed app version at the top of this screen should read 1.1.7 (9). Nothing else changed in this update.',
+      'This update reaches everyone who installed BASERA 1.1.8. It adds technical update statistics so we can tell that updates reach everyone: a random pseudonymous installation identifier plus version, channel and update-event data only — never your name, phone number, location or device identifier, exactly as described under Privacy in Settings. Nothing else changes in this update.',
     bodyAr:
-      'هذا اختبار توصيل نُشر بعد ملف التطبيق 1.1.7. إذا كنت تقرأ هذه الملاحظة، فتطبيقك وجد تحديثًا هوائيًا ونزّله وطبّقه بنفسه — دون إعادة تثبيت ودون فحص يدوي. يجب أن يظهر إصدار التطبيق المثبّت في أعلى هذه الشاشة 1.1.7 (9). لا تغييرات أخرى في هذا التحديث.',
+      'يصل هذا التحديث إلى كل من ثبّت بصيرة 1.1.8. يضيف التحديث إحصائيات تقنية للتحديثات حتى نعرف أن التحديثات تصل إلى الجميع: معرّف تثبيت عشوائي مستعار وبيانات إصدار وقناة وأحداث تحديث فقط — دون اسم أو رقم هاتف أو موقع أو معرّف جهاز، كما هو موضّح في قسم الخصوصية داخل الإعدادات. ولم يتغير شيء آخر في هذا التحديث.',
   },
   {
     date: '2026-11-01',
