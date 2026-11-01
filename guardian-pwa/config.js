@@ -9,7 +9,7 @@
     // PUBLIC client key by design — RLS enforces all access. Never put a
     // secret/service-role key here.
     supabaseUrl: "https://vbvvwyeccsegfwprwrga.supabase.co",
-    supabaseAnonKey: "sb_publishable_Jt84WL6Ra7Ww_XV34Bk8eA_NwDYSecI",
+    supabasePublishableKey: "sb_publishable_Jt84WL6Ra7Ww_XV34Bk8eA_NwDYSecI",
     // Firebase web app config (Project settings -> Your apps -> Web app).
     // Leave null to run the PWA fully WITHOUT push notifications.
     firebase: null,

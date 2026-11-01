@@ -133,10 +133,10 @@ if ("serviceWorker" in navigator) {
 
 // ------------------------------------------------------------------- config
 const cfg = window.BASERA_CONFIG || {};
-const configured = Boolean(cfg.supabaseUrl && cfg.supabaseAnonKey);
+const configured = Boolean(cfg.supabaseUrl && cfg.supabasePublishableKey);
 let supabase = null;
 if (configured) {
-  supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+  supabase = createClient(cfg.supabaseUrl, cfg.supabasePublishableKey);
 } else {
   $("configSection").hidden = false;
 }

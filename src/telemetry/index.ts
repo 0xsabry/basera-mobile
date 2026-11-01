@@ -15,6 +15,7 @@ import { Platform } from 'react-native';
 
 import { updateService } from '../update/UpdateService';
 import { readInstalledVersion } from '../update/appVersion';
+import { resolveSupabaseConfig } from './config';
 import { Telemetry, type InstallationFacts, type KeyValueStore } from './telemetry';
 
 const secureStoreAdapter: KeyValueStore = {
@@ -29,24 +30,36 @@ const asyncStorageAdapter: KeyValueStore = {
 
 function resolveConfig(): { endpoint: string | null; publishableKey: string | null } {
   const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>;
-  const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? (extra.supabaseUrl as string | undefined);
-  const key =
-    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? (extra.supabaseAnonKey as string | undefined);
-  if (!url || !key) return { endpoint: null, publishableKey: null };
-  return { endpoint: `${url.replace(/\/$/, '')}/functions/v1/telemetry-ingest`, publishableKey: key };
+  const { endpoint, publishableKey } = resolveSupabaseConfig(process.env, extra);
+  return { endpoint, publishableKey };
 }
 
 function collectFacts(): InstallationFacts {
   let updates: {
     updateId: string | null;
-    isEmbeddedLaunch: boolean;
+    isEmbeddedLaunch: boolean | null;
     channel: string | null;
     runtimeVersion: string | null;
-  } = { updateId: null, isEmbeddedLaunch: true, channel: null, runtimeVersion: null };
+    // Unknown until the real module proves otherwise: an unreadable
+    // embedded state is null (unknown), NEVER a fabricated true.
+  } = { updateId: null, isEmbeddedLaunch: null, channel: null, runtimeVersion: null };
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('expo-updates') as typeof updates & { isEnabled?: boolean };
-    if (mod && mod.isEnabled) updates = mod;
+    const mod = require('expo-updates') as {
+      updateId: string | null;
+      isEmbeddedLaunch?: unknown;
+      channel: string | null;
+      runtimeVersion: string | null;
+      isEnabled?: boolean;
+    };
+    if (mod && mod.isEnabled) {
+      updates = {
+        updateId: mod.updateId,
+        isEmbeddedLaunch: typeof mod.isEmbeddedLaunch === 'boolean' ? mod.isEmbeddedLaunch : null,
+        channel: mod.channel,
+        runtimeVersion: mod.runtimeVersion,
+      };
+    }
   } catch {
     /* updates unavailable (MVP / Expo Go) — facts stay embedded/null */
   }
@@ -66,8 +79,10 @@ function collectFacts(): InstallationFacts {
 const { endpoint, publishableKey } = resolveConfig();
 
 export const telemetry = new Telemetry({
+  // The envelope (queue/pool/state) holds no secrets: plain storage.
+  // The identity lives in SecureStore ONLY (see telemetry.ts).
+  queueStore: asyncStorageAdapter,
   secureStore: secureStoreAdapter,
-  fallbackStore: asyncStorageAdapter,
   endpoint,
   publishableKey,
   facts: collectFacts,

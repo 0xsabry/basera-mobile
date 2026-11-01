@@ -330,9 +330,9 @@ function fakeRtClient() {
   rtCheck("config has the deployed project URL", cfg.supabaseUrl === "https://vbvvwyeccsegfwprwrga.supabase.co");
   rtCheck(
     "config key is a publishable (public) key, never a secret/service key",
-    typeof cfg.supabaseAnonKey === "string" &&
-      cfg.supabaseAnonKey.startsWith("sb_publishable_") &&
-      !cfg.supabaseAnonKey.startsWith("sb_secret"),
+    typeof cfg.supabasePublishableKey === "string" &&
+      cfg.supabasePublishableKey.startsWith("sb_publishable_") &&
+      !cfg.supabasePublishableKey.startsWith("sb_secret"),
   );
 }
 

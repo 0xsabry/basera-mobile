@@ -3,7 +3,7 @@
  *
  * The owner's project is DEPLOYED (vbvvwyeccsegfwprwrga) and its URL +
  * publishable key ship as the app.json extra fallback; configuration can
- * be overridden by EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY
+ * be overridden by EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
  * (inlined by Expo at build time). The null-config path remains only as a
  * defensive fallback: if no config were present, getSupabaseClient()
  * returns null and guardian surfaces show the honest "not configured"
@@ -29,7 +29,13 @@ export function readGuardianConfig(
   extra: Record<string, unknown> = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>,
 ): GuardianConfig | null {
   const url = env.EXPO_PUBLIC_SUPABASE_URL ?? (extra.supabaseUrl as string | undefined);
-  const anonKey = env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? (extra.supabaseAnonKey as string | undefined);
+  // The client key is a new-style publishable key; canonical names
+  // first, legacy ANON names kept as fallbacks during the rename.
+  const anonKey =
+    env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
+    (extra.supabasePublishableKey as string | undefined) ??
+    (extra.supabaseAnonKey as string | undefined);
   if (!url || !anonKey) return null;
   if (!/^https:\/\//.test(url)) return null;
   return { url, anonKey };

@@ -10,18 +10,32 @@
  * and Math.random is forbidden for identifiers — so the installation
  * id, its secret, and every event id are minted by the server
  * (telemetry_bootstrap / verdict id pools) with the server's CSPRNG.
- * The client only stores what the server issued (secret in
- * SecureStore) and consumes pooled event ids. If the server has not
- * issued an identity yet (offline first launch), events queue locally
- * WITHOUT ids and are assigned pooled ids — persisted before sending —
- * at the first successful contact.
+ * If the server has not issued an identity yet (offline first
+ * launch), events queue locally WITHOUT ids and are assigned pooled
+ * ids — persisted before sending — at the first successful contact.
  *
- * Durability: every queue mutation runs through one serialized chain
- * and is persisted before the operation is considered done. flush()
- * never sends before the queue is durably stored, removes events only
- * after a server verdict, and reverts its in-memory state if the
- * post-verdict persist fails (a restart then resends; the server
- * dedupes on client_event_id).
+ * Storage architecture (v6):
+ * - ALL mutable telemetry state (queue, id pool, lifecycle state,
+ *   overflow counters, dead-letter) lives in ONE Atomic State
+ *   Envelope — a single key in the queue store, written with a
+ *   single set() per mutation. There is no multi-key transaction to
+ *   tear: a crash leaves either the whole old envelope or the whole
+ *   new one, so an event id can never be consumed without that
+ *   consumption being durable, and ids are never reused.
+ * - The installation identity (id + secret together) is a SINGLE
+ *   value in SecureStore ONLY — it is never written to plain
+ *   storage. If SecureStore is unavailable, events keep queueing in
+ *   the envelope but NOTHING is sent (and no bootstrap is requested,
+ *   since its result could not be stored). An issued identity whose
+ *   save fails is NOT adopted in memory; the next attempt re-reads
+ *   local storage first and only then asks the server again.
+ *
+ * Durability: every mutation runs through one serialized chain and
+ * is persisted (one envelope write) before the operation counts as
+ * done. flush() never sends before the state is durably stored,
+ * removes events only after a server verdict, and reverts its
+ * in-memory state if the post-verdict persist fails (a restart then
+ * resends; the server dedupes on client_event_id).
  *
  * Overflow policy (explicit, counted, never silent):
  * - The queue holds at most QUEUE_CAP events and a QUEUED event is
@@ -32,11 +46,11 @@
  *   update_applied, update_failed) evicts the OLDEST queued
  *   update_check (else the oldest update_available) — counted.
  * - If nothing is evictable, the critical event is refused + counted.
- * - Counters persist in the telemetry state and are readable via
+ * - Counters persist in the envelope and are readable via
  *   `overflowStats`. The dead-letter store rotates at
- *   DEADLETTER_CAP with its own persisted `deadLetterDropped` count;
- *   dead-lettered events were already definitively refused by the
- *   server, so rotation loses local diagnostics only.
+ *   DEADLETTER_CAP with its own persisted drop count; dead-lettered
+ *   events were already definitively refused by the server, so
+ *   rotation loses local diagnostics only.
  */
 
 export type TelemetryEventType =
@@ -63,7 +77,10 @@ export interface InstallationFacts {
   runtime_version: string | null;
   channel: string | null;
   current_update_id: string | null;
-  is_embedded_launch: boolean;
+  /** Tri-state: true/false when the value is known; null = unknown
+   *  (expo-updates unavailable or unreadable). Unknown is NEVER
+   *  fabricated into a boolean anywhere in the pipeline. */
+  is_embedded_launch: boolean | null;
 }
 
 export interface BootstrapResult {
@@ -99,8 +116,10 @@ export interface KeyValueStore {
 }
 
 export interface TelemetryDeps {
+  /** Envelope store (plain storage is fine: no secrets inside). */
+  queueStore: KeyValueStore;
+  /** SecureStore — used for the installation identity ONLY. */
   secureStore: KeyValueStore;
-  fallbackStore: KeyValueStore;
   post: (
     url: string,
     headers: Record<string, string>,
@@ -114,40 +133,50 @@ export interface TelemetryDeps {
   now: () => Date;
 }
 
-const ID_KEY = 'basera.install.id';
-const SECRET_KEY = 'basera.install.secret';
-const QUEUE_KEY = 'basera.telemetry.queue.v1';
-const STATE_KEY = 'basera.telemetry.state.v1';
-const POOL_KEY = 'basera.telemetry.pool.v1';
-const DEADLETTER_KEY = 'basera.telemetry.deadletter.v1';
+const ENVELOPE_KEY = 'basera.telemetry.envelope.v1';
+const ENVELOPE_CORRUPT_KEY = 'basera.telemetry.envelope.corrupt';
+const IDENTITY_KEY = 'basera.install.identity.v1';
+// Legacy keys (v5 layout) — folded into the envelope / identity
+// value once, if ever present.
+const LEGACY_ID_KEY = 'basera.install.id';
+const LEGACY_SECRET_KEY = 'basera.install.secret';
+const LEGACY_QUEUE_KEY = 'basera.telemetry.queue.v1';
+const LEGACY_STATE_KEY = 'basera.telemetry.state.v1';
+const LEGACY_POOL_KEY = 'basera.telemetry.pool.v1';
+const LEGACY_DEADLETTER_KEY = 'basera.telemetry.deadletter.v1';
+
 export const QUEUE_CAP = 200;
 export const DEADLETTER_CAP = 100;
 const LOW_VALUE: TelemetryEventType[] = ['update_check', 'update_available'];
 const EVICTABLE: TelemetryEventType[] = ['update_check', 'update_available'];
 
-interface PersistedState {
+interface Envelope {
+  version: 1;
+  queue: QueuedEvent[];
+  pool: string[];
   stagedUpdateId: string | null;
   appliedUpdateId: string | null;
   overflow: OverflowStats;
+  deadLetter: DeadLetterEntry[];
+  deadLetterDropped: number;
 }
 
-const emptyOverflow = (): OverflowStats => ({ refused: {}, evicted: {} });
+const freshEnvelope = (): Envelope => ({
+  version: 1,
+  queue: [],
+  pool: [],
+  stagedUpdateId: null,
+  appliedUpdateId: null,
+  overflow: { refused: {}, evicted: {} },
+  deadLetter: [],
+  deadLetterDropped: 0,
+});
 
 export class Telemetry {
   private readonly deps: TelemetryDeps;
-  private store: KeyValueStore | null = null;
-  private identity: { id: string; secret: string } | null = null;
-  private identityLoaded = false;
-  private queue: QueuedEvent[] = [];
-  private pool: string[] = [];
-  private state: PersistedState = {
-    stagedUpdateId: null,
-    appliedUpdateId: null,
-    overflow: emptyOverflow(),
-  };
-  private deadLetter: DeadLetterEntry[] = [];
-  private deadLetterDroppedCount = 0;
+  private env: Envelope = freshEnvelope();
   private loaded = false;
+  private identity: { id: string; secret: string } | null = null;
   private flushing = false;
   /** The single serialized work chain: all mutations, in order. */
   private tail: Promise<void> = Promise.resolve();
@@ -157,20 +186,83 @@ export class Telemetry {
   }
 
   // ---------------------------------------------------------------
-  // plumbing
+  // envelope load / persist (ONE key, ONE write per mutation)
   // ---------------------------------------------------------------
 
-  private async kv(): Promise<KeyValueStore> {
-    if (this.store) return this.store;
-    // Probe SecureStore with the identity keys; fall back to plain
-    // storage only if it throws (telemetry never blocks the app).
+  private async loadAll(): Promise<void> {
+    if (this.loaded) return;
+    this.loaded = true;
+    const store = this.deps.queueStore;
+    let raw: string | null = null;
     try {
-      await this.deps.secureStore.get(ID_KEY);
-      this.store = this.deps.secureStore;
+      raw = await store.get(ENVELOPE_KEY);
     } catch {
-      this.store = this.deps.fallbackStore;
+      raw = null;
     }
-    return this.store;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as Envelope;
+        if (parsed.version !== 1 || !Array.isArray(parsed.queue) || !Array.isArray(parsed.pool)) {
+          throw new Error('bad envelope shape');
+        }
+        this.env = { ...freshEnvelope(), ...parsed };
+        return;
+      } catch {
+        // Corrupt envelope: quarantine the raw bytes for diagnosis
+        // and start fresh. Its events were undeliverable state, not
+        // silently-kept data — the quarantine preserves the evidence.
+        try {
+          await store.set(ENVELOPE_CORRUPT_KEY, raw);
+        } catch {
+          /* best effort */
+        }
+        this.env = freshEnvelope();
+        return;
+      }
+    }
+    // One-time fold of the legacy (v5) multi-key layout, if present.
+    try {
+      const [q, p, s, d] = await Promise.all([
+        store.get(LEGACY_QUEUE_KEY),
+        store.get(LEGACY_POOL_KEY),
+        store.get(LEGACY_STATE_KEY),
+        store.get(LEGACY_DEADLETTER_KEY),
+      ]);
+      if (q || p || s || d) {
+        const env = freshEnvelope();
+        if (q) env.queue = JSON.parse(q) as QueuedEvent[];
+        if (p) env.pool = JSON.parse(p) as string[];
+        if (s) {
+          const st = JSON.parse(s) as {
+            stagedUpdateId?: string | null;
+            appliedUpdateId?: string | null;
+            overflow?: OverflowStats;
+          };
+          env.stagedUpdateId = st.stagedUpdateId ?? null;
+          env.appliedUpdateId = st.appliedUpdateId ?? null;
+          if (st.overflow) env.overflow = st.overflow;
+        }
+        if (d) {
+          const dl = JSON.parse(d) as
+            | DeadLetterEntry[]
+            | { entries: DeadLetterEntry[]; dropped: number };
+          if (Array.isArray(dl)) env.deadLetter = dl;
+          else {
+            env.deadLetter = dl.entries ?? [];
+            env.deadLetterDropped = dl.dropped ?? 0;
+          }
+        }
+        this.env = env;
+        await this.persist().catch(() => undefined);
+      }
+    } catch {
+      /* legacy fold is best-effort; a fresh envelope is the fallback */
+    }
+  }
+
+  /** The ONLY write path for telemetry state: one key, one set(). */
+  private async persist(): Promise<void> {
+    await this.deps.queueStore.set(ENVELOPE_KEY, JSON.stringify(this.env));
   }
 
   /** Run work on the serialized chain. Resolves false on failure. */
@@ -179,129 +271,93 @@ export class Telemetry {
       await work();
       return true;
     });
-    const settled = run.then(
+    this.tail = run.then(
       () => undefined,
       () => undefined,
     );
-    this.tail = settled;
     return run.then(
       () => true,
       () => false,
     );
   }
 
-  private async loadAll(): Promise<void> {
-    if (this.loaded) return;
-    this.loaded = true;
-    const kv = await this.kv();
+  // ---------------------------------------------------------------
+  // identity (SecureStore ONLY, single value, never adopted unsaved)
+  // ---------------------------------------------------------------
+
+  /** Read the stored identity from SecureStore. Throws only via the
+   *  `unreadable` flag: a store error is distinguished from absence. */
+  private async readStoredIdentity(): Promise<
+    { kind: 'found'; identity: { id: string; secret: string } } | { kind: 'absent' } | { kind: 'unreadable' }
+  > {
+    let raw: string | null;
     try {
-      const rawQ = await kv.get(QUEUE_KEY);
-      this.queue = rawQ ? (JSON.parse(rawQ) as QueuedEvent[]) : [];
+      raw = await this.deps.secureStore.get(IDENTITY_KEY);
     } catch {
-      this.queue = [];
+      return { kind: 'unreadable' };
     }
-    try {
-      const rawP = await kv.get(POOL_KEY);
-      this.pool = rawP ? (JSON.parse(rawP) as string[]) : [];
-    } catch {
-      this.pool = [];
-    }
-    try {
-      const rawS = await kv.get(STATE_KEY);
-      if (rawS) {
-        const parsed = JSON.parse(rawS) as Partial<PersistedState>;
-        this.state = {
-          stagedUpdateId: parsed.stagedUpdateId ?? null,
-          appliedUpdateId: parsed.appliedUpdateId ?? null,
-          overflow: {
-            refused: parsed.overflow?.refused ?? {},
-            evicted: parsed.overflow?.evicted ?? {},
-          },
-        };
-      }
-    } catch {
-      /* keep defaults */
-    }
-    try {
-      const rawD = await kv.get(DEADLETTER_KEY);
-      if (rawD) {
-        const parsed = JSON.parse(rawD) as
-          | DeadLetterEntry[]
-          | { entries: DeadLetterEntry[]; dropped: number };
-        if (Array.isArray(parsed)) {
-          this.deadLetter = parsed;
-        } else {
-          this.deadLetter = parsed.entries ?? [];
-          this.deadLetterDroppedCount = parsed.dropped ?? 0;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { id?: unknown; secret?: unknown };
+        if (typeof parsed.id === 'string' && typeof parsed.secret === 'string') {
+          return { kind: 'found', identity: { id: parsed.id, secret: parsed.secret } };
         }
+      } catch {
+        /* malformed value: treated as absent and overwritten later */
+      }
+      return { kind: 'absent' };
+    }
+    // Legacy fold: v5 stored id and secret as separate keys.
+    try {
+      const [id, secret] = await Promise.all([
+        this.deps.secureStore.get(LEGACY_ID_KEY),
+        this.deps.secureStore.get(LEGACY_SECRET_KEY),
+      ]);
+      if (id && secret) {
+        const identity = { id, secret };
+        try {
+          await this.deps.secureStore.set(IDENTITY_KEY, JSON.stringify(identity));
+        } catch {
+          /* adoption below still returns it: it IS the stored pair */
+        }
+        return { kind: 'found', identity };
       }
     } catch {
-      this.deadLetter = [];
+      return { kind: 'unreadable' };
     }
+    return { kind: 'absent' };
   }
-
-  private async persistQueue(): Promise<void> {
-    const kv = await this.kv();
-    await kv.set(QUEUE_KEY, JSON.stringify(this.queue));
-  }
-
-  private async persistPool(): Promise<void> {
-    const kv = await this.kv();
-    await kv.set(POOL_KEY, JSON.stringify(this.pool));
-  }
-
-  private async persistState(): Promise<void> {
-    const kv = await this.kv();
-    await kv.set(STATE_KEY, JSON.stringify(this.state));
-  }
-
-  private async persistDeadLetter(): Promise<void> {
-    const kv = await this.kv();
-    await kv.set(
-      DEADLETTER_KEY,
-      JSON.stringify({
-        entries: this.deadLetter.slice(-DEADLETTER_CAP),
-        dropped: this.deadLetterDroppedCount,
-      }),
-    );
-  }
-
-  /** Persist every mutable store; throws on the first failure. */
-  private async persistAll(): Promise<void> {
-    await this.persistQueue();
-    await this.persistPool();
-    await this.persistState();
-    await this.persistDeadLetter();
-  }
-
-  // ---------------------------------------------------------------
-  // identity (server-issued)
-  // ---------------------------------------------------------------
 
   private async ensureIdentity(): Promise<{ id: string; secret: string } | null> {
     if (this.identity) return this.identity;
-    if (!this.identityLoaded) {
-      this.identityLoaded = true;
-      try {
-        const kv = await this.kv();
-        const id = await kv.get(ID_KEY);
-        const secret = await kv.get(SECRET_KEY);
-        if (id && secret) this.identity = { id, secret };
-      } catch {
-        /* treated as unissued */
-      }
+    // Always try local restoration BEFORE asking the server again.
+    const stored = await this.readStoredIdentity();
+    if (stored.kind === 'found') {
+      this.identity = stored.identity;
+      return this.identity;
     }
-    if (this.identity) return this.identity;
+    if (stored.kind === 'unreadable') {
+      // SecureStore cannot be read: do not bootstrap (the result
+      // could not be stored) and do not send. Queueing continues.
+      return null;
+    }
     if (!this.deps.endpoint || !this.deps.publishableKey) return null;
     const issued = await this.deps.requestBootstrap(this.deps.facts()).catch(() => null);
     if (!issued) return null;
-    const kv = await this.kv();
-    await kv.set(ID_KEY, issued.installation_id);
-    await kv.set(SECRET_KEY, issued.installation_secret);
-    this.identity = { id: issued.installation_id, secret: issued.installation_secret };
+    const identity = { id: issued.installation_id, secret: issued.installation_secret };
+    try {
+      await this.deps.secureStore.set(IDENTITY_KEY, JSON.stringify(identity));
+    } catch {
+      // NOT adopted: an identity that exists only in memory (and on
+      // the server) would strand its events on restart. The next
+      // flush re-reads storage first, then re-bootstraps if needed
+      // (the orphaned server row stays dormant forever).
+      return null;
+    }
+    this.identity = identity;
     if (Array.isArray(issued.event_id_pool) && issued.event_id_pool.length > 0) {
-      this.pool = [...this.pool, ...issued.event_id_pool];
-      await this.persistPool().catch(() => undefined);
+      this.env.pool = [...this.env.pool, ...issued.event_id_pool];
+      await this.persist().catch(() => undefined);
     }
     return this.identity;
   }
@@ -312,32 +368,34 @@ export class Telemetry {
 
   private async enqueueInternal(event: QueuedEvent): Promise<void> {
     await this.loadAll();
-    if (this.queue.length >= QUEUE_CAP) {
+    if (this.env.queue.length >= QUEUE_CAP) {
       if (LOW_VALUE.includes(event.event_type)) {
-        const r = this.state.overflow.refused;
+        const r = this.env.overflow.refused;
         r[event.event_type] = (r[event.event_type] ?? 0) + 1;
-        await this.persistState();
+        await this.persist();
         return;
       }
       const victimIdx = EVICTABLE.map((t) =>
-        this.queue.findIndex((e) => e.event_type === t),
+        this.env.queue.findIndex((e) => e.event_type === t),
       ).find((i) => i >= 0);
       if (victimIdx === undefined) {
-        const r = this.state.overflow.refused;
+        const r = this.env.overflow.refused;
         r[event.event_type] = (r[event.event_type] ?? 0) + 1;
-        await this.persistState();
+        await this.persist();
         return;
       }
-      const [victim] = this.queue.splice(victimIdx, 1);
-      const ev = this.state.overflow.evicted;
+      const [victim] = this.env.queue.splice(victimIdx, 1);
+      const ev = this.env.overflow.evicted;
       ev[victim.event_type] = (ev[victim.event_type] ?? 0) + 1;
     }
     if (!event.client_event_id) {
-      event.client_event_id = this.pool.shift() ?? null;
+      event.client_event_id = this.env.pool.shift() ?? null;
     }
-    this.queue.push(event);
-    await this.persistQueue();
-    await this.persistState();
+    this.env.queue.push(event);
+    // ONE envelope write: the event AND the consumed pool id (and any
+    // counter change) become durable together — a restart can never
+    // resurrect a consumed id.
+    await this.persist();
   }
 
   /** Queue one event durably. Resolves true once it is persisted. */
@@ -379,8 +437,8 @@ export class Telemetry {
       const staged = e.updateId;
       void this.chain(async () => {
         await this.loadAll();
-        this.state.stagedUpdateId = staged;
-        await this.persistState();
+        this.env.stagedUpdateId = staged;
+        await this.persist();
       });
     }
     void this.flush();
@@ -390,34 +448,33 @@ export class Telemetry {
   /**
    * Startup step: if the binary is now running an update that was
    * previously downloaded (or rolled back to embedded), record
-   * `update_applied` exactly once for it.
+   * `update_applied` exactly once for it. With an UNKNOWN embedded
+   * state and no running update id, nothing is decided and the
+   * staged state is preserved for a later, knowable launch.
    */
   async checkAppliedOnLaunch(current: {
     updateId: string | null;
-    isEmbeddedLaunch: boolean;
+    isEmbeddedLaunch: boolean | null;
   }): Promise<void> {
     await this.chain(async () => {
       await this.loadAll();
-      const running = current.isEmbeddedLaunch ? 'rollback-to-embedded' : current.updateId;
+      if (current.isEmbeddedLaunch === null && !current.updateId) {
+        return; // state unknown: decide nothing, keep staged as-is
+      }
+      const running =
+        current.isEmbeddedLaunch === true ? 'rollback-to-embedded' : current.updateId;
       if (!running) {
-        this.state.stagedUpdateId = null;
-        await this.persistState();
+        this.env.stagedUpdateId = null;
+        await this.persist();
         return;
       }
-      if (running === this.state.appliedUpdateId) return;
-      if (this.state.stagedUpdateId && running !== this.state.stagedUpdateId) {
-        // Running something else entirely (a newer update superseded
-        // the staged one before it ever launched): not an "applied"
-        // for the staged id.
-        this.state.stagedUpdateId = null;
-        await this.persistState();
-        return;
-      }
-      const isAppliedForStaged = this.state.stagedUpdateId === running;
-      this.state.appliedUpdateId = running;
-      this.state.stagedUpdateId = null;
-      await this.persistState();
+      if (running === this.env.appliedUpdateId) return;
+      const isAppliedForStaged = this.env.stagedUpdateId === running;
+      this.env.appliedUpdateId = running;
+      this.env.stagedUpdateId = null;
       if (isAppliedForStaged) {
+        // enqueueInternal persists the whole envelope (including the
+        // lifecycle transition above) in its own single write.
         await this.enqueueInternal({
           client_event_id: null,
           event_type: 'update_applied',
@@ -426,6 +483,8 @@ export class Telemetry {
           failure_reason: null,
           client_ts: this.deps.now().toISOString(),
         });
+      } else {
+        await this.persist();
       }
     });
   }
@@ -435,13 +494,11 @@ export class Telemetry {
   // ---------------------------------------------------------------
 
   /**
-   * Send queued events + the installation heartbeat (which carries the
-   * current facts, so the same call registers first-seen facts after
-   * bootstrap and refreshes last_seen afterwards). Never sends before
-   * the local queue is durably persisted; applies the server verdict
-   * exactly (accepted + duplicates removed, rate_limited kept,
-   * other rejections dead-lettered, unaccounted kept) and persists
-   * the result before reporting success.
+   * Send queued events + the installation heartbeat. Never sends
+   * before the local state is durably persisted; applies the server
+   * verdict exactly (accepted + duplicates removed, rate_limited
+   * kept, other rejections dead-lettered, unaccounted kept) and
+   * persists the result before reporting success.
    */
   flush(): Promise<boolean> {
     return this.chain(() => this.flushInternal());
@@ -454,10 +511,9 @@ export class Telemetry {
     this.flushing = true;
     try {
       await this.loadAll();
-      // Durable-before-send: if the local stores cannot be written,
-      // do not send anything (a crash must not be able to lose the
-      // only copy of unsent events).
-      await this.persistAll();
+      // Durable-before-send: if the envelope cannot be written, do
+      // not send anything (a crash must not lose the only copy).
+      await this.persist();
 
       const identity = await this.ensureIdentity();
       if (!identity) throw new Error('no identity');
@@ -466,33 +522,27 @@ export class Telemetry {
       // runs dry mid-assignment, fetch a top-up with a heartbeat
       // (empty batch) and continue.
       const assignFromPool = (): void => {
-        for (const e of this.queue) {
-          if (!e.client_event_id) e.client_event_id = this.pool.shift() ?? null;
+        for (const e of this.env.queue) {
+          if (!e.client_event_id) e.client_event_id = this.env.pool.shift() ?? null;
         }
       };
       assignFromPool();
-      if (this.queue.some((e) => !e.client_event_id)) {
+      if (this.env.queue.some((e) => !e.client_event_id)) {
         const topUp = await this.postBatch(identity, []);
         if (topUp?.event_id_pool?.length) {
-          this.pool = [...this.pool, ...topUp.event_id_pool];
+          this.env.pool = [...this.env.pool, ...topUp.event_id_pool];
         }
         assignFromPool();
       }
-      await this.persistQueue();
-      await this.persistPool();
+      await this.persist();
 
-      const batch = this.queue.filter((e) => e.client_event_id).slice(0, 50);
+      const batch = this.env.queue.filter((e) => e.client_event_id).slice(0, 50);
       const verdict = await this.postBatch(identity, batch);
       if (!verdict) throw new Error('no verdict');
 
-      const snapshot = {
-        queue: this.queue,
-        pool: this.pool,
-        deadLetter: this.deadLetter,
-        deadLetterDroppedCount: this.deadLetterDroppedCount,
-      };
+      const snapshot = JSON.stringify(this.env);
       if (verdict.event_id_pool?.length) {
-        this.pool = [...this.pool, ...verdict.event_id_pool];
+        this.env.pool = [...this.env.pool, ...verdict.event_id_pool];
       }
       const drop = new Set([...verdict.accepted, ...verdict.duplicates]);
       const rejectedById = new Map(
@@ -503,7 +553,7 @@ export class Telemetry {
       const sentIds = new Set(batch.map((e) => e.client_event_id as string));
       const remaining: QueuedEvent[] = [];
       const newlyDead: DeadLetterEntry[] = [];
-      for (const e of this.queue) {
+      for (const e of this.env.queue) {
         if (!e.client_event_id || !sentIds.has(e.client_event_id)) {
           remaining.push(e);
           continue;
@@ -516,24 +566,21 @@ export class Telemetry {
           newlyDead.push({ event: e, reason, dead_at: this.deps.now().toISOString() });
         }
       }
-      this.queue = remaining;
+      this.env.queue = remaining;
       if (newlyDead.length > 0) {
-        this.deadLetter = [...this.deadLetter, ...newlyDead];
-        if (this.deadLetter.length > DEADLETTER_CAP) {
-          this.deadLetterDroppedCount += this.deadLetter.length - DEADLETTER_CAP;
-          this.deadLetter = this.deadLetter.slice(-DEADLETTER_CAP);
+        this.env.deadLetter = [...this.env.deadLetter, ...newlyDead];
+        if (this.env.deadLetter.length > DEADLETTER_CAP) {
+          this.env.deadLetterDropped += this.env.deadLetter.length - DEADLETTER_CAP;
+          this.env.deadLetter = this.env.deadLetter.slice(-DEADLETTER_CAP);
         }
       }
       try {
-        await this.persistAll();
+        await this.persist();
       } catch {
         // The verdict was applied in memory but could not be made
-        // durable: revert, so this session and any restart resend
-        // (the server dedupes on client_event_id).
-        this.queue = snapshot.queue;
-        this.pool = snapshot.pool;
-        this.deadLetter = snapshot.deadLetter;
-        this.deadLetterDroppedCount = snapshot.deadLetterDroppedCount;
+        // durable: revert to the pre-verdict envelope, so this
+        // session and any restart resend (server dedupes).
+        this.env = JSON.parse(snapshot) as Envelope;
         throw new Error('persist failed');
       }
     } finally {
@@ -571,19 +618,19 @@ export class Telemetry {
   // ---------------------------------------------------------------
 
   get queuedCount(): number {
-    return this.queue.length;
+    return this.env.queue.length;
   }
 
   get deadLetterCount(): number {
-    return this.deadLetter.length;
+    return this.env.deadLetter.length;
   }
 
   get deadLetterDropped(): number {
-    return this.deadLetterDroppedCount;
+    return this.env.deadLetterDropped;
   }
 
   get overflowStats(): OverflowStats {
-    return this.state.overflow;
+    return this.env.overflow;
   }
 
   get issuedIdentity(): { id: string } | null {

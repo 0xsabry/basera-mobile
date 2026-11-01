@@ -101,7 +101,7 @@ its entire queue.
 - Heartbeat: every flush carries the installation facts, so the same
   call registers the first launch and refreshes `last_seen_at` later.
 
-### Offline, durability, and overflow (v5)
+### Offline, durability, and overflow (v5 model, v6 storage)
 All queue mutations run through ONE serialized chain and are
 persisted before the operation counts as done: `record()` resolves
 only after its event is on disk; `flush()` first re-persists the
@@ -109,6 +109,28 @@ whole local state and refuses to send if storage fails; events are
 removed only after a server verdict, and if the post-verdict persist
 fails the in-memory state reverts so the events resend (the server
 dedupes). Flush is attempted at launch and after each update event.
+
+**v6 storage hardening.** ALL mutable telemetry state — queue, event
+id pool, lifecycle state, overflow counters, dead-letter — lives in
+ONE Atomic State Envelope: a single key written with a single set()
+per mutation. There is no multi-key pseudo-transaction left to tear:
+a crash leaves the whole old envelope or the whole new one, so
+consuming a pool id is durable in the same write as the event that
+uses it (v5 persisted queue and pool separately and could resurrect
+a consumed id after a restart). A corrupt envelope is quarantined
+(raw bytes kept under a separate key) rather than trusted. The
+legacy multi-key layout, if ever present, folds into the envelope
+once, losslessly.
+
+The installation identity is the exception that proves the rule: id
++ secret together form ONE value stored in **SecureStore only** —
+never in plain storage, not even as a fallback. If SecureStore is
+unavailable, events keep queueing in the envelope but nothing is
+sent and no bootstrap is requested (its result could not be stored);
+sending resumes when SecureStore recovers. An issued identity whose
+save fails is NOT adopted in memory; the next attempt re-reads local
+storage first and only then asks the server again (the orphaned
+server row stays dormant forever — it can never receive events).
 
 The 200-event queue NEVER drops a queued event. Overflow policy
 (explicit and counted in persisted state, readable via diagnostics):
@@ -119,6 +141,20 @@ failed) evicts the oldest queued `update_check` (else oldest
 (+counted). The dead-letter store rotates at 100 with a persisted
 drop counter — dead-lettered events were already definitively
 refused by the server, so rotation loses local diagnostics only.
+
+### Configuration naming (v6)
+The client key is a new-style Supabase **publishable** key, and the
+configuration names now say so: env `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
+app.json extra `supabasePublishableKey` (used by both the telemetry
+resolver in `src/telemetry/config.ts` and the guardian resolver).
+The legacy `..._ANON_KEY` / `supabaseAnonKey` names remain as
+fallbacks during the rename so existing local envs keep working.
+`expo config` evaluation (the object EAS embeds into APKs and Expo
+serves in update manifests) was verified to carry the production URL
+and the canonical publishable key, and the compiled bundle carries
+the telemetry endpoint path; URL/key themselves are manifest data
+resolved at runtime, exactly as the production guardian client
+already relies on. The key value is never logged.
 
 ### Measurement trust limits (honest bounds)
 - Counts are trustworthy for honest, unmodified clients.
@@ -188,6 +224,38 @@ pre-existing in production is granted, revoked, altered, or dropped.
   not distort per-update adoption ratios (they never hold real
   update ids through the full funnel). No personal data is stored
   that could be used to deanonymize anyone.
+
+## Verification evidence (v6, local — server unchanged since v5)
+
+- **Client suite rewritten for the v6 storage model, all green**
+  (telemetry + config suites; full repo 588/588, `rlsStatic` the
+  only unrunnable suite, pre-existing and unrelated):
+  - Event ids consumed from the pool are never reused across
+    restarts (envelope persistence makes consumption durable in the
+    same write as the event).
+  - Crash points: enqueue write failure loses the event cleanly
+    (restart sees the last whole envelope); pre-send persist failure
+    blocks sending entirely; post-verdict persist failure resends
+    the SAME ids after restart; a corrupt envelope is quarantined.
+  - SecureStore outage: queueing continues, sending + bootstrap are
+    fully disabled, recovery resumes delivery with nothing lost.
+  - Identity: save failure → not adopted, retry re-reads storage
+    first then re-issues; a pre-stored identity restores with zero
+    bootstrap calls; the secret exists only inside the single
+    SecureStore value, never in the envelope.
+  - Tri-state: a null (unknown) embedded state crosses the wire as
+    null and preserves a staged download, which a later knowable
+    launch still reports as applied exactly once.
+  - Legacy multi-key state folds into the envelope losslessly.
+- **Configuration**: 4 resolver tests (canonical-first, legacy
+  fallback, endpoint derivation); `expo config --type public --json`
+  evaluation verified (booleans only, key never printed): production
+  URL host present, canonical publishable key present, endpoint
+  derivable. A production export's compiled bundle contains the
+  telemetry endpoint path. Guardian PWA tests (13) pass with the
+  renamed config property.
+- The server side (SQL + Edge Function) is UNCHANGED in v6; the v5
+  real-Supabase gateway evidence below stands as-is.
 
 ## Verification evidence (v5)
 
