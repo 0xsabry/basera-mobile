@@ -22,8 +22,8 @@ import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
 const EXPECTED_RUNTIME = '1.1.0';
-const LAST_APK_COMMIT = '8c2139e'; // 1.1.7 / versionCode 9 build commit
-const LAST_APK_CODE = 9;
+const LAST_APK_COMMIT = 'f0a6f39'; // 1.1.8 / versionCode 10 build commit
+const LAST_APK_CODE = 10;
 const NATIVE_PATHS = ['android', 'package.json', 'package-lock.json', 'app.json'];
 
 let failed = false;
