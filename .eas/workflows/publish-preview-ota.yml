@@ -2,7 +2,7 @@
 #
 # Manual trigger ONLY (workflow_dispatch) — nothing runs on push or on a schedule.
 # Default run is a DRY RUN: it exports the bundle in EAS Cloud and publishes NOTHING.
-# To publish: eas workflow:run publish-preview-ota.yml -F publish=true
+# To publish: eas workflow:run .eas/workflows/publish-preview-ota.yml -F publish=true
 name: Publish preview OTA (Android)
 
 on:
@@ -33,4 +33,4 @@ jobs:
     params:
       channel: preview
       platform: android
-      message: 'BASERA 1.1.8 pilot launch - telemetry client (runtime 1.1.0)'
+      message: 'BASERA preview OTA: Egyptian Arabic default voice (runtime 1.1.0)'
