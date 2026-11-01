@@ -1,0 +1,39 @@
+# Supabase CLI configuration for BASERA — LOCAL DEVELOPMENT / CLI ONLY.
+#
+# This file configures the local Supabase stack and CLI behaviour for
+# this repo. It does NOT describe or control the production project
+# (vbvvwyeccsegfwprwrga). Production settings live in the Supabase
+# Dashboard and WIN on any conflict with this file.
+#
+# Never run migrations against production from this config without the
+# owner's explicit approval (Release Gate — see supabase/README.md),
+# and reconcile with `supabase db pull` before any CLI-driven change:
+# the baseline in supabase/migrations/ documents the deployed state, it
+# must never be re-applied to the live project.
+
+project_id = "basera"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+
+[db]
+port = 54322
+major_version = 15
+
+# Mirrors the known live auth settings (verified 2026-10-31): the email
+# provider is on, signup is on, and email confirmation is REQUIRED
+# (mailer_autoconfirm = false) — signup returns no session until the
+# user confirms via email.
+[auth]
+enabled = true
+enable_signup = true
+
+[auth.email]
+enable_confirmations = true
+
+# Realtime is verified live on guardian_locations and sos_alerts
+# (postgres_changes). See docs/SUPABASE_INTEGRATION.md.
+[realtime]
+enabled = true
