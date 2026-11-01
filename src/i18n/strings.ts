@@ -319,6 +319,10 @@ const en = {
   speechExpl: 'When off, BASERA never speaks; alerts use vibration and on-screen text instead.',
   voicePickerTitle: 'Speech voice',
   voiceDefault: 'System default voice',
+  voiceAutoEgyptian: 'Automatic — Egyptian voice preferred',
+  voiceAutoExpl:
+    'BASERA automatically uses an installed Egyptian Arabic voice (ar-EG) for Arabic speech. If none is installed, the system Arabic voice is used instead.',
+  voiceCustomSelected: 'Selected voice',
   hapticsTitle: 'Vibration feedback',
   hapticsExpl: 'Vibration for alerts and key confirmations; turning it off also silences hazard vibrations.',
   repeatExpl: 'Repeat replays the last spoken message.',
@@ -391,11 +395,15 @@ const en = {
   voiceAvailableAr: 'Arabic — Available voice',
   voiceAvailableEn: 'English — Available voice',
   voiceTest: 'Test voice',
-  voiceSampleAr: 'مرحبًا، هذا اختبار للصوت.',
+  voiceSampleAr: 'أهلاً بيك، أنا بصيرة. هساعدك تعرف اللي حواليك خطوة بخطوة.',
   voiceSampleEn: 'Hello, this is a voice test.',
   voiceNoneAvailable:
     'No usable voice is installed for this language. Install voice data in Android Settings → Accessibility → Text-to-speech output, then come back here.',
-  voiceTestFailed: 'This voice could not speak. The system default voice will be used instead.',
+  voiceEgyptianUnavailable:
+    'No Egyptian Arabic voice is installed on this device yet, so Arabic speech uses the system fallback voice, which may not sound Egyptian.',
+  voiceInstallGuidance:
+    'To add an Egyptian voice: Android Settings → Accessibility → Text-to-speech output → Install voice data → Arabic (Egypt). Then return here.',
+  voiceTestFailed: 'This voice could not speak. The automatic voice will be used instead.',
   backToHistory: 'Back to history',
   ocrSpokenPrefix: 'The text says:',
   welcomeSpoken: 'Welcome to BASERA. Choose what you would like to do from the home screen.',
@@ -720,6 +728,10 @@ const ar: Record<StringKey, string> = {
   speechExpl: 'عند إيقافه، لا تنطق بصيرة أبدًا؛ تستخدم التنبيهات الاهتزاز والنص على الشاشة.',
   voicePickerTitle: 'صوت النطق',
   voiceDefault: 'صوت النظام الافتراضي',
+  voiceAutoEgyptian: 'تلقائي — يُفضَّل الصوت المصري',
+  voiceAutoExpl:
+    'يستخدم بصيرة تلقائيًا صوتًا عربيًا مصريًا (ar-EG) مثبتًا على الجهاز لنطق العربية. إذا لم يوجد صوت مصري مثبت، يُستخدم صوت النظام للعربية.',
+  voiceCustomSelected: 'صوت مختار',
   hapticsTitle: 'الاهتزاز',
   hapticsExpl: 'اهتزاز للتنبيهات والتأكيدات المهمة، وإيقافه يوقف اهتزازات الخطر أيضًا.',
   repeatExpl: 'يُعيد زر التكرار آخر رسالة منطوقة.',
@@ -791,11 +803,15 @@ const ar: Record<StringKey, string> = {
   voiceAvailableAr: 'العربية — صوت متاح',
   voiceAvailableEn: 'الإنجليزية — صوت متاح',
   voiceTest: 'اختبار الصوت',
-  voiceSampleAr: 'مرحبًا، هذا اختبار للصوت.',
+  voiceSampleAr: 'أهلاً بيك، أنا بصيرة. هساعدك تعرف اللي حواليك خطوة بخطوة.',
   voiceSampleEn: 'Hello, this is a voice test.',
   voiceNoneAvailable:
     'لا يوجد صوت مثبّت صالح لهذه اللغة. ثبّت بيانات الصوت من إعدادات أندرويد ← إمكانية الوصول ← تحويل النص إلى كلام، ثم عُد إلى هنا.',
-  voiceTestFailed: 'تعذّر تشغيل هذا الصوت. سيُستخدم صوت النظام الافتراضي بدلًا منه.',
+  voiceEgyptianUnavailable:
+    'لا يوجد صوت عربي مصري مثبت على هذا الجهاز حتى الآن، لذلك يستخدم نطق العربية صوت النظام الاحتياطي، وقد لا يبدو مصريًا.',
+  voiceInstallGuidance:
+    'لإضافة صوت مصري: إعدادات أندرويد ← إمكانية الوصول ← تحويل النص إلى كلام ← تثبيت بيانات الصوت ← العربية (مصر). ثم عُد إلى هنا.',
+  voiceTestFailed: 'تعذّر تشغيل هذا الصوت. سيُستخدم الصوت التلقائي بدلًا منه.',
   backToHistory: 'العودة إلى السجل',
   ocrSpokenPrefix: 'يقول النص:',
   welcomeSpoken: 'مرحبًا بك في بصيرة. اختر ما تريد من الشاشة الرئيسية.',

@@ -1,4 +1,4 @@
-import { colorsFor, DEFAULT_SETTINGS, parseSettings, resolveIsDark } from '../SettingsContext';
+import { colorsFor, DEFAULT_SETTINGS, migrateVoicePreference, parseSettings, resolveIsDark } from '../SettingsContext';
 import { darkColors, darkHighContrast, lightColors } from '../../theme/tokens';
 
 describe('settings persistence parsing', () => {
@@ -26,6 +26,58 @@ describe('settings persistence parsing', () => {
     expect(s.theme).toBe('dark');
     expect(s.onboardingDone).toBe(true);
     expect(s.highContrast).toBe(false);
+  });
+});
+
+describe('voice preference defaults + migration', () => {
+  it('fresh installs default to the automatic (Egyptian-preferred) preference', () => {
+    expect(DEFAULT_SETTINGS.voicePreference).toEqual({ kind: 'auto' });
+    expect(parseSettings(null).voicePreference).toEqual({ kind: 'auto' });
+    expect(parseSettings('{{').voicePreference).toEqual({ kind: 'auto' });
+    expect(parseSettings('{}').voicePreference).toEqual({ kind: 'auto' });
+  });
+
+  it('legacy installs with no explicit voice (voiceIdentifier null/absent) migrate to auto', () => {
+    expect(parseSettings(JSON.stringify({ voiceIdentifier: null })).voicePreference).toEqual({ kind: 'auto' });
+    expect(parseSettings(JSON.stringify({ language: 'ar' })).voicePreference).toEqual({ kind: 'auto' });
+  });
+
+  it('a legacy stored voice identifier migrates to a preserved custom selection', () => {
+    const s = parseSettings(JSON.stringify({ voiceIdentifier: 'eg-voice-7', speechRate: 1.3 }));
+    expect(s.voicePreference).toEqual({ kind: 'custom', identifier: 'eg-voice-7' });
+    // Unrelated preferences are untouched by the migration.
+    expect(s.speechRate).toBe(1.3);
+    expect('voiceIdentifier' in s).toBe(false);
+  });
+
+  it('an explicitly stored system preference is preserved verbatim (never re-migrated to auto)', () => {
+    expect(parseSettings(JSON.stringify({ voicePreference: { kind: 'system' } })).voicePreference).toEqual({
+      kind: 'system',
+    });
+    expect(migrateVoicePreference({ voicePreference: { kind: 'system' }, voiceIdentifier: null })).toEqual({
+      kind: 'system',
+    });
+  });
+
+  it('stored auto and custom preferences round-trip unchanged', () => {
+    expect(parseSettings(JSON.stringify({ voicePreference: { kind: 'auto' } })).voicePreference).toEqual({
+      kind: 'auto',
+    });
+    expect(
+      parseSettings(JSON.stringify({ voicePreference: { kind: 'custom', identifier: 'v-9' } })).voicePreference,
+    ).toEqual({ kind: 'custom', identifier: 'v-9' });
+  });
+
+  it('a malformed stored preference falls back safely (legacy id wins, else auto)', () => {
+    expect(
+      parseSettings(JSON.stringify({ voicePreference: { kind: 'custom', identifier: '  ' } })).voicePreference,
+    ).toEqual({ kind: 'auto' });
+    expect(
+      parseSettings(
+        JSON.stringify({ voicePreference: { kind: 'bogus' }, voiceIdentifier: 'legacy-1' }),
+      ).voicePreference,
+    ).toEqual({ kind: 'custom', identifier: 'legacy-1' });
+    expect(parseSettings(JSON.stringify({ voicePreference: 'auto' })).voicePreference).toEqual({ kind: 'auto' });
   });
 });
 

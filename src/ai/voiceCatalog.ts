@@ -51,8 +51,75 @@ const PREFERRED_LOCALE: Record<VoiceGroupLang, string> = {
   en: 'en-us',
 };
 
-function normalizeLanguage(raw: string | undefined | null): string {
+export function normalizeVoiceLanguage(raw: string | undefined | null): string {
   return (raw ?? '').replace(/_/g, '-').trim().toLowerCase();
+}
+
+/* ------------------------------------------------------------------ */
+/* Voice preference + automatic Egyptian selection                     */
+/*                                                                     */
+/* The preference is a three-state value, NOT a bare identifier, so  */
+/* "the user never chose" (auto), "the user explicitly chose the     */
+/* system default" (system) and "the user chose this voice" (custom) */
+/* can never be confused with each other — a bare null could not     */
+/* distinguish the first two, and treating an explicit system choice */
+/* as uninitialized would silently overwrite it later.               */
+/* ------------------------------------------------------------------ */
+
+export type VoicePreference =
+  | { kind: 'auto' }
+  | { kind: 'system' }
+  | { kind: 'custom'; identifier: string };
+
+/** The ONLY locale accepted as a confirmed Egyptian voice. */
+const EGYPTIAN_LOCALE = 'ar-eg';
+
+/** expo-speech quality: 'Enhanced' beats everything else ('Default'…). */
+function qualityTier(quality: string | undefined | null): number {
+  return (quality ?? '').trim().toLowerCase() === 'enhanced' ? 0 : 1;
+}
+
+/**
+ * Pick the device's Egyptian Arabic voice, or null when none exists.
+ *
+ * EXACT locale match only (after normalization, so 'ar_EG' counts):
+ * 'ar-SA', 'ar-XA' and bare 'ar' are NOT Egyptian and are never
+ * selected here — passing one off as Egyptian would be a false claim
+ * about what the user hears. Among exact matches, Enhanced quality
+ * wins; remaining ties break by identifier so the choice is fully
+ * deterministic for a given device voice list.
+ */
+export function selectEgyptianVoice(voices: VoiceLike[]): VoiceLike | null {
+  const exact = (voices ?? []).filter(
+    (v) =>
+      v &&
+      typeof v.identifier === 'string' &&
+      v.identifier.trim() !== '' &&
+      normalizeVoiceLanguage(v.language) === EGYPTIAN_LOCALE,
+  );
+  if (exact.length === 0) return null;
+  return [...exact].sort(
+    (a, b) => qualityTier(a.quality) - qualityTier(b.quality) || a.identifier.localeCompare(b.identifier),
+  )[0];
+}
+
+/**
+ * Resolve a preference to the voice identifier an utterance should
+ * use (null = no voice passed; the engine falls back to the language
+ * tag). 'auto' affects Arabic only: English keeps its established
+ * behavior (system default unless the user picked a custom voice).
+ * When no exact Egyptian voice exists, auto resolves to null — the
+ * ar-EG language fallback still applies, and speech keeps working.
+ */
+export function resolveVoiceIdentifier(
+  pref: VoicePreference,
+  voices: VoiceLike[],
+  lang: VoiceGroupLang,
+): string | null {
+  if (pref.kind === 'custom') return pref.identifier;
+  if (pref.kind === 'system') return null;
+  if (lang !== 'ar') return null;
+  return selectEgyptianVoice(voices)?.identifier ?? null;
 }
 
 function groupOf(normalizedLang: string): VoiceGroupLang | null {
@@ -97,7 +164,7 @@ export function curateVoices(voices: VoiceLike[]): CuratedVoices {
     const identifier = (v?.identifier ?? '').trim();
     if (!identifier) continue; // DROP empty identifiers — cannot be selected.
     if (seenIdentifiers.has(identifier)) continue; // DEDUPE by identifier.
-    const locale = normalizeLanguage(v.language);
+    const locale = normalizeVoiceLanguage(v.language);
     const group = groupOf(locale);
     if (!group) continue; // Keep only ar / en voices.
     seenIdentifiers.add(identifier);

@@ -1,14 +1,19 @@
 /**
  * Builds short, spoken-friendly scene descriptions from detections.
  * Obstacle-relevant classes are mentioned first; counts are grouped;
- * positions use simple words (left / center / right — يسار / في المنتصف / يمين).
+ * positions use simple words (left / center / right — شمالك / قدامك /
+ * يمينك in the spoken-Egyptian Arabic narration).
  * Pure and unit-tested in EN + AR.
  */
 import type { AppLanguage, Detection } from './types';
 import { horizontalPosition, PRIORITY_CLASSES } from './ObstacleAwareness';
 
 const POSITION_EN = { left: 'on the left', center: 'in front of you', right: 'on the right' } as const;
-const POSITION_AR = { left: 'على اليسار', center: 'أمامك مباشرة', right: 'على اليمين' } as const;
+/** Arabic narration is spoken Egyptian (owner order 2026-11-02):
+ *  natural everyday words, with directions kept explicit and
+ *  unambiguous — قدامك (in front of you) / على شمالك (your left) /
+ *  على يمينك (your right). */
+const POSITION_AR = { left: 'على شمالك', center: 'قدامك', right: 'على يمينك' } as const;
 
 interface Group {
   labelEn: string;
@@ -52,7 +57,7 @@ function groupDetections(detections: Detection[]): Group[] {
 export function buildDescription(detections: Detection[], lang: AppLanguage): string {
   if (detections.length === 0) {
     return lang === 'ar'
-      ? 'لم أتمكن من التعرف على أي شيء واضح في الصورة.'
+      ? 'مش شايف حاجة واضحة في الصورة.'
       : 'I could not recognize anything clear in this image.';
   }
   const groups = groupDetections(detections).slice(0, 5);
@@ -68,7 +73,7 @@ export function buildDescription(detections: Detection[], lang: AppLanguage): st
     const noun = g.count > 1 ? `${g.count} ${g.labelAr}` : g.labelAr;
     return `${noun} ${POSITION_AR[g.position]}`;
   });
-  return `أرى: ${parts.join('، ')}.`;
+  return `شايف: ${parts.join('، ')}.`;
 }
 
 function articleFor(label: string): string {

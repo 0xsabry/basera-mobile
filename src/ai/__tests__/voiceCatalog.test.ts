@@ -3,7 +3,13 @@
  * duplicates, unusable locales — into clean ar/en groups whose entries
  * never expose a raw identifier as a display hint.
  */
-import { curateVoices, type VoiceLike } from '../voiceCatalog';
+import {
+  curateVoices,
+  normalizeVoiceLanguage,
+  resolveVoiceIdentifier,
+  selectEgyptianVoice,
+  type VoiceLike,
+} from '../voiceCatalog';
 
 const FIXTURE: VoiceLike[] = [
   { identifier: 'fr-1', name: 'Français', language: 'fr-FR' },
@@ -77,5 +83,79 @@ describe('curateVoices', () => {
     ]);
     expect(ar.map((v) => v.identifier)).toEqual(['a1']);
     expect(en.map((v) => v.identifier)).toEqual(['e1']);
+  });
+});
+
+describe('normalizeVoiceLanguage', () => {
+  it('normalizes underscores, case and whitespace', () => {
+    expect(normalizeVoiceLanguage('ar_EG')).toBe('ar-eg');
+    expect(normalizeVoiceLanguage(' AR-eg ')).toBe('ar-eg');
+    expect(normalizeVoiceLanguage('ar-EG')).toBe('ar-eg');
+    expect(normalizeVoiceLanguage(undefined)).toBe('');
+    expect(normalizeVoiceLanguage(null)).toBe('');
+  });
+});
+
+describe('selectEgyptianVoice — exact ar-EG only', () => {
+  const v = (identifier: string, language: string, quality?: string): VoiceLike => ({
+    identifier,
+    name: identifier,
+    language,
+    quality,
+  });
+
+  it('selects an exact ar-EG voice, including ar_EG spellings', () => {
+    expect(selectEgyptianVoice([v('a', 'ar_EG')])?.identifier).toBe('a');
+    expect(selectEgyptianVoice([v('b', 'AR-EG')])?.identifier).toBe('b');
+  });
+
+  it('never treats ar-SA, ar-XA or bare ar as Egyptian', () => {
+    expect(selectEgyptianVoice([v('sa', 'ar-SA', 'Enhanced')])).toBeNull();
+    expect(selectEgyptianVoice([v('xa', 'ar-XA', 'Enhanced')])).toBeNull();
+    expect(selectEgyptianVoice([v('gen', 'ar', 'Enhanced')])).toBeNull();
+    expect(selectEgyptianVoice([])).toBeNull();
+  });
+
+  it('prefers Enhanced over Default', () => {
+    const picked = selectEgyptianVoice([v('eg-def', 'ar-EG', 'Default'), v('eg-enh', 'ar-EG', 'Enhanced')]);
+    expect(picked?.identifier).toBe('eg-enh');
+    // Quality matching tolerates case.
+    expect(selectEgyptianVoice([v('eg-def', 'ar-EG', 'Default'), v('eg-enh', 'ar-EG', 'enhanced')])?.identifier).toBe(
+      'eg-enh',
+    );
+  });
+
+  it('breaks same-quality ties deterministically by identifier, regardless of list order', () => {
+    const a = v('eg-b', 'ar-EG', 'Default');
+    const b = v('eg-a', 'ar-EG', 'Default');
+    expect(selectEgyptianVoice([a, b])?.identifier).toBe('eg-a');
+    expect(selectEgyptianVoice([b, a])?.identifier).toBe('eg-a');
+  });
+
+  it('ignores entries with empty identifiers', () => {
+    expect(selectEgyptianVoice([v('', 'ar-EG', 'Enhanced'), v('eg', 'ar-EG', 'Default')])?.identifier).toBe('eg');
+  });
+});
+
+describe('resolveVoiceIdentifier', () => {
+  const voices: VoiceLike[] = [
+    { identifier: 'eg-1', name: 'Egypt', language: 'ar-EG', quality: 'Default' },
+    { identifier: 'sa-1', name: 'Saudi', language: 'ar-SA', quality: 'Enhanced' },
+  ];
+
+  it('auto + Arabic resolves to the Egyptian voice; auto + English stays system', () => {
+    expect(resolveVoiceIdentifier({ kind: 'auto' }, voices, 'ar')).toBe('eg-1');
+    expect(resolveVoiceIdentifier({ kind: 'auto' }, voices, 'en')).toBeNull();
+  });
+
+  it('auto + Arabic with no Egyptian voice resolves to null (language fallback), never to ar-SA', () => {
+    expect(resolveVoiceIdentifier({ kind: 'auto' }, [voices[1]], 'ar')).toBeNull();
+    expect(resolveVoiceIdentifier({ kind: 'auto' }, [], 'ar')).toBeNull();
+  });
+
+  it('system always resolves to null; custom pins its identifier', () => {
+    expect(resolveVoiceIdentifier({ kind: 'system' }, voices, 'ar')).toBeNull();
+    expect(resolveVoiceIdentifier({ kind: 'custom', identifier: 'sa-1' }, voices, 'ar')).toBe('sa-1');
+    expect(resolveVoiceIdentifier({ kind: 'custom', identifier: 'sa-1' }, voices, 'en')).toBe('sa-1');
   });
 });

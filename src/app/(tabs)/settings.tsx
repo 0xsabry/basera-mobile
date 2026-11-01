@@ -323,7 +323,13 @@ export default function SettingsScreen() {
           variant="quiet"
           glyph={GLYPHS.voice}
           title={t(lang, 'voicePickerTitle')}
-          subtitle={settings.voiceIdentifier === null ? t(lang, 'voiceDefault') : settings.voiceIdentifier}
+          subtitle={
+            settings.voicePreference.kind === 'auto'
+              ? t(lang, 'voiceAutoEgyptian')
+              : settings.voicePreference.kind === 'system'
+                ? t(lang, 'voiceDefault')
+                : t(lang, 'voiceCustomSelected')
+          }
           accessibilityLabel={t(lang, 'voicePickerTitle')}
           onPress={() => router.push('/settings-voice')}
         />

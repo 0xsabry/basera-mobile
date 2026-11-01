@@ -13,6 +13,7 @@ import * as Speech from 'expo-speech';
 import { t } from '../i18n/strings';
 import { setAccessibilityBusy } from '../state/accessibilityBusy';
 import type { AppLanguage } from './types';
+import { resolveVoiceIdentifier, type VoiceLike, type VoicePreference } from './voiceCatalog';
 
 export interface SpeechService {
   /** Speak a meaningful, repeatable response. Becomes the repeat target. */
@@ -34,8 +35,20 @@ export interface SpeechService {
   setRate(rate: number): void;
   /** Settings gate: when false, ALL speech output is suppressed. */
   setSpeechEnabled(enabled: boolean): void;
-  /** Settings: chosen TTS voice identifier (null = OS default voice). */
-  setVoiceIdentifier(identifier: string | null): void;
+  /**
+   * Settings: the three-state voice preference. 'auto' (the default)
+   * resolves Arabic utterances to the device's exact ar-EG voice when
+   * one is installed (see voiceCatalog.selectEgyptianVoice); 'system'
+   * is an EXPLICIT user choice of the OS default voice and is never
+   * treated as uninitialized; 'custom' pins one chosen identifier.
+   */
+  setVoicePreference(pref: VoicePreference): void;
+  /**
+   * Feed a freshly listed device voice catalog into the service so
+   * 'auto' resolution and utterances share one discovery (the voice
+   * picker calls this with the list it already fetched).
+   */
+  noteAvailableVoices(voices: VoiceLike[]): void;
   /**
    * Bug 4: speak a short sample with the GIVEN voice (null = system
    * default) so the Settings picker can audition a voice before/instead
@@ -46,13 +59,14 @@ export interface SpeechService {
    */
   testSpeak(voiceIdentifier: string | null, sampleLang: AppLanguage): Promise<boolean>;
   /**
-   * Bug 4 stale-voice guard: validate the currently selected voice
-   * against the identifiers the device actually offers. A persisted
-   * identifier the device no longer has (voice data removed, engine
-   * changed) can make expo-speech fail EVERY utterance silently, so a
-   * stale selection is cleared back to the system default.
-   * Returns true when the selection is valid (null or present in
-   * `availableIds`); false when a stale identifier was cleared.
+   * Bug 4 stale-voice guard: validate a CUSTOM selection against the
+   * identifiers the device actually offers. A persisted identifier the
+   * device no longer has (voice data removed, engine changed) can make
+   * expo-speech fail EVERY utterance silently, so a stale custom
+   * selection falls back to the 'auto' preference. 'auto' and 'system'
+   * carry no identifier and are always valid.
+   * Returns true when the preference needed no repair; false when a
+   * stale custom identifier was reset to 'auto'.
    */
   validateVoiceSelection(availableIds: Set<string>): boolean;
   readonly lastText: string | null;
@@ -65,7 +79,13 @@ export class ExpoSpeechService implements SpeechService {
   private _lastAlertText: string | null = null;
   private _lastLang: AppLanguage = 'en';
   private speechEnabled = true;
-  private voiceIdentifier: string | null = null;
+  private voicePreference: VoicePreference = { kind: 'auto' };
+  /** Device voice catalog cache for 'auto' resolution. Populated by
+   *  noteAvailableVoices (picker) or lazily by discoverVoices(). A
+   *  discovery FAILURE is not cached, so a later utterance may retry;
+   *  a successful listing (even an empty one) is. */
+  private availableVoices: VoiceLike[] | null = null;
+  private voicesInFlight: Promise<VoiceLike[]> | null = null;
   /** Clear-callback of the utterance currently playing, so stop() can
    *  release the accessibility-busy guard even when the TTS engine
    *  never fires onStopped (web / interrupted engines). */
@@ -92,16 +112,42 @@ export class ExpoSpeechService implements SpeechService {
     }
   }
 
-  setVoiceIdentifier(identifier: string | null): void {
-    this.voiceIdentifier = identifier;
+  setVoicePreference(pref: VoicePreference): void {
+    this.voicePreference = pref;
+  }
+
+  noteAvailableVoices(voices: VoiceLike[]): void {
+    this.availableVoices = voices ?? [];
+  }
+
+  /** Lazily discover the device voices for 'auto' resolution. Never
+   *  rejects: a discovery failure yields an empty list, which resolves
+   *  to the language-only fallback — speech must keep working. */
+  private async discoverVoices(): Promise<VoiceLike[]> {
+    if (this.availableVoices) return this.availableVoices;
+    if (!this.voicesInFlight) {
+      this.voicesInFlight = (async () => {
+        try {
+          const all = await Speech.getAvailableVoicesAsync();
+          const list = (all ?? []) as VoiceLike[];
+          this.availableVoices = list;
+          return list;
+        } catch {
+          return [];
+        } finally {
+          this.voicesInFlight = null;
+        }
+      })();
+    }
+    return this.voicesInFlight;
   }
 
   validateVoiceSelection(availableIds: Set<string>): boolean {
-    if (this.voiceIdentifier === null) return true;
-    if (availableIds.has(this.voiceIdentifier)) return true;
+    if (this.voicePreference.kind !== 'custom') return true;
+    if (availableIds.has(this.voicePreference.identifier)) return true;
     // Stale persisted voice: the device no longer offers it. Keeping it
-    // risks silent failure of every utterance — fall back to default.
-    this.voiceIdentifier = null;
+    // risks silent failure of every utterance — fall back to 'auto'.
+    this.voicePreference = { kind: 'auto' };
     return false;
   }
 
@@ -166,15 +212,23 @@ export class ExpoSpeechService implements SpeechService {
       opts?.onOutcome?.(false);
     };
     // Voice selection: a testSpeak override wins over the persisted
-    // selection. NOTE on language: when a voice is passed, expo-speech
-    // speaks with THAT voice's own language; the `language` field below
-    // (ar-EG / en-US for the requested group) is the fallback the engine
-    // uses when no voice is selected. The picker stores only the
-    // identifier, so SpeechService cannot know a selected voice's group
-    // — keeping `language` consistent with the caller's requested group
-    // is the correct contract, and the picker only ever pairs a voice
-    // with a sample of its own group.
-    const effectiveVoice = opts?.hasVoiceOverride ? opts.voiceOverride : this.voiceIdentifier;
+    // preference. Otherwise the preference resolves via voiceCatalog:
+    // 'custom' pins its identifier, 'system' passes no voice, and
+    // 'auto' picks the device's exact ar-EG voice for Arabic (after a
+    // lazy, cached discovery) or no voice when none exists — the
+    // ar-EG `language` tag below remains the fallback either way.
+    // NOTE on language: when a voice is passed, expo-speech speaks
+    // with THAT voice's own language; the `language` field (ar-EG /
+    // en-US for the requested group) is the fallback the engine uses
+    // when no voice is selected.
+    let effectiveVoice: string | null;
+    if (opts?.hasVoiceOverride) {
+      effectiveVoice = opts.voiceOverride ?? null;
+    } else if (this.voicePreference.kind === 'auto' && lang === 'ar') {
+      effectiveVoice = resolveVoiceIdentifier(this.voicePreference, await this.discoverVoices(), lang);
+    } else {
+      effectiveVoice = resolveVoiceIdentifier(this.voicePreference, [], lang);
+    }
     try {
       Speech.speak(text, {
         language: lang === 'ar' ? 'ar-EG' : 'en-US',

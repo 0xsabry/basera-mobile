@@ -25,13 +25,13 @@ describe('DescriptionBuilder', () => {
   it('AR: produces real Arabic with position words', () => {
     const s = buildDescription([personCenter, chairLeft], 'ar');
     expect(s).toContain('شخص');
-    expect(s).toContain('أمامك مباشرة');
+    expect(s).toContain('قدامك');
     expect(s).toContain('كرسي');
-    expect(s).toContain('على اليسار');
+    expect(s).toContain('على شمالك');
   });
   it('empty detections -> honest fallback in both languages', () => {
     expect(buildDescription([], 'en')).toContain('could not recognize');
-    expect(buildDescription([], 'ar')).toContain('لم أتمكن');
+    expect(buildDescription([], 'ar')).toContain('مش شايف');
   });
 });
 

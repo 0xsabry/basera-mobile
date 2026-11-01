@@ -3,6 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { I18nManager } from 'react-native';
 import { speechService } from '../ai/SpeechService';
 import type { AppLanguage } from '../ai/types';
+import type { VoicePreference } from '../ai/voiceCatalog';
 import { t } from '../i18n/strings';
 import {
   darkColors,
@@ -41,8 +42,16 @@ export interface Settings {
   reducedMotion: boolean;
   /** Master speech-output gate (Settings → Voice). Off = no TTS at all. */
   speechEnabled: boolean;
-  /** Chosen TTS voice identifier (null = OS default for the language). */
-  voiceIdentifier: string | null;
+  /**
+   * TTS voice preference (three-state, see ai/voiceCatalog):
+   * 'auto' = prefer an installed Egyptian ar-EG voice for Arabic
+   * (default for fresh installs AND for migrated installs that never
+   * explicitly picked a voice); 'system' = the user EXPLICITLY chose
+   * the OS default voice (persisted as its own state so it is never
+   * mistaken for uninitialized and overwritten); 'custom' = the user
+   * picked one specific voice identifier.
+   */
+  voicePreference: VoicePreference;
   /** Vibration alerts gate (hazard alerts + key confirmations). */
   hapticsEnabled: boolean;
   /** Smart Place Memory proximity radius in meters. */
@@ -69,7 +78,7 @@ export const DEFAULT_SETTINGS: Settings = {
   textScale: 1,
   reducedMotion: false,
   speechEnabled: true,
-  voiceIdentifier: null,
+  voicePreference: { kind: 'auto' },
   hapticsEnabled: true,
   proximityRadiusM: 150,
   placesSyncEnabled: false,
@@ -77,11 +86,53 @@ export const DEFAULT_SETTINGS: Settings = {
 
 const STORAGE_KEY = 'basera.settings.v1';
 
+/**
+ * Voice-preference migration. Stored settings written before the
+ * three-state preference existed carry only the legacy bare
+ * `voiceIdentifier` (string | null):
+ *  - a stored identifier means the user explicitly picked that voice
+ *    in the old picker → { kind: 'custom', identifier } (preserved,
+ *    never overwritten);
+ *  - null / absent is indistinguishable between "never chose" and
+ *    "chose system default" in the old shape, and the new default for
+ *    it is { kind: 'auto' } — from now on an explicit system choice is
+ *    stored as { kind: 'system' } and survives restarts untouched.
+ * A stored voicePreference is validated field-by-field; a malformed
+ * one falls through to the legacy rule instead of crashing or
+ * inventing a selection.
+ */
+export function migrateVoicePreference(parsed: {
+  voicePreference?: unknown;
+  voiceIdentifier?: unknown;
+}): VoicePreference {
+  const vp = parsed.voicePreference as { kind?: unknown; identifier?: unknown } | null;
+  if (vp && typeof vp === 'object') {
+    if (vp.kind === 'auto') return { kind: 'auto' };
+    if (vp.kind === 'system') return { kind: 'system' };
+    if (vp.kind === 'custom' && typeof vp.identifier === 'string' && vp.identifier.trim() !== '') {
+      return { kind: 'custom', identifier: vp.identifier };
+    }
+  }
+  if (typeof parsed.voiceIdentifier === 'string' && parsed.voiceIdentifier.trim() !== '') {
+    return { kind: 'custom', identifier: parsed.voiceIdentifier };
+  }
+  return { kind: 'auto' };
+}
+
 export function parseSettings(raw: string | null): Settings {
   if (!raw) return { ...DEFAULT_SETTINGS };
   try {
-    const parsed = JSON.parse(raw) as Partial<Settings>;
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    const parsed = JSON.parse(raw) as Partial<Settings> & {
+      voicePreference?: unknown;
+      voiceIdentifier?: unknown;
+    };
+    const merged: Settings & { voiceIdentifier?: unknown } = {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      voicePreference: migrateVoicePreference(parsed),
+    };
+    delete merged.voiceIdentifier;
+    return merged;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -259,10 +310,10 @@ export function SettingsProvider({
   // speech gate + chosen voice + rate, and the vibration gate.
   useEffect(() => {
     speechService.setSpeechEnabled(settings.speechEnabled);
-    speechService.setVoiceIdentifier(settings.voiceIdentifier);
+    speechService.setVoicePreference(settings.voicePreference);
     speechService.setRate(settings.speechRate);
     setHapticsEnabled(settings.hapticsEnabled);
-  }, [settings.speechEnabled, settings.voiceIdentifier, settings.speechRate, settings.hapticsEnabled]);
+  }, [settings.speechEnabled, settings.voicePreference, settings.speechRate, settings.hapticsEnabled]);
 
   const value = useMemo<SettingsContextValue>(() => {
     const isDark = resolveIsDark(settings.theme, systemDark);

@@ -122,10 +122,10 @@ describe('SpeechService repeat semantics', () => {
 
   it('chosen voice identifier is passed through to the TTS call', async () => {
     const svc = new ExpoSpeechService();
-    svc.setVoiceIdentifier('ar-voice-1');
+    svc.setVoicePreference({ kind: 'custom', identifier: 'ar-voice-1' });
     await svc.speak('مرحبا', 'ar');
     expect(mockSpeak.mock.calls[0][1].voice).toBe('ar-voice-1');
-    svc.setVoiceIdentifier(null);
+    svc.setVoicePreference({ kind: 'system' });
     mockSpeak.mockClear();
     await svc.speak('مرحبا', 'ar');
     expect(mockSpeak.mock.calls[0][1].voice).toBeUndefined();
