@@ -1,0 +1,36 @@
+# BASERA — manual OTA publish to the preview channel (Android, runtime 1.1.0).
+#
+# Manual trigger ONLY (workflow_dispatch) — nothing runs on push or on a schedule.
+# Default run is a DRY RUN: it exports the bundle in EAS Cloud and publishes NOTHING.
+# To publish: eas workflow:run publish-preview-ota.yml -F publish=true
+name: Publish preview OTA (Android)
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        type: boolean
+        required: false
+        default: false
+        description: 'Publish the update to the preview channel (false = dry run, export only)'
+
+jobs:
+  verify_export:
+    name: Verify bundle export (dry run)
+    environment: preview
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Export Android bundle
+        run: npx expo export --platform android --output-dir dist-workflow-check
+
+  publish_update:
+    name: Publish update to preview channel
+    needs: [verify_export]
+    if: ${{ inputs.publish == true }}
+    environment: preview
+    type: update
+    params:
+      channel: preview
+      platform: android
+      message: 'OTA delivery test after 1.1.7 (runtime 1.1.0)'
