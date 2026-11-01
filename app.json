@@ -93,7 +93,7 @@
     "scheme": "basera",
     "slug": "basera",
     "userInterfaceStyle": "automatic",
-    "version": "1.1.7",
+    "version": "1.1.8",
     "web": {
       "bundler": "metro",
       "favicon": "./assets/icon.png"
