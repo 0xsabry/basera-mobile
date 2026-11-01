@@ -64,8 +64,11 @@ every one of them.
 
 ## Rollback
 
-- Previous stable update group on preview: `23926c22-b702-4211-9f62-a3cb941bd2c7`
-  (2026-11-01 test update, device-proven). Before it: `18ec1185-00bb-4860-9312-ab9c1ca607fd`.
+- Current update group on preview: `8684fe46-97fe-48f2-9c5c-9e0d778afec8`
+  (2026-11-02 pilot launch — telemetry client, commit e3c5c2c; protocol-
+  verified: bundle + 31 assets, 32/32 hashes). Rollback target:
+  `23926c22-b702-4211-9f62-a3cb941bd2c7` (2026-11-01 test update,
+  device-proven). Before it: `18ec1185-00bb-4860-9312-ab9c1ca607fd`.
 - Republish a known-good group to preview with
   `eas update:republish --destination-channel preview` (dashboard/CLI,
   owner-approved), or roll clients back to the embedded bundle via the
