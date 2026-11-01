@@ -37,3 +37,16 @@ enable_confirmations = true
 # (postgres_changes). See docs/SUPABASE_INTEGRATION.md.
 [realtime]
 enabled = true
+
+# telemetry-ingest (DRAFT — not deployed; deployment needs the owner's
+# separate approval):
+# verify_jwt = true means the platform gateway rejects requests that
+# carry no valid JWT before the function runs. The app calls it with
+# the publishable (anon) key as the Bearer token and NO user session —
+# telemetry must work for logged-out users. verify_jwt is only an
+# anti-noise layer (the anon key is public by design); the real
+# authentication is the per-installation secret checked inside the
+# function + the database's pin-or-verify and budgets. On a dashboard
+# deploy, set the equivalent "Verify JWT" option ON for this function.
+[functions.telemetry-ingest]
+verify_jwt = true

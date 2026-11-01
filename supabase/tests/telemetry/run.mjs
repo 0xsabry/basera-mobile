@@ -56,9 +56,9 @@ async function asRole(role, sub, fn) {
 // ---------- setup ----------
 const admin = await pool.connect();
 // Self-reset so the battery is re-runnable on one cluster.
-await admin.query('drop schema if exists private cascade; drop schema public cascade; create schema public;');
+await admin.query('drop schema if exists basera_telemetry_private cascade; drop schema if exists private cascade; drop schema public cascade; create schema public;');
 await admin.query(readFileSync(new URL('./setup.sql', import.meta.url), 'utf8'));
-const migration = readFileSync(new URL('../../migrations/20261101000000_telemetry_proposal.sql', import.meta.url), 'utf8');
+const migration = readFileSync('/home/hatch/workspace/basera/supabase/migrations/20261101000000_telemetry_proposal.sql', 'utf8');
 await admin.query(migration);
 // Harness-only emulation of Supabase's platform grants: the real
 // service_role can access tables directly (it is the backend role);
@@ -234,11 +234,30 @@ console.log('== dashboard access ==');
   });
   check('authenticated cannot call telemetry_ingest (service_role only)', !!ingestErr, ingestErr ? '' : 'callable!');
 
-  let privErr = null;
-  await asRole('authenticated', OWNER, async (c) => {
-    try { await c.query('select * from private.dashboard_installations()'); } catch (e) { privErr = e; }
+  let privAnonErr = null;
+  await asRole('anon', null, async (c) => {
+    try { await c.query('select * from basera_telemetry_private.dashboard_installations()'); } catch (e) { privAnonErr = e; }
   });
-  check('private schema functions are not directly callable', !!privErr, privErr ? '' : 'callable!');
+  check('anon cannot execute the private functions at all', !!privAnonErr, privAnonErr ? '' : 'callable!');
+
+  let privGateErr = null;
+  await asRole('authenticated', OTHER, async (c) => {
+    try { await c.query('select * from basera_telemetry_private.dashboard_installations()'); } catch (e) { privGateErr = e; }
+  });
+  check('direct private call by a non-owner still hits the owner gate',
+    !!privGateErr && /not authorized/.test(privGateErr.message), privGateErr?.message);
+
+  const { rows: posture } = await admin.query(
+    `select p.proname, p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where (n.nspname = 'public' and p.proname in ('dashboard_overview','dashboard_adoption','dashboard_installations','telemetry_ingest'))
+        or (n.nspname = 'basera_telemetry_private')
+     order by 1`);
+  const def = Object.fromEntries(posture.map((r) => [r.proname, r.prosecdef]));
+  check('public wrappers are SECURITY INVOKER (definer=false)',
+    def.dashboard_overview === false && def.dashboard_adoption === false && def.dashboard_installations === false,
+    JSON.stringify(def));
+  check('telemetry_ingest + private implementations are SECURITY DEFINER',
+    def.telemetry_ingest === true && def.is_dashboard_owner === true, JSON.stringify(def));
 }
 
 // ---------- 6. adoption correctness + duplicate-resend stability ----------
@@ -283,6 +302,67 @@ console.log('== adoption funnel ==');
     return rows;
   });
   check('p_limit=0 floored to >=1 row', page.length >= 1, `rows=${page.length}`);
+}
+
+// ---------- 7. strict envelope + strict JSON field types ----------
+console.log('== strict envelope & field types ==');
+{
+  const svc = await pool.connect();
+  await svc.query('set role service_role');
+  const callRaw = async (id, secret, eventsJson) => {
+    const { rows } = await svc.query(
+      `select public.telemetry_ingest($1,$2,'android',null,'1.1.8',10,'1.1.0','preview',null,true,$3::jsonb) as v`,
+      [id, sha(secret), eventsJson]);
+    return rows[0].v;
+  };
+  const F = randomUUID();
+  let v = await callRaw(F, 'secret-F', 'null');
+  check('p_events null -> invalid_events', v.error === 'invalid_events', JSON.stringify(v));
+  v = await callRaw(F, 'secret-F', '{"a":1}');
+  check('p_events object -> invalid_events', v.error === 'invalid_events', JSON.stringify(v));
+  const big = JSON.stringify(Array.from({ length: 51 }, () => ev()));
+  v = await callRaw(F, 'secret-F', big);
+  check('p_events 51 entries -> batch_too_large', v.error === 'batch_too_large', JSON.stringify(v));
+  const { rows: cnt } = await svc.query('select count(*)::int n from public.app_installations where id=$1', [F]);
+  check('malformed requests wrote NOTHING (no registration, no heartbeat)', cnt[0].n === 0, `n=${cnt[0].n}`);
+  v = await callRaw(F, 'secret-F', '[]');
+  check('empty events array is a valid heartbeat', !v.error, JSON.stringify(v));
+
+  const G = randomUUID();
+  v = await ingest(svc, { id: G, secret: 'secret-G', events: [
+    ev({ failure_reason: 42 }),
+    ev({ status: true }),
+    42,
+    ev({ event_type: 'update_available', update_id: '33333333-3333-3333-3333-333333333333' }),
+  ] });
+  const byReason = Object.fromEntries(v.rejected.map((r) => [r.reason, r]));
+  check('numeric failure_reason rejected as invalid_field_type (never coerced)',
+    byReason.invalid_field_type && v.rejected.filter((r) => r.reason === 'invalid_field_type').length === 2, JSON.stringify(v.rejected));
+  check('non-object event element rejected as invalid_event_shape', !!byReason.invalid_event_shape, JSON.stringify(v.rejected));
+  check('the one valid sibling was accepted', v.accepted.length === 1, JSON.stringify(v));
+  svc.release();
+}
+
+// ---------- 8. registration circuit breaker ----------
+console.log('== registration circuit breaker ==');
+{
+  const svc = await pool.connect();
+  await svc.query('set role service_role');
+  const vals = [];
+  for (let i = 0; i < 500; i++) vals.push(`('${randomUUID()}','${sha('seed-' + i)}')`);
+  await svc.query(`insert into public.app_installations (id, secret_hash) values ${vals.join(',')}`);
+  const NEW = randomUUID();
+  let v = await ingest(svc, { id: NEW, secret: 'secret-new' });
+  check('new registration throttled at 500/hour', v.error === 'registration_throttled', JSON.stringify(v));
+  const { rows: cnt } = await svc.query('select count(*)::int n from public.app_installations where id=$1', [NEW]);
+  check('throttled registration wrote no row', cnt[0].n === 0);
+  const { rows: seedRow } = await svc.query('select id from public.app_installations limit 1');
+  v = await ingest(svc, { id: seedRow[0].id, secret: 'seed-0' }).catch(() => null);
+  // seed-0 belongs to whichever row holds hash sha('seed-0'); find it deterministically:
+  const { rows: s0 } = await svc.query('select id from public.app_installations where secret_hash=$1', [sha('seed-0')]);
+  v = await ingest(svc, { id: s0[0].id, secret: 'seed-0' });
+  check('existing installations are unaffected by the breaker', !v.error, JSON.stringify(v));
+  svc.release();
 }
 
 console.log(`\n==== RESULT: ${pass} passed, ${fail} failed ====`);

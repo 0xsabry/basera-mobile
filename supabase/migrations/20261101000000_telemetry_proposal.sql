@@ -1,5 +1,5 @@
 -- =====================================================================
--- PROPOSAL v3 — NOT APPLIED TO PRODUCTION. DO NOT RUN without the
+-- PROPOSAL v4 — NOT APPLIED TO PRODUCTION. DO NOT RUN without the
 -- owner's explicit approval after final review (owner rule: no
 -- production migration before it is shown to him and approved).
 --
@@ -8,29 +8,37 @@
 -- This migration is ADDITIVE ONLY: new schema objects, nothing that
 -- exists in production is altered or dropped.
 --
--- v3 changes (owner review round 2):
---   * ALL ingest writes move into ONE database function,
---     public.telemetry_ingest(), executed in a single transaction:
---     per-installation advisory lock, pin-or-verify secret, strict
---     per-event classification (new / duplicate / invalid with a
---     reason), and an atomic hourly budget that duplicates and
---     invalid events never consume. Concurrent requests for the same
---     installation are serialized by the lock, so the budget and the
---     first-registration secret pin cannot race.
---   * Dashboard read logic moves to the `private` schema; the public
---     schema exposes only three thin RPC wrappers, each still gated
---     by the owner allowlist inside the private implementation.
---   * dashboard_installations gains p_offset and a clamped p_limit
---     (floor 1, ceiling 500) for paging as the fleet grows.
+-- v4 changes (owner final review round):
+--   * A DEDICATED schema `basera_telemetry_private` holds the
+--     dashboard logic (the generic name `private` is not used, and no
+--     privileges of any pre-existing schema are touched). The schema
+--     is never added to the Data API's exposed schemas, so its
+--     functions are unreachable over REST regardless of SQL grants.
+--   * The public RPC wrappers are SECURITY INVOKER pass-throughs:
+--     they hold no elevated privileges of their own. The private
+--     implementations remain SECURITY DEFINER (they must read tables
+--     that no client role may touch) and each one re-checks the
+--     owner allowlist; EXECUTE on them is granted to authenticated
+--     only, so even a direct SQL call by a non-owner is refused by
+--     the gate inside.
+--   * telemetry_ingest stays in public on purpose: the Edge Function
+--     reaches it through PostgREST rpc, which only resolves functions
+--     in exposed schemas. It is SECURITY DEFINER with EXECUTE granted
+--     to service_role ONLY — no client role can call it.
+--   * Strict ingest: p_events must be a JSON array of at most 50
+--     object elements, with strict per-field JSON types (a numeric
+--     or boolean failure_reason is rejected, never coerced). A
+--     malformed request fails BEFORE any write — no registration and
+--     no heartbeat is recorded for it.
+--   * A global registration circuit breaker (500 new installations
+--     per hour, serialized by a dedicated advisory lock) bounds
+--     scripted fake-install floods; existing installations are never
+--     affected by it.
+--   * v_recent is bigint.
 --
--- Security:
+-- Security summary:
 --   * Every SECURITY DEFINER function uses SET search_path = '' and
 --     fully schema-qualified object names.
---   * EXECUTE revoked from PUBLIC and anon on every function.
---     telemetry_ingest is granted to service_role ONLY (the Edge
---     Function calls it; clients can never call it directly).
---     The public dashboard wrappers are granted to authenticated
---     ONLY and refuse non-owners internally.
 --   * RLS enabled on all tables with NO client policies, and all
 --     privileges revoked from anon/authenticated: direct table reads
 --     from any client are impossible.
@@ -46,13 +54,19 @@
 -- trustworthy for honest, unmodified clients. A device owner running
 -- a modified/rooted build could forge events for their OWN
 -- installation id (bound to their secret) or register extra fake
--- installations; the system is not — and does not claim to be —
--- tamper-proof against the owner of a modified device. Adoption
--- ratios between funnel stages are the robust signal.
+-- installations (bounded by the circuit breaker); the system is not
+-- — and does not claim to be — tamper-proof against the owner of a
+-- modified device. Adoption ratios between funnel stages are the
+-- robust signal.
 -- =====================================================================
 
-create schema if not exists private;
-revoke all on schema private from public, anon, authenticated;
+create schema if not exists basera_telemetry_private;
+-- A fresh schema grants nothing to PUBLIC by default; revoke anyway
+-- so the posture is explicit, then grant the single narrow right the
+-- design needs: authenticated may RESOLVE the private functions (the
+-- owner gate inside still decides). anon gets nothing.
+revoke all on schema basera_telemetry_private from public, anon, authenticated;
+grant usage on schema basera_telemetry_private to authenticated;
 
 create table if not exists public.app_installations (
   id uuid primary key,
@@ -92,6 +106,8 @@ create index if not exists app_installations_last_seen_idx
   on public.app_installations (last_seen_at desc);
 create index if not exists app_installations_version_idx
   on public.app_installations (app_version, version_code);
+create index if not exists app_installations_first_seen_idx
+  on public.app_installations (first_seen_at desc);
 
 create table if not exists public.dashboard_owners (
   user_id uuid primary key
@@ -109,12 +125,12 @@ revoke all on public.app_installations, public.app_update_events, public.dashboa
 
 -- =====================================================================
 -- INGEST — the only write path. One transaction per request:
---   advisory lock (per installation) -> pin-or-verify secret ->
---   classify events (invalid / duplicate / new) -> atomic budget ->
---   insert new events -> heartbeat. Returns per-event verdicts so the
---   client removes accepted+duplicate events from its queue, moves
---   rejected ones to a local dead-letter store, and keeps everything
---   when the request itself fails.
+--   strict envelope checks -> per-installation advisory lock ->
+--   pin-or-verify secret (new registrations additionally pass a
+--   global circuit breaker under a registration lock) -> classify
+--   events (invalid / duplicate / new) -> atomic budget -> insert ->
+--   heartbeat. A malformed envelope returns an error BEFORE any
+--   write: no registration, no heartbeat.
 -- =====================================================================
 create or replace function public.telemetry_ingest(
   p_installation_id uuid,
@@ -137,7 +153,8 @@ as $$
 declare
   v_inst public.app_installations%rowtype;
   v_found boolean := false;
-  v_recent integer;
+  v_recent bigint;
+  v_new_registrations bigint;
   v_accepted jsonb := '[]'::jsonb;
   v_duplicates jsonb := '[]'::jsonb;
   v_rejected jsonb := '[]'::jsonb;
@@ -151,11 +168,23 @@ declare
   v_ts text;
   v_ts_parsed timestamptz;
   v_err text;
-  v_budget integer := 600;
+  v_field text;
+  v_budget bigint := 600;
   v_new_count integer := 0;
+  v_registration_cap bigint := 500;
 begin
   if p_installation_id is null or p_secret_hash is null or length(p_secret_hash) <> 64 then
-    return jsonb_build_object('error', 'invalid_installation_credentials');
+    return pg_catalog.jsonb_build_object('error', 'invalid_installation_credentials');
+  end if;
+
+  -- Strict envelope: events must be present, a JSON array, and hold
+  -- at most 50 entries. Anything else fails the WHOLE request before
+  -- any write (defense in depth behind the Edge Function's checks).
+  if p_events is null or pg_catalog.jsonb_typeof(p_events) <> 'array' then
+    return pg_catalog.jsonb_build_object('error', 'invalid_events');
+  end if;
+  if pg_catalog.jsonb_array_length(p_events) > 50 then
+    return pg_catalog.jsonb_build_object('error', 'batch_too_large');
   end if;
 
   -- Serialize everything for this installation: first-registration
@@ -166,6 +195,16 @@ begin
   v_found := found;
 
   if not v_found then
+    -- Global registration circuit breaker, serialized across all new
+    -- registrations (lock ordering is consistent: per-installation
+    -- lock first, registration lock second — no cycle).
+    perform pg_advisory_xact_lock(727272);
+    select count(*) into v_new_registrations
+    from public.app_installations i
+    where i.first_seen_at > now() - interval '1 hour';
+    if v_new_registrations >= v_registration_cap then
+      return pg_catalog.jsonb_build_object('error', 'registration_throttled');
+    end if;
     insert into public.app_installations (
       id, secret_hash, platform, os_version, app_version, version_code,
       runtime_version, channel, current_update_id, is_embedded_launch,
@@ -177,7 +216,7 @@ begin
       now(), now()
     );
   elsif v_inst.secret_hash <> p_secret_hash then
-    return jsonb_build_object('error', 'secret_mismatch');
+    return pg_catalog.jsonb_build_object('error', 'secret_mismatch');
   end if;
 
   -- Events received in the trailing hour (budget base). Duplicates
@@ -187,10 +226,33 @@ begin
   where e.installation_id = p_installation_id
     and e.received_at > now() - interval '1 hour';
 
-  if p_events is not null and pg_catalog.jsonb_typeof(p_events) = 'array' then
-    for v_ev in select value from pg_catalog.jsonb_array_elements(p_events)
+  for v_ev in select value from pg_catalog.jsonb_array_elements(p_events)
+  loop
+    v_err := null;
+    v_field := null;
+
+    if pg_catalog.jsonb_typeof(v_ev) <> 'object' then
+      v_rejected := v_rejected || pg_catalog.jsonb_build_object(
+        'client_event_id', null, 'reason', 'invalid_event_shape');
+      continue;
+    end if;
+
+    -- Strict JSON types per field: a present field must be a JSON
+    -- string (or null). Numbers/booleans/objects are rejected with
+    -- the field named — never silently coerced through ->>.
+    foreach v_field in array array['client_event_id', 'event_type', 'update_id', 'status', 'failure_reason', 'client_ts']
     loop
-      v_err := null;
+      if v_ev ? v_field
+         and pg_catalog.jsonb_typeof(v_ev -> v_field) not in ('string', 'null') then
+        v_err := 'invalid_field_type';
+        exit;
+      end if;
+    end loop;
+    if v_err is null then
+      v_field := null; -- only report a field when it is the offender
+    end if;
+
+    if v_err is null then
       v_cid := v_ev ->> 'client_event_id';
       v_type := v_ev ->> 'event_type';
       v_uid := v_ev ->> 'update_id';
@@ -200,8 +262,6 @@ begin
       v_cid_uuid := null;
       v_ts_parsed := null;
 
-      -- Strict validation: an invalid field rejects the EVENT with a
-      -- reason. Nothing is silently coerced to null and stored.
       if v_cid is null then
         v_err := 'missing_client_event_id';
       else
@@ -237,41 +297,44 @@ begin
           v_err := 'client_ts_out_of_window';
         end if;
       end if;
+    end if;
 
-      if v_err is not null then
-        v_rejected := v_rejected || pg_catalog.jsonb_build_object(
-          'client_event_id', v_cid, 'reason', v_err);
-        continue;
-      end if;
+    if v_err is not null then
+      v_rejected := v_rejected || pg_catalog.jsonb_build_object(
+        'client_event_id', v_ev ->> 'client_event_id',
+        'reason', v_err,
+        'field', v_field);
+      continue;
+    end if;
 
-      -- Duplicate? (Already stored — a retry/replay. Never counted
-      -- against the budget, never inserted twice.)
-      if exists (select 1 from public.app_update_events e where e.client_event_id = v_cid_uuid) then
-        v_duplicates := v_duplicates || pg_catalog.to_jsonb(v_cid);
-        continue;
-      end if;
+    -- Duplicate? (Already stored — a retry/replay. Never counted
+    -- against the budget, never inserted twice.)
+    if exists (select 1 from public.app_update_events e where e.client_event_id = v_cid_uuid) then
+      v_duplicates := v_duplicates || pg_catalog.to_jsonb(v_cid);
+      continue;
+    end if;
 
-      -- Atomic budget for genuinely new events.
-      if v_recent + v_new_count >= v_budget then
-        v_rejected := v_rejected || pg_catalog.jsonb_build_object(
-          'client_event_id', v_cid, 'reason', 'rate_limited');
-        continue;
-      end if;
+    -- Atomic budget for genuinely new events.
+    if v_recent + v_new_count >= v_budget then
+      v_rejected := v_rejected || pg_catalog.jsonb_build_object(
+        'client_event_id', v_cid, 'reason', 'rate_limited');
+      continue;
+    end if;
 
-      insert into public.app_update_events (
-        client_event_id, installation_id, event_type, update_id,
-        app_version, runtime_version, channel, status, failure_reason, client_ts
-      ) values (
-        v_cid_uuid, p_installation_id, v_type, v_uid,
-        p_app_version, p_runtime_version, p_channel, v_status, v_reason, v_ts_parsed
-      );
-      v_new_count := v_new_count + 1;
-      v_accepted := v_accepted || pg_catalog.to_jsonb(v_cid);
-    end loop;
-  end if;
+    insert into public.app_update_events (
+      client_event_id, installation_id, event_type, update_id,
+      app_version, runtime_version, channel, status, failure_reason, client_ts
+    ) values (
+      v_cid_uuid, p_installation_id, v_type, v_uid,
+      p_app_version, p_runtime_version, p_channel, v_status, v_reason, v_ts_parsed
+    );
+    v_new_count := v_new_count + 1;
+    v_accepted := v_accepted || pg_catalog.to_jsonb(v_cid);
+  end loop;
 
   -- Heartbeat: latest facts + last_seen (also on secret-verified
-  -- requests with zero events).
+  -- requests with zero events — but never on a malformed request:
+  -- those returned above, before any write).
   update public.app_installations i set
     platform = coalesce(p_platform, i.platform),
     os_version = p_os_version,
@@ -297,11 +360,15 @@ grant execute on function public.telemetry_ingest(uuid, text, text, text, text, 
   to service_role;
 
 -- =====================================================================
--- DASHBOARD READS — logic lives in the private schema. The public
--- wrappers are the entire client-facing surface; each private
--- implementation re-checks the owner allowlist itself.
+-- DASHBOARD READS — logic lives in the dedicated private schema.
+-- The public wrappers are SECURITY INVOKER pass-throughs holding no
+-- privileges of their own; the private implementations are SECURITY
+-- DEFINER (they read tables no client role may touch), re-check the
+-- owner allowlist internally, and are executable by authenticated
+-- only. The private schema is NOT in the Data API's exposed schemas,
+-- so these functions cannot be reached over REST at all.
 -- =====================================================================
-create or replace function private.is_dashboard_owner()
+create or replace function basera_telemetry_private.is_dashboard_owner()
 returns boolean
 language sql
 stable
@@ -312,9 +379,9 @@ as $$
     select 1 from public.dashboard_owners o where o.user_id = auth.uid()
   );
 $$;
-revoke execute on function private.is_dashboard_owner() from public, anon, authenticated;
+revoke execute on function basera_telemetry_private.is_dashboard_owner() from public, anon, authenticated;
 
-create or replace function private.dashboard_overview()
+create or replace function basera_telemetry_private.dashboard_overview()
 returns json
 language plpgsql
 stable
@@ -322,7 +389,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  if not private.is_dashboard_owner() then
+  if not basera_telemetry_private.is_dashboard_owner() then
     raise exception 'not authorized';
   end if;
   return json_build_object(
@@ -347,9 +414,10 @@ begin
   );
 end;
 $$;
-revoke execute on function private.dashboard_overview() from public, anon, authenticated;
+revoke execute on function basera_telemetry_private.dashboard_overview() from public, anon;
+grant execute on function basera_telemetry_private.dashboard_overview() to authenticated;
 
-create or replace function private.dashboard_adoption()
+create or replace function basera_telemetry_private.dashboard_adoption()
 returns table (
   update_id text,
   discovered bigint,
@@ -364,7 +432,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  if not private.is_dashboard_owner() then
+  if not basera_telemetry_private.is_dashboard_owner() then
     raise exception 'not authorized';
   end if;
   return query
@@ -386,9 +454,10 @@ begin
   order by p.applied desc, p.discovered desc;
 end;
 $$;
-revoke execute on function private.dashboard_adoption() from public, anon, authenticated;
+revoke execute on function basera_telemetry_private.dashboard_adoption() from public, anon;
+grant execute on function basera_telemetry_private.dashboard_adoption() to authenticated;
 
-create or replace function private.dashboard_installations(
+create or replace function basera_telemetry_private.dashboard_installations(
   p_version text default null,
   p_update_id text default null,
   p_status text default null,
@@ -413,7 +482,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  if not private.is_dashboard_owner() then
+  if not basera_telemetry_private.is_dashboard_owner() then
     raise exception 'not authorized';
   end if;
   return query
@@ -437,20 +506,22 @@ begin
   offset greatest(0, coalesce(p_offset, 0));
 end;
 $$;
-revoke execute on function private.dashboard_installations(text, text, text, integer, integer)
-  from public, anon, authenticated;
+revoke execute on function basera_telemetry_private.dashboard_installations(text, text, text, integer, integer)
+  from public, anon;
+grant execute on function basera_telemetry_private.dashboard_installations(text, text, text, integer, integer)
+  to authenticated;
 
 -- ---------------------------------------------------------------------
--- Public RPC surface (thin wrappers; the private implementations
--- enforce the owner gate).
+-- Public RPC surface: SECURITY INVOKER pass-throughs. They hold no
+-- elevated privileges; authorization happens in the private layer.
 -- ---------------------------------------------------------------------
 create or replace function public.dashboard_overview()
 returns json
 language sql
 stable
-security definer
+security invoker
 set search_path = ''
-as $$ select private.dashboard_overview(); $$;
+as $$ select basera_telemetry_private.dashboard_overview(); $$;
 revoke execute on function public.dashboard_overview() from public, anon;
 grant execute on function public.dashboard_overview() to authenticated;
 
@@ -465,9 +536,9 @@ returns table (
 )
 language sql
 stable
-security definer
+security invoker
 set search_path = ''
-as $$ select * from private.dashboard_adoption(); $$;
+as $$ select * from basera_telemetry_private.dashboard_adoption(); $$;
 revoke execute on function public.dashboard_adoption() from public, anon;
 grant execute on function public.dashboard_adoption() to authenticated;
 
@@ -492,9 +563,9 @@ returns table (
 )
 language sql
 stable
-security definer
+security invoker
 set search_path = ''
-as $$ select * from private.dashboard_installations(p_version, p_update_id, p_status, p_limit, p_offset); $$;
+as $$ select * from basera_telemetry_private.dashboard_installations(p_version, p_update_id, p_status, p_limit, p_offset); $$;
 revoke execute on function public.dashboard_installations(text, text, text, integer, integer)
   from public, anon;
 grant execute on function public.dashboard_installations(text, text, text, integer, integer)

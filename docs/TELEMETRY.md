@@ -46,8 +46,11 @@ DB function  public.telemetry_ingest()  (the ONLY write path; ONE
 Tables  app_installations / app_update_events  (RLS on, no client
         │                                       policies at all)
         ▼
-private schema  dashboard logic (owner allowlist enforced inside)
-public schema   three thin RPC wrappers — the entire read surface
+basera_telemetry_private schema  dashboard logic (owner allowlist
+                    enforced inside; never added to the Data API's
+                    exposed schemas, so unreachable over REST)
+public schema   three SECURITY INVOKER RPC wrappers — the entire
+                read surface; they hold no privileges of their own
         ▼
 Dashboard  telemetry-dashboard/index.html  (owner email/password
            login; the page alone grants nothing — RPCs refuse
@@ -107,44 +110,104 @@ the queue intact for the next attempt.
   endpoint", stamped server-side; client timestamps are sanity-checked
   and never used for ordering.
 
-## Verification evidence (v3, local — nothing deployed)
+## Privileges this migration creates or changes (complete list)
+
+New schema `basera_telemetry_private`: created; all privileges
+revoked from PUBLIC/anon/authenticated; USAGE granted to
+authenticated (needed so the INVOKER wrappers can resolve the private
+functions — it does NOT expose the schema through the Data API,
+whose exposed-schemas list is a separate platform setting that this
+migration never touches).
+
+| Object | PUBLIC | anon | authenticated | service_role |
+|---|---|---|---|---|
+| tables app_installations / app_update_events / dashboard_owners | — | revoked (all) | revoked (all) | platform default (bypass) |
+| public.telemetry_ingest (DEFINER) | revoked | revoked | revoked | **EXECUTE** |
+| basera_telemetry_private.is_dashboard_owner (DEFINER) | revoked | revoked | revoked | — |
+| basera_telemetry_private.dashboard_* (DEFINER) | revoked | revoked | **EXECUTE** (owner gate inside) | — |
+| public.dashboard_* wrappers (INVOKER) | revoked | revoked | **EXECUTE** | — |
+
+RLS is enabled on the three tables with no client policies. Nothing
+pre-existing in production is granted, revoked, altered, or dropped.
+
+## Ingest endpoint protection (verify_jwt + abuse model)
+
+- Deployed with `verify_jwt = true` (config.toml
+  `[functions.telemetry-ingest]`, or the dashboard equivalent): the
+  gateway rejects requests with no valid JWT before the code runs.
+  The app sends the publishable key as its Bearer token with NO user
+  session — telemetry must work logged-out, and a "valid request from
+  APK 1.1.8" means exactly that shape plus the installation headers.
+  verify_jwt is anti-noise only (the key is public by design).
+- The real credential is the per-installation secret: 256-bit random,
+  stored only as a SHA-256 hash, pinned on first use; a wrong secret
+  is refused (403) and can neither read nor write anything.
+- No-secret requests die at the header gate (401) before any database
+  work. Oversized bodies die mid-stream at 64KB; batches over 50 die
+  before the RPC; malformed envelopes fail inside the database
+  function before any write.
+- Fake-install floods: anonymous registration is unauthenticated by
+  necessity (any real first launch must be able to register), so a
+  global circuit breaker caps NEW installations at 500/hour
+  (serialized in the database); existing installations are never
+  affected. Per-installation event budget: 600/hour. Residual risk,
+  stated plainly: a determined scripted attacker can still create up
+  to the cap per hour; fake installs show up as dormant rows and do
+  not distort per-update adoption ratios (they never hold real
+  update ids through the full funnel). No personal data is stored
+  that could be used to deanonymize anyone.
+
+## Verification evidence (v4, local — nothing deployed)
 
 The mandatory review battery ran against a real PostgreSQL 16 with
 the migration applied verbatim (harness in `supabase/tests/telemetry/`,
 with `auth.uid()` emulated exactly as Supabase implements it and the
 platform roles anon/authenticated/service_role):
 
-- **33/33 database checks**: clean fresh-DB apply; registration counted
-  once; wrong secret rejected; seven strict per-event rejection
-  reasons (invalid update id / ts format / ts window / status /
-  overlong reason / event type / missing id) with nothing coerced to
-  null; duplicate resends classified and stored zero new rows; hourly
-  budget (600) blocks new events while duplicates still classify as
-  duplicates; **100 concurrent calls for one fresh installation** →
-  exactly 1 installation row and 100 events, no errors; **racing
-  first registrations with two secrets** → exactly one pinned hash,
-  the losing side fully rejected; anon cannot execute the dashboard
-  RPCs; an authenticated non-owner is refused by the owner gate; the
-  owner reads data; direct table reads denied even for the owner;
-  `telemetry_ingest` executable by service_role only; private-schema
-  functions not directly callable; adoption funnel exact (3/2/1/1 →
-  33.3%) and **unchanged after a full duplicate-batch resend**;
-  `p_limit` floored at 1.
-- **15/15 function-core checks**: the 64KB cap counts BYTES and aborts
-  the stream early (a 160KB stream is cut after ~4 chunks; a 40,000
-  char Arabic body = 80KB is rejected); batches of 51 are hard
-  rejected, 50 pass; fact validation rejects bad platform/version/id.
+- **47/47 database checks**: everything from the v3 battery (clean
+  apply; registration once; strict per-event rejections; duplicate
+  resends store nothing; budget atomicity; **100 concurrent calls →
+  1 installation, 100 events**; racing-secret registration → one
+  pinned hash; funnel 3/2/1/1 = 33.3% **unchanged after duplicate
+  resend**; `p_limit` floored) PLUS: public wrappers verified
+  SECURITY INVOKER in `pg_proc` (prosecdef = false) with the private
+  implementations + ingest as the only DEFINER functions; anon cannot
+  execute the private functions at all; a non-owner calling a private
+  function DIRECTLY is still refused by the owner gate; strict
+  envelope — `p_events` null/object/51-entries returns an error and
+  writes NOTHING (no registration, no heartbeat); a numeric
+  `failure_reason` and a boolean `status` are rejected as
+  `invalid_field_type` (never coerced), a non-object element as
+  `invalid_event_shape`; the registration circuit breaker throttles
+  the 501st new installation in an hour, writes no row, and leaves
+  existing installations fully working.
+- **11/11 Deno handler tests** (real Deno 2.5.4, the shipped
+  `handleIngestRequest` with a fake RPC): a valid request with NO
+  Supabase session succeeds (anon-key JWT only at the gateway); no
+  secret → 401 before any RPC; wrong secret → 403 from the verdict;
+  throttled → 429; JSON null/primitive/array roots → 400
+  `invalid_body`; missing/non-array `events` → 400 `invalid_events`;
+  51 events → 400 before the RPC; oversized stream → 413 before the
+  RPC; `deno check` on the deployed wiring (index.ts + supabase-js
+  types) passes.
 - **46/46 client checks** (telemetry + update suites; full repo suite
   570/570): queue fully retained on request failure/offline; verdict
   accounting (accepted+duplicates removed, `rate_limited` kept
-  queued, other rejections dead-lettered and persisted).
+  queued, other rejections dead-lettered and persisted) — so a server
+  rejection never deletes an event from the device silently.
 
 Known limits of this evidence: the harness emulates Supabase's auth
 surface on vanilla Postgres (the real project adds PostgREST + the
 Deno runtime, whose deployed smoke test belongs to the execution
-phase); the 500-row `p_limit` ceiling is enforced in code but was not
-load-tested with >500 devices; concurrency semantics were proven,
-not throughput.
+phase; a Supabase branch/test project is not available on the
+current plan — branching needs Pro — so the local PostgreSQL 16
+harness is the test environment, and production was inspected
+read-only only); `v_recent` is bigint by declaration (code-verified —
+exercising a >2^31 hourly event count is not practical); the
+500-row `p_limit` ceiling and the 500/hour registration cap are
+enforced in code and behavior-tested at their boundaries that
+matter (floor/throttle), not load-tested beyond them; concurrency
+semantics were proven, not throughput.
 
 ## Rollout (each step gated by the owner)
 

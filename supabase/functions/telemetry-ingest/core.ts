@@ -1,7 +1,26 @@
 /**
- * telemetry-ingest core — pure, runtime-agnostic helpers (no imports).
- * Kept separate from index.ts so the mandatory behavior tests can run
- * under Node's type stripping without the Deno/supabase-js wiring.
+ * telemetry-ingest core — runtime-agnostic request handling (v4).
+ *
+ * Everything except the Supabase client wiring lives here so the full
+ * request path is testable under Deno with a fake RPC: method and
+ * credential gates, the streaming byte cap, strict body shape,
+ * batch gate, fact validation, secret hashing, and verdict mapping.
+ * index.ts only injects the real rpc call.
+ *
+ * Request contract (any violation = a non-200 response, and the
+ * client keeps its ENTIRE queue — nothing is acknowledged):
+ * - POST only.
+ * - Headers: x-installation-id (UUID), x-installation-secret (32–256).
+ * - Body: a JSON OBJECT (null, primitives and arrays are rejected),
+ *   streamed with a hard 64KB byte cap.
+ * - `events` is REQUIRED and must be an array (never coerced from a
+ *   missing/wrong-typed value); more than 50 entries reject the batch.
+ * - `installation`, when present, must be an object with in-enum,
+ *   in-range fields.
+ * A Supabase user session is NOT required: the Authorization header
+ * only carries the publishable key (the platform's verify_jwt layer
+ * checks that a valid JWT is present). The installation secret is
+ * the actual credential.
  */
 
 export const MAX_BODY_BYTES = 65536;
@@ -62,6 +81,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 function str(v: unknown, max: number): string | null {
   return typeof v === 'string' && v.length <= max ? v : null;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 /**
@@ -134,6 +157,10 @@ export function mapIngestResult(result: unknown): { status: number; body: Record
   if (r.error === 'secret_mismatch' || r.error === 'invalid_installation_credentials') {
     return { status: 403, body: { error: r.error } };
   }
+  if (r.error === 'registration_throttled') {
+    // Transient: the client keeps its queue and retries later.
+    return { status: 429, body: { error: 'registration_throttled' } };
+  }
   if (typeof r.error === 'string') {
     return { status: 500, body: { error: 'storage_error' } };
   }
@@ -146,4 +173,80 @@ export function mapIngestResult(result: unknown): { status: number; body: Record
       rejected: Array.isArray(r.rejected) ? r.rejected : [],
     },
   };
+}
+
+export async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export type RpcCall = (
+  args: Record<string, unknown>,
+) => Promise<{ data: unknown; error: unknown }>;
+
+/**
+ * The full request handler. `rpc` performs the telemetry_ingest call
+ * (service role) and resolves with the function's jsonb verdict.
+ */
+export async function handleIngestRequest(req: Request, rpc: RpcCall): Promise<Response> {
+  const json = (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+
+  const installationId = req.headers.get('x-installation-id') ?? '';
+  const secret = req.headers.get('x-installation-secret') ?? '';
+  if (!UUID_RE.test(installationId) || secret.length < 32 || secret.length > 256) {
+    return json({ error: 'invalid_installation_credentials' }, 401);
+  }
+
+  let rawBody: string;
+  try {
+    rawBody = await readBodyWithCap(req.body);
+  } catch (e) {
+    if (e instanceof BodyTooLargeError) return json({ error: 'payload_too_large' }, 413);
+    return json({ error: 'body_read_failed' }, 400);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    return json({ error: 'invalid_json' }, 400);
+  }
+  // Strict body shape: the root must be a JSON object. null,
+  // primitives and arrays are rejected — never coerced.
+  if (!isPlainObject(parsed)) return json({ error: 'invalid_body' }, 400);
+
+  // `events` is required and must be an array. A missing or
+  // wrong-typed value rejects the request; it is never replaced by
+  // an empty array (which would fake a successful heartbeat).
+  if (!('events' in parsed) || !Array.isArray(parsed.events)) {
+    return json({ error: 'invalid_events' }, 400);
+  }
+  const events: unknown[] = parsed.events;
+  const batchError = checkBatch(events);
+  if (batchError) {
+    return json({ error: batchError.error, max: MAX_EVENTS, received: batchError.received }, 400);
+  }
+
+  if ('installation' in parsed && parsed.installation !== null && !isPlainObject(parsed.installation)) {
+    return json({ error: 'invalid_installation' }, 400);
+  }
+  const checked = validateFacts((parsed.installation ?? {}) as IngestFacts);
+  if ('error' in checked) return json({ error: checked.error }, 400);
+
+  const { data, error } = await rpc({
+    p_installation_id: installationId,
+    p_secret_hash: await sha256Hex(secret),
+    ...checked.facts,
+    p_events: events,
+  });
+  if (error) return json({ error: 'storage_error' }, 500);
+
+  const mapped = mapIngestResult(data);
+  return json(mapped.body, mapped.status);
 }
