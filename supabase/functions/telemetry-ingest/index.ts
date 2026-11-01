@@ -1,5 +1,5 @@
 /**
- * telemetry-ingest — BASERA installations & OTA adoption intake. (v5)
+ * telemetry-ingest — BASERA installations & OTA adoption intake. (v7)
  *
  * DRAFT — not deployed. Deployment happens only after the owner's
  * final approval (see docs/TELEMETRY.md). Deploy with JWT verification

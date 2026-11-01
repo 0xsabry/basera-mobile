@@ -1,5 +1,5 @@
 -- =====================================================================
--- PROPOSAL v5 — NOT APPLIED TO PRODUCTION. DO NOT RUN without the
+-- PROPOSAL v7 — NOT APPLIED TO PRODUCTION. DO NOT RUN without the
 -- owner's explicit approval after final review (owner rule: no
 -- production migration before it is shown to him and approved).
 --
@@ -7,6 +7,13 @@
 -- Project: vbvvwyeccsegfwprwrga (the existing project — no new project).
 -- This migration is ADDITIVE ONLY: new schema objects, nothing that
 -- exists in production is altered or dropped.
+--
+-- v7 changes (closing rounds): sized event-id pool grants
+--   (p_pool_request: ids are granted ONLY against an explicit
+--   client request, clamped to [0, 100]; a heartbeat that asks for
+--   nothing is granted nothing).
+-- v6 changes were client-only (atomic envelope storage) and did
+--   not alter this file's design.
 --
 -- v5 changes (owner client review round):
 --   * Installation identity is SERVER-ISSUED: the app ships no

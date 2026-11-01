@@ -86,6 +86,7 @@ function makeTelemetry(opts: {
   server: FakeServer;
   verdictFor?: (events: QueuedEvent[], body: PostedBatch) => FlushVerdict | null;
   headersSeen?: Record<string, string>[];
+  grants?: number[];
 }) {
   return new Telemetry({
     queueStore: opts.queueStore,
@@ -107,6 +108,7 @@ function makeTelemetry(opts: {
       // The honest server: grants ids ONLY against a sized request,
       // clamped to 100 — exactly like the SQL.
       const grant = Math.min(Math.max(batch.pool_request ?? 0, 0), 100);
+      opts.grants?.push(grant);
       return {
         accepted: batch.events.map((e) => e.client_event_id as string),
         duplicates: [],
@@ -568,6 +570,69 @@ describe('pool economics', () => {
     expect(t.poolDropped).toBe(0);
     const requests = posted.map((b) => b.pool_request ?? 0).filter((n) => n > 0);
     expect(requests).toEqual([85]);
+  });
+
+  it('ONE request per flush: 200 events, half id-less — the top-up spends it, the batch carries zero', async () => {
+    const store = new MemoryStore();
+    const server = new FakeServer();
+    const posted: PostedBatch[] = [];
+    const grants: number[] = [];
+    const t = makeTelemetry({ queueStore: store, online: true, posted, server, grants });
+    await t.init(); // bootstrap: pool 100
+    expect(t.poolSize).toBe(100);
+    for (let i = 0; i < 200; i++) await t.record({ type: 'update_check' });
+    // Accounting BEFORE the flush: 100 ids consumed at enqueue,
+    // 100 events still id-less, pool empty.
+    expect(t.poolSize).toBe(0);
+    expect(t.queuedCount).toBe(200);
+    expect(envelopeOf(store).queue.filter((e) => !e.client_event_id)).toHaveLength(100);
+
+    posted.length = 0;
+    grants.length = 0;
+    await t.flush();
+
+    // Exactly two posts: the top-up (request 100) and the batch
+    // (request 0). Total granted across the WHOLE flush: 100, once.
+    expect(posted).toHaveLength(2);
+    expect(posted[0].events).toHaveLength(0);
+    expect(posted[0].pool_request).toBe(100);
+    expect(posted[1].events).toHaveLength(50);
+    expect(posted[1].pool_request).toBe(0);
+    expect(grants.reduce((a, b) => a + b, 0)).toBe(100);
+    // Accounting AFTER: granted 100, consumed 100 (the id-less half),
+    // remaining pool 0; 200 unique ids exist across sent + queued.
+    expect(t.poolSize).toBe(0);
+    const remaining = envelopeOf(store).queue;
+    expect(remaining).toHaveLength(150);
+    const allIds = [
+      ...posted[1].events.map((e) => e.client_event_id),
+      ...remaining.map((e) => e.client_event_id),
+    ];
+    expect(allIds.every((i) => typeof i === 'string')).toBe(true);
+    expect(new Set(allIds).size).toBe(200);
+  });
+
+  it('a failed top-up is never assumed: id-less events stay queued, id-carrying events still send, nothing is lost', async () => {
+    const store = new MemoryStore();
+    const server = new FakeServer();
+    const posted: PostedBatch[] = [];
+    const t = makeTelemetry({
+      queueStore: store, online: true, posted, server,
+      verdictFor: (events) =>
+        events.length === 0
+          ? null // every heartbeat/top-up fails at transport level
+          : { accepted: events.map((e) => e.client_event_id as string), duplicates: [], rejected: [] },
+    });
+    await t.init(); // identity + pool seeded (bootstrap is a separate channel)
+    for (let i = 0; i < 150; i++) await t.record({ type: 'update_check' });
+    expect(t.poolSize).toBe(0);
+    expect(await t.flush()).toBe(true); // the batch itself succeeded
+    expect(t.queuedCount).toBe(100); // 50 sent; 50 id-carrying + 50 id-less remain
+    const q = envelopeOf(store).queue;
+    expect(q.filter((e) => !e.client_event_id)).toHaveLength(50); // still waiting, not dropped
+    expect(q.filter((e) => e.client_event_id)).toHaveLength(50);
+    const sentIds = posted.flatMap((b) => b.events).map((e) => e.client_event_id);
+    expect(new Set([...sentIds, ...q.map((e) => e.client_event_id)]).size).toBe(101); // 150 unique + the null bucket
   });
 
   it('a rogue oversized grant is capped locally and the excess is counted, not kept', async () => {

@@ -84,7 +84,10 @@ its entire queue.
   request (`pool_request`): the client asks only when its pool falls
   below 20, sized to refill to 100; the server clamps any grant to
   at most 100; the local pool is hard-capped at 150 with excess
-  grants counted. A heartbeat that asks for nothing is granted
+  grants counted. Each flush carries ONE request, spent exactly
+  once: when a top-up heartbeat is needed it spends the request and
+  the batch post that follows carries zero (a failed top-up is never
+  assumed — id-less events simply stay queued). A heartbeat that asks for nothing is granted
   nothing — repeated heartbeats cannot inflate the pool, and a
   consumed id never returns to the pool. Events recorded before
   first contact queue WITHOUT ids and are assigned pooled ids —
@@ -280,6 +283,17 @@ the v7 delta (drop 11-param ingest, create the 12-param sized-pool
 version) and the updated function were deployed there and the pool
 contract was exercised over HTTPS — see the closing report for the
 transcript. Production was never opened.
+
+**Final fix (post-v7 review):** the per-flush request budget is
+spent exactly once — a flush that needs a top-up heartbeat sends
+its sized request there and ZERO on the batch post. Pinned by an
+accounting test (200 events, half id-less: before pool 0 / 100
+id-less; the flush's two posts carry requests 100 then 0; total
+granted 100, consumed 100, remaining 0; 200 unique ids across sent
++ queued) and a failed-top-up test (nothing assumed, nothing lost).
+An Android device test plan against the smoke backend is prepared
+in `docs/TELEMETRY-ANDROID-TEST-PLAN.md` — unexecuted; no telemetry
+behavior has been observed on a real Android device yet.
 
 ## Verification evidence (v6, local — server unchanged since v5)
 

@@ -1,5 +1,5 @@
 /**
- * telemetry-ingest core — runtime-agnostic request handling (v5).
+ * telemetry-ingest core — runtime-agnostic request handling (v7).
  *
  * Everything except the Supabase client wiring lives here so the full
  * request path is testable under Deno with a fake RPC: method and

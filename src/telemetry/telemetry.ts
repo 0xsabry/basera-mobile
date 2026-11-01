@@ -14,7 +14,7 @@
  * launch), events queue locally WITHOUT ids and are assigned pooled
  * ids — persisted before sending — at the first successful contact.
  *
- * Storage architecture (v6):
+ * Storage architecture (v7):
  * - ALL mutable telemetry state (queue, id pool, lifecycle state,
  *   overflow counters, dead-letter) lives in ONE Atomic State
  *   Envelope — a single key in the queue store, written with a
@@ -506,10 +506,18 @@ export class Telemetry {
         }
       };
       assignFromPool();
-      // Ask for ids only when the pool is low, sized to the target.
-      const poolRequest = this.poolRequestSize();
+      // ONE sized request per flush, spent exactly once: if a
+      // top-up heartbeat is needed (events are waiting for ids), IT
+      // carries the request and the batch post that follows carries
+      // ZERO — a single flush must never be granted the same request
+      // twice. If the top-up fails, nothing is assumed: id-less
+      // events simply stay queued (they are never dropped), and the
+      // batch still sends the events that do have ids, with no
+      // further request attached.
+      let poolRequest = this.poolRequestSize();
       if (this.env.queue.some((e) => !e.client_event_id)) {
         const topUp = await this.postBatch(identity, [], poolRequest);
+        poolRequest = 0; // spent — regardless of the top-up outcome
         if (topUp?.event_id_pool?.length) this.appendPool(topUp.event_id_pool);
         assignFromPool();
       }
