@@ -25,6 +25,16 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-01',
     runtimeVersion: '1.1.0',
+    titleEn: 'Telemetry smoke test — isolated channel update',
+    titleAr: 'اختبار قياس عن بُعد — تحديث قناة معزولة',
+    bodyEn:
+      'This update was published ONLY to the isolated telemetry-smoke channel for a single-device Android test. If you are reading it on the spare test phone, the over-the-air update arrived, downloaded and applied on the isolated channel — the official app and the team channel were not touched.',
+    bodyAr:
+      'نُشر هذا التحديث فقط على قناة telemetry-smoke المعزولة لاختبار Android على جهاز واحد. إذا كنت تقرأه على هاتف الاختبار الاحتياطي، فقد وصل التحديث الهوائي ونُزّل وطُبّق على القناة المعزولة — دون المساس بالتطبيق الرسمي أو قناة الفريق.',
+  },
+  {
+    date: '2026-11-01',
+    runtimeVersion: '1.1.0',
     titleEn: 'Update test — this note arrived over the air',
     titleAr: 'اختبار التحديث — وصلتك هذه الملاحظة عبر الهواء',
     bodyEn:
