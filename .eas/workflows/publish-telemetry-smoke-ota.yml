@@ -1,0 +1,35 @@
+# BASERA — manual OTA publish to the ISOLATED telemetry-smoke channel.
+#
+# Isolation contract (owner order 2026-11-01): channel is hardcoded
+# to `telemetry-smoke`. This workflow can NEVER publish to preview or
+# production. Manual trigger ONLY; default run is a dry run (export
+# only, publishes nothing) — publish with -F publish=true.
+name: Publish telemetry-smoke OTA (Android)
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        type: boolean
+        required: false
+        default: false
+        description: 'Publish the update to the telemetry-smoke channel only (false = dry run, export only)'
+
+jobs:
+  verify_export:
+    name: Verify bundle export (dry run)
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Export Android bundle
+        run: npx expo export --platform android --output-dir dist-smoke-check
+
+  publish_update:
+    name: Publish update to telemetry-smoke channel
+    needs: [verify_export]
+    if: ${{ inputs.publish == true }}
+    type: update
+    params:
+      channel: telemetry-smoke
+      platform: android
+      message: 'Telemetry smoke device test (runtime 1.1.0, isolated channel)'

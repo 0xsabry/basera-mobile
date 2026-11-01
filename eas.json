@@ -20,6 +20,17 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "telemetry-smoke": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "channel": "telemetry-smoke",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://vwurzvvsfyimovauolrs.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_CgpdmbEyW5r6lhx8FFCaCA_xLnCYLrC"
+      }
     }
   },
   "cli": {

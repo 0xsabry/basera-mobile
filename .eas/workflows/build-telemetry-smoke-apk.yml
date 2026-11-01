@@ -1,0 +1,21 @@
+# BASERA — ONE throwaway APK for the Android telemetry device test.
+#
+# Isolation contract (owner order 2026-11-01):
+# - Build profile `telemetry-smoke`: channel `telemetry-smoke` ONLY,
+#   env pointing ONLY at the basera-telemetry-smoke Supabase project.
+# - This is NOT a release: version stays 1.1.8 / code 10, the release
+#   guard baseline is untouched, and the APK is never distributed to
+#   the team — one spare test device only.
+# Manual trigger ONLY (workflow_dispatch).
+name: Build telemetry-smoke APK (Android, throwaway test)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build_android:
+    name: Build Android telemetry-smoke APK
+    type: build
+    params:
+      platform: android
+      profile: telemetry-smoke
