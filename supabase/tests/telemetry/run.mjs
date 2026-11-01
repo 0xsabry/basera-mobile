@@ -30,13 +30,16 @@ async function bootstrap(client, facts = {}) {
      f.channel, f.current_update_id, f.is_embedded_launch]);
   return rows[0].v;
 }
-async function ingest(client, { id, secret, facts = {}, events = [] }) {
+async function ingest(client, { id, secret, facts = {}, events = [], poolRequest }) {
   const f = { ...FACTS, ...facts };
-  const { rows } = await client.query(
-    `select public.telemetry_ingest($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb) as v`,
-    [id, sha(secret), f.platform, f.os_version, f.app_version, f.version_code,
+  const sql = poolRequest === undefined
+    ? `select public.telemetry_ingest($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb) as v`
+    : `select public.telemetry_ingest($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12) as v`;
+  const params = [id, sha(secret), f.platform, f.os_version, f.app_version, f.version_code,
      f.runtime_version, f.channel, f.current_update_id, f.is_embedded_launch,
-     JSON.stringify(events)]);
+     JSON.stringify(events)];
+  if (poolRequest !== undefined) params.push(poolRequest);
+  const { rows } = await client.query(sql, params);
   return rows[0].v;
 }
 const ev = (over = {}) => ({
@@ -94,8 +97,14 @@ let A;
   // sha256(secret) — the ingest path hashes in the caller and compares.
   let v = await ingest(svc, { id: A.installation_id, secret: A.secret });
   check('issued secret authenticates ingest (hash contract holds)', !v.error, JSON.stringify(v));
-  check('ingest verdict carries a fresh 50-id pool',
-    Array.isArray(v.event_id_pool) && v.event_id_pool.length === 50);
+  check('a heartbeat that asks for no ids is granted none',
+    Array.isArray(v.event_id_pool) && v.event_id_pool.length === 0);
+  v = await ingest(svc, { id: A.installation_id, secret: A.secret, poolRequest: 30 });
+  check('a sized pool request is granted exactly',
+    Array.isArray(v.event_id_pool) && v.event_id_pool.length === 30);
+  v = await ingest(svc, { id: A.installation_id, secret: A.secret, poolRequest: 5000 });
+  check('an oversized pool request is clamped to 100 server-side',
+    Array.isArray(v.event_id_pool) && v.event_id_pool.length === 100);
   v = await ingest(svc, { id: A.installation_id, secret: A.secret });
   const { rows } = await svc.query('select count(*)::int n from public.app_installations where id=$1', [A.installation_id]);
   check('repeat launches are heartbeats; installation counted once', rows[0].n === 1 && !v.error);

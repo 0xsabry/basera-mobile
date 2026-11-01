@@ -136,17 +136,22 @@ export interface TelemetryDeps {
 const ENVELOPE_KEY = 'basera.telemetry.envelope.v1';
 const ENVELOPE_CORRUPT_KEY = 'basera.telemetry.envelope.corrupt';
 const IDENTITY_KEY = 'basera.install.identity.v1';
-// Legacy keys (v5 layout) — folded into the envelope / identity
-// value once, if ever present.
-const LEGACY_ID_KEY = 'basera.install.id';
-const LEGACY_SECRET_KEY = 'basera.install.secret';
-const LEGACY_QUEUE_KEY = 'basera.telemetry.queue.v1';
-const LEGACY_STATE_KEY = 'basera.telemetry.state.v1';
-const LEGACY_POOL_KEY = 'basera.telemetry.pool.v1';
-const LEGACY_DEADLETTER_KEY = 'basera.telemetry.deadletter.v1';
+// NOTE: there is intentionally NO migration from the short-lived v5
+// storage layout. The v5 client was never distributed: the last
+// published OTA predates the first telemetry commit, and no APK
+// contains telemetry code (proof in docs/TELEMETRY.md). Client
+// storage begins with this envelope.
 
 export const QUEUE_CAP = 200;
 export const DEADLETTER_CAP = 100;
+/** Pool economics: the client asks the server for ids ONLY when the
+ *  local pool falls below POOL_LOW_WATER, sized to refill to
+ *  POOL_TARGET; the server clamps any grant to at most 100, and the
+ *  local pool is hard-capped at POOL_MAX (excess grants are counted
+ *  in poolDropped, never silently kept or silently lost). */
+export const POOL_TARGET = 100;
+export const POOL_LOW_WATER = 20;
+export const POOL_MAX = 150;
 const LOW_VALUE: TelemetryEventType[] = ['update_check', 'update_available'];
 const EVICTABLE: TelemetryEventType[] = ['update_check', 'update_available'];
 
@@ -159,6 +164,10 @@ interface Envelope {
   overflow: OverflowStats;
   deadLetter: DeadLetterEntry[];
   deadLetterDropped: number;
+  /** Server-granted ids discarded by the local pool cap (counted,
+   *  never silent; discarded ids were never used, so nothing is
+   *  lost but spare capacity). */
+  poolDropped: number;
 }
 
 const freshEnvelope = (): Envelope => ({
@@ -170,6 +179,7 @@ const freshEnvelope = (): Envelope => ({
   overflow: { refused: {}, evicted: {} },
   deadLetter: [],
   deadLetterDropped: 0,
+  poolDropped: 0,
 });
 
 export class Telemetry {
@@ -189,15 +199,22 @@ export class Telemetry {
   // envelope load / persist (ONE key, ONE write per mutation)
   // ---------------------------------------------------------------
 
-  private async loadAll(): Promise<void> {
-    if (this.loaded) return;
-    this.loaded = true;
+  /**
+   * Load the envelope. FAIL-CLOSED: returns false (and `loaded`
+   * stays false, so the next operation retries) when the storage
+   * read fails or a corrupt envelope cannot be quarantined. While
+   * blocked, NOTHING proceeds: no bootstrap, no ingest, no writes —
+   * an unreadable store is never mistaken for an empty one, and the
+   * original bytes are never overwritten blind.
+   */
+  private async loadAll(): Promise<boolean> {
+    if (this.loaded) return true;
     const store = this.deps.queueStore;
-    let raw: string | null = null;
+    let raw: string | null;
     try {
       raw = await store.get(ENVELOPE_KEY);
     } catch {
-      raw = null;
+      return false; // storage unreadable: blocked until it recovers
     }
     if (raw) {
       try {
@@ -206,58 +223,38 @@ export class Telemetry {
           throw new Error('bad envelope shape');
         }
         this.env = { ...freshEnvelope(), ...parsed };
-        return;
       } catch {
-        // Corrupt envelope: quarantine the raw bytes for diagnosis
-        // and start fresh. Its events were undeliverable state, not
-        // silently-kept data — the quarantine preserves the evidence.
+        // Corrupt envelope: quarantine the raw bytes for diagnosis.
+        // If even the quarantine write fails, stay blocked rather
+        // than starting fresh and overwriting the only copy.
         try {
           await store.set(ENVELOPE_CORRUPT_KEY, raw);
         } catch {
-          /* best effort */
+          return false;
         }
         this.env = freshEnvelope();
-        return;
       }
+    } else {
+      this.env = freshEnvelope();
     }
-    // One-time fold of the legacy (v5) multi-key layout, if present.
-    try {
-      const [q, p, s, d] = await Promise.all([
-        store.get(LEGACY_QUEUE_KEY),
-        store.get(LEGACY_POOL_KEY),
-        store.get(LEGACY_STATE_KEY),
-        store.get(LEGACY_DEADLETTER_KEY),
-      ]);
-      if (q || p || s || d) {
-        const env = freshEnvelope();
-        if (q) env.queue = JSON.parse(q) as QueuedEvent[];
-        if (p) env.pool = JSON.parse(p) as string[];
-        if (s) {
-          const st = JSON.parse(s) as {
-            stagedUpdateId?: string | null;
-            appliedUpdateId?: string | null;
-            overflow?: OverflowStats;
-          };
-          env.stagedUpdateId = st.stagedUpdateId ?? null;
-          env.appliedUpdateId = st.appliedUpdateId ?? null;
-          if (st.overflow) env.overflow = st.overflow;
-        }
-        if (d) {
-          const dl = JSON.parse(d) as
-            | DeadLetterEntry[]
-            | { entries: DeadLetterEntry[]; dropped: number };
-          if (Array.isArray(dl)) env.deadLetter = dl;
-          else {
-            env.deadLetter = dl.entries ?? [];
-            env.deadLetterDropped = dl.dropped ?? 0;
-          }
-        }
-        this.env = env;
-        await this.persist().catch(() => undefined);
-      }
-    } catch {
-      /* legacy fold is best-effort; a fresh envelope is the fallback */
-    }
+    this.loaded = true;
+    return true;
+  }
+
+  /** Append server-granted ids, hard-capped; excess counted. */
+  private appendPool(ids: string[]): void {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    const room = Math.max(POOL_MAX - this.env.pool.length, 0);
+    const take = ids.slice(0, room);
+    this.env.poolDropped += ids.length - take.length;
+    this.env.pool.push(...take);
+  }
+
+  /** How many ids to ask the server for right now (0 = ask for
+   *  nothing: a heartbeat must not inflate the pool). */
+  private poolRequestSize(): number {
+    if (this.env.pool.length >= POOL_LOW_WATER) return 0;
+    return Math.min(POOL_TARGET - this.env.pool.length, 100);
   }
 
   /** The ONLY write path for telemetry state: one key, one set(). */
@@ -307,24 +304,6 @@ export class Telemetry {
       }
       return { kind: 'absent' };
     }
-    // Legacy fold: v5 stored id and secret as separate keys.
-    try {
-      const [id, secret] = await Promise.all([
-        this.deps.secureStore.get(LEGACY_ID_KEY),
-        this.deps.secureStore.get(LEGACY_SECRET_KEY),
-      ]);
-      if (id && secret) {
-        const identity = { id, secret };
-        try {
-          await this.deps.secureStore.set(IDENTITY_KEY, JSON.stringify(identity));
-        } catch {
-          /* adoption below still returns it: it IS the stored pair */
-        }
-        return { kind: 'found', identity };
-      }
-    } catch {
-      return { kind: 'unreadable' };
-    }
     return { kind: 'absent' };
   }
 
@@ -356,7 +335,7 @@ export class Telemetry {
     }
     this.identity = identity;
     if (Array.isArray(issued.event_id_pool) && issued.event_id_pool.length > 0) {
-      this.env.pool = [...this.env.pool, ...issued.event_id_pool];
+      this.appendPool(issued.event_id_pool);
       await this.persist().catch(() => undefined);
     }
     return this.identity;
@@ -367,7 +346,7 @@ export class Telemetry {
   // ---------------------------------------------------------------
 
   private async enqueueInternal(event: QueuedEvent): Promise<void> {
-    await this.loadAll();
+    if (!(await this.loadAll())) throw new Error('storage blocked');
     if (this.env.queue.length >= QUEUE_CAP) {
       if (LOW_VALUE.includes(event.event_type)) {
         const r = this.env.overflow.refused;
@@ -436,7 +415,7 @@ export class Telemetry {
     if (e.type === 'update_downloaded' && e.updateId) {
       const staged = e.updateId;
       void this.chain(async () => {
-        await this.loadAll();
+        if (!(await this.loadAll())) return;
         this.env.stagedUpdateId = staged;
         await this.persist();
       });
@@ -457,7 +436,7 @@ export class Telemetry {
     isEmbeddedLaunch: boolean | null;
   }): Promise<void> {
     await this.chain(async () => {
-      await this.loadAll();
+      if (!(await this.loadAll())) return;
       if (current.isEmbeddedLaunch === null && !current.updateId) {
         return; // state unknown: decide nothing, keep staged as-is
       }
@@ -510,7 +489,7 @@ export class Telemetry {
     }
     this.flushing = true;
     try {
-      await this.loadAll();
+      if (!(await this.loadAll())) throw new Error('storage blocked');
       // Durable-before-send: if the envelope cannot be written, do
       // not send anything (a crash must not lose the only copy).
       await this.persist();
@@ -527,23 +506,21 @@ export class Telemetry {
         }
       };
       assignFromPool();
+      // Ask for ids only when the pool is low, sized to the target.
+      const poolRequest = this.poolRequestSize();
       if (this.env.queue.some((e) => !e.client_event_id)) {
-        const topUp = await this.postBatch(identity, []);
-        if (topUp?.event_id_pool?.length) {
-          this.env.pool = [...this.env.pool, ...topUp.event_id_pool];
-        }
+        const topUp = await this.postBatch(identity, [], poolRequest);
+        if (topUp?.event_id_pool?.length) this.appendPool(topUp.event_id_pool);
         assignFromPool();
       }
       await this.persist();
 
       const batch = this.env.queue.filter((e) => e.client_event_id).slice(0, 50);
-      const verdict = await this.postBatch(identity, batch);
+      const verdict = await this.postBatch(identity, batch, poolRequest);
       if (!verdict) throw new Error('no verdict');
 
       const snapshot = JSON.stringify(this.env);
-      if (verdict.event_id_pool?.length) {
-        this.env.pool = [...this.env.pool, ...verdict.event_id_pool];
-      }
+      if (verdict.event_id_pool?.length) this.appendPool(verdict.event_id_pool);
       const drop = new Set([...verdict.accepted, ...verdict.duplicates]);
       const rejectedById = new Map(
         verdict.rejected
@@ -591,6 +568,7 @@ export class Telemetry {
   private async postBatch(
     identity: { id: string; secret: string },
     batch: QueuedEvent[],
+    poolRequest = 0,
   ): Promise<FlushVerdict | null> {
     if (!this.deps.endpoint || !this.deps.publishableKey) return null;
     try {
@@ -606,7 +584,7 @@ export class Telemetry {
           'x-installation-id': identity.id,
           'x-installation-secret': identity.secret,
         },
-        { installation: this.deps.facts(), events: batch },
+        { installation: this.deps.facts(), events: batch, pool_request: poolRequest },
       );
     } catch {
       return null;
@@ -633,6 +611,14 @@ export class Telemetry {
     return this.env.overflow;
   }
 
+  get poolSize(): number {
+    return this.env.pool.length;
+  }
+
+  get poolDropped(): number {
+    return this.env.poolDropped;
+  }
+
   get issuedIdentity(): { id: string } | null {
     return this.identity ? { id: this.identity.id } : null;
   }
@@ -643,7 +629,9 @@ export class Telemetry {
    * uses), then the registration/heartbeat flush.
    */
   async init(): Promise<void> {
-    await this.chain(() => this.loadAll());
+    await this.chain(async () => {
+      await this.loadAll();
+    });
     const facts = this.deps.facts();
     await this.checkAppliedOnLaunch({
       updateId: facts.current_update_id,

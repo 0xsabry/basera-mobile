@@ -283,11 +283,24 @@ export async function handleIngestRequest(req: Request, rpcs: IngestRpcs): Promi
     return json({ error: batchError.error, max: MAX_EVENTS, received: batchError.received }, 400);
   }
 
+  // Pool requests are explicit and sized: absent = 0 (a heartbeat
+  // grants nothing). A present value must be a non-negative integer;
+  // the SQL clamps the actual grant to at most 100.
+  let poolRequest = 0;
+  if ('pool_request' in parsed) {
+    const pr = parsed.pool_request;
+    if (typeof pr !== 'number' || !Number.isInteger(pr) || pr < 0 || pr > 1000) {
+      return json({ error: 'invalid_pool_request' }, 400);
+    }
+    poolRequest = pr;
+  }
+
   const { data, error } = await rpcs.ingest({
     p_installation_id: installationId,
     p_secret_hash: await sha256Hex(secret),
     ...checked.facts,
     p_events: events,
+    p_pool_request: poolRequest,
   });
   if (error) return json({ error: 'storage_error' }, 500);
 

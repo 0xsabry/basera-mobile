@@ -75,11 +75,18 @@ its entire queue.
   function calls `telemetry_bootstrap`, which mints the installation
   id and a 256-bit-equivalent secret from `gen_random_uuid()` (the
   server OS CSPRNG), returns the secret exactly once, and stores only
-  its SHA-256 hash. The client persists id + secret in SecureStore
-  (fallback AsyncStorage). Ingest REFUSES ids the server never issued
-  (`unknown_installation`) — there is no self-registration.
-- Event ids are also server-minted: bootstrap returns a pool of 100
-  and every ingest verdict tops it up by 50. Events recorded before
+  its SHA-256 hash. The client persists id + secret as ONE value in
+  SecureStore ONLY (never plain storage). Ingest REFUSES ids the
+  server never issued (`unknown_installation`) — there is no
+  self-registration.
+- Event ids are also server-minted: bootstrap returns a pool of 100.
+  After that, ids are granted ONLY against an explicit, sized client
+  request (`pool_request`): the client asks only when its pool falls
+  below 20, sized to refill to 100; the server clamps any grant to
+  at most 100; the local pool is hard-capped at 150 with excess
+  grants counted. A heartbeat that asks for nothing is granted
+  nothing — repeated heartbeats cannot inflate the pool, and a
+  consumed id never returns to the pool. Events recorded before
   first contact queue WITHOUT ids and are assigned pooled ids —
   persisted before sending — at that first contact.
 - Anonymous by design: no account/user link, no IMEI, no location, no
@@ -118,9 +125,20 @@ a crash leaves the whole old envelope or the whole new one, so
 consuming a pool id is durable in the same write as the event that
 uses it (v5 persisted queue and pool separately and could resurrect
 a consumed id after a restart). A corrupt envelope is quarantined
-(raw bytes kept under a separate key) rather than trusted. The
-legacy multi-key layout, if ever present, folds into the envelope
-once, losslessly.
+(raw bytes kept under a separate key) rather than trusted.
+**Loading is fail-closed (v7):** a failed storage READ is never
+mistaken for an empty envelope — while storage is unreadable, no
+bootstrap, no ingest, and no writes happen at all, and `loaded` is
+set only after a successful read + validation; if a corrupt
+envelope cannot be quarantined, the client stays blocked instead of
+starting fresh over the only copy. Recovery is automatic on the
+next operation once storage answers again, with prior data intact.
+**No legacy migration ships (v7):** the short-lived v5 multi-key
+layout never reached a device — the last published OTA content
+(commit `586f6cc`) and the 1.1.8 APK build commit (`f0a6f39`) both
+predate the first telemetry commit (`e52583e`), and the shipped
+1.1.8 bundle contains zero telemetry strings (grep-verified against
+the APK file). Client storage therefore begins with this envelope.
 
 The installation identity is the exception that proves the rule: id
 + secret together form ONE value stored in **SecureStore only** —
@@ -225,6 +243,44 @@ pre-existing in production is granted, revoked, altered, or dropped.
   update ids through the full funnel). No personal data is stored
   that could be used to deanonymize anyone.
 
+## Verification evidence (v7, closing round)
+
+**Local:**
+- PostgreSQL battery **55/55** on the final SQL, including the pool
+  contract: a no-request heartbeat is granted 0 ids, a request for
+  30 is granted exactly 30, a request for 5000 is clamped to 100.
+- Deno **16/16** (+ `deno check` clean): sized pool requests pass
+  through to the RPC; malformed ones (fractional, negative, string,
+  >1000) are refused with `invalid_pool_request` before any RPC.
+- Jest full repo **595/595** (`rlsStatic` still the only unrunnable
+  suite, pre-existing): a 100-heartbeat run with 10 events grants
+  ZERO verdict ids and ends at pool 90/100; a drained pool refills
+  with exactly one sized request (85) back to 100; a rogue 200-id
+  grant is capped at 150 with the excess counted; fail-closed load
+  tests prove a storage read failure blocks bootstrap + ingest +
+  writes and loses nothing on recovery, and a corrupt envelope
+  whose quarantine write fails blocks everything with the original
+  bytes untouched.
+- The REAL `src/telemetry/index.ts` module is under test
+  (indexWiring): the singleton's endpoint/key come from
+  `resolveSupabaseConfig` via the canonical publishable names, and
+  `facts()` returns `is_embedded_launch: null` when expo-updates is
+  disabled/unreadable. A source guard asserts index.ts contains no
+  legacy resolver strings and no `isEmbeddedLaunch: true` default.
+  (Note: the v6 commit already contained this wiring — commit
+  `4008081` lines 18/33/45; the closing round verified it in the
+  committed blob and added the missing real-path test.)
+- No-distribution proof for the removed legacy migration: git
+  ancestry (`586f6cc`, `f0a6f39` both predate `e52583e`) + the
+  shipped 1.1.8 bundle greps to zero telemetry strings while its
+  fixed-updater markers are present.
+
+**On the real Supabase smoke project** (`basera-telemetry-smoke`):
+the v7 delta (drop 11-param ingest, create the 12-param sized-pool
+version) and the updated function were deployed there and the pool
+contract was exercised over HTTPS — see the closing report for the
+transcript. Production was never opened.
+
 ## Verification evidence (v6, local — server unchanged since v5)
 
 - **Client suite rewritten for the v6 storage model, all green**
@@ -246,7 +302,9 @@ pre-existing in production is granted, revoked, altered, or dropped.
   - Tri-state: a null (unknown) embedded state crosses the wire as
     null and preserves a staged download, which a later knowable
     launch still reports as applied exactly once.
-  - Legacy multi-key state folds into the envelope losslessly.
+  - (The v6 build briefly carried a legacy-layout fold; v7 removed
+    it after proving no v5 client was ever distributed — see the
+    storage section.)
 - **Configuration**: 4 resolver tests (canonical-first, legacy
   fallback, endpoint derivation); `expo config --type public --json`
   evaluation verified (booleans only, key never printed): production

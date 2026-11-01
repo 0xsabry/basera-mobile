@@ -38,6 +38,7 @@ class MemoryStore {
 interface PostedBatch {
   installation: InstallationFacts;
   events: QueuedEvent[];
+  pool_request?: number;
 }
 
 const ENVELOPE_KEY = 'basera.telemetry.envelope.v1';
@@ -70,7 +71,7 @@ class FakeServer {
     return {
       installation_id: uuid(100000 + n),
       installation_secret: `server-secret-${n}-${'x'.repeat(40)}`,
-      event_id_pool: Array.from({ length: 500 }, (_, i) => uuid(n * 10000 + i)),
+      event_id_pool: Array.from({ length: 100 }, (_, i) => uuid(n * 10000 + i)), // the real bootstrap grant is 100
     };
   }
 }
@@ -83,7 +84,7 @@ function makeTelemetry(opts: {
   bootstrapOnline?: boolean;
   posted: PostedBatch[];
   server: FakeServer;
-  verdictFor?: (events: QueuedEvent[]) => FlushVerdict | null;
+  verdictFor?: (events: QueuedEvent[], body: PostedBatch) => FlushVerdict | null;
   headersSeen?: Record<string, string>[];
 }) {
   return new Telemetry({
@@ -102,12 +103,15 @@ function makeTelemetry(opts: {
       opts.headersSeen?.push(headers);
       const batch = body as PostedBatch;
       opts.posted.push(batch);
-      if (opts.verdictFor) return opts.verdictFor(batch.events);
+      if (opts.verdictFor) return opts.verdictFor(batch.events, batch);
+      // The honest server: grants ids ONLY against a sized request,
+      // clamped to 100 — exactly like the SQL.
+      const grant = Math.min(Math.max(batch.pool_request ?? 0, 0), 100);
       return {
         accepted: batch.events.map((e) => e.client_event_id as string),
         duplicates: [],
         rejected: [],
-        event_id_pool: Array.from({ length: 50 }, (_, i) => uuid(900000 + i)),
+        event_id_pool: Array.from({ length: grant }, (_, i) => uuid(900000 + i)),
       };
     },
   });
@@ -386,10 +390,12 @@ describe('overflow policy', () => {
     const server = new FakeServer();
     const t = makeTelemetry({
       queueStore: store, online: true, posted: [], server,
-      verdictFor: (events) => ({
+      verdictFor: (events, body) => ({
         accepted: [],
         duplicates: [],
         rejected: events.map((e) => ({ client_event_id: e.client_event_id, reason: 'invalid_event_type' })),
+        // a realistic server still honors sized pool requests
+        event_id_pool: Array.from({ length: Math.min(body.pool_request ?? 0, 100) }, (_, i) => uuid(800000 + i)),
       }),
     });
     await t.init();
@@ -488,18 +494,97 @@ describe('atomic envelope + crash recovery', () => {
     expect(posted.length).toBeGreaterThan(0); // telemetry still functions
   });
 
-  it('the legacy multi-key layout folds into the envelope losslessly', async () => {
+  it('FAILS CLOSED when the envelope cannot be read: no bootstrap, no ingest, no writes — and recovery loses nothing', async () => {
     const store = new MemoryStore();
-    store.data.set('basera.telemetry.queue.v1', JSON.stringify([
-      { client_event_id: uuid(777), event_type: 'update_check', update_id: null, status: 'ok', failure_reason: null, client_ts: '2026-11-01T00:00:00.000Z' },
-    ]));
-    store.data.set('basera.telemetry.pool.v1', JSON.stringify([uuid(778), uuid(779)]));
-    const t = makeTelemetry({ queueStore: store, online: false, posted: [], server: new FakeServer() });
-    await t.record({ type: 'update_check' });
-    const env = envelopeOf(store);
-    expect(env.queue).toHaveLength(2);
-    expect(env.queue[0].client_event_id).toBe(uuid(777));
-    expect(env.queue[1].client_event_id).toBe(uuid(778)); // folded pool continued, no reuse
+    const server = new FakeServer();
+    const posted: PostedBatch[] = [];
+    const healthy = makeTelemetry({ queueStore: store, online: true, posted, server });
+    await healthy.init();
+    await healthy.record({ type: 'update_check' });
+    const rawBefore = store.data.get(ENVELOPE_KEY);
+
+    store.throwOnGet = true;
+    const blocked = makeTelemetry({ queueStore: store, online: true, posted, server });
+    await expect(blocked.record({ type: 'update_available', updateId: U1 })).resolves.toBe(false);
+    expect(await blocked.flush()).toBe(false);
+    expect(server.bootstrapCalls).toBe(1); // only the healthy instance's
+    expect(store.data.get(ENVELOPE_KEY)).toBe(rawBefore); // untouched bytes
+
+    store.throwOnGet = false; // storage recovers
+    const recovered = makeTelemetry({ queueStore: store, online: true, posted, server });
+    await recovered.record({ type: 'update_check' });
+    const q = envelopeOf(store).queue;
+    expect(q.map((e) => e.event_type)).toEqual(['update_check', 'update_check']); // old + new, nothing lost
+  });
+
+  it('a corrupt envelope whose quarantine write fails blocks everything instead of overwriting the original', async () => {
+    const store = new MemoryStore();
+    const CORRUPT = '{"version":1,"queue":"not-an-array"';
+    store.data.set(ENVELOPE_KEY, CORRUPT);
+    const server = new FakeServer();
+    const t = makeTelemetry({ queueStore: store, online: true, posted: [], server });
+    store.failSets = 1; // the quarantine write will fail
+    await expect(t.record({ type: 'update_check' })).resolves.toBe(false);
+    expect(store.data.get(ENVELOPE_KEY)).toBe(CORRUPT); // original preserved
+    expect(server.bootstrapCalls).toBe(0);
+    // Quarantine succeeds on retry: fresh start, evidence preserved.
+    await expect(t.record({ type: 'update_check' })).resolves.toBe(true);
+    expect(store.data.get('basera.telemetry.envelope.corrupt')).toBe(CORRUPT);
+    expect(envelopeOf(store).queue).toHaveLength(1);
+  });
+});
+
+describe('pool economics', () => {
+  it('100 heartbeats with almost no events grant ZERO extra ids and the pool never grows', async () => {
+    const store = new MemoryStore();
+    const server = new FakeServer();
+    const posted: PostedBatch[] = [];
+    const t = makeTelemetry({ queueStore: store, online: true, posted, server });
+    await t.init(); // bootstrap seeds exactly 100
+    expect(t.poolSize).toBe(100);
+    for (let i = 0; i < 100; i++) {
+      if (i % 10 === 0) await t.record({ type: 'update_check' }); // 10 events total
+      await t.flush();
+      expect(t.poolSize).toBeLessThanOrEqual(100);
+    }
+    // 10 consumed, none granted by verdicts: pool is exactly 90.
+    expect(t.poolSize).toBe(90);
+    const verdictGrants = posted
+      .filter((b) => (b.pool_request ?? 0) > 0)
+      .length;
+    expect(verdictGrants).toBe(0); // the client never even asked
+  });
+
+  it('a drained pool refills with ONE sized request back to the target, never above it', async () => {
+    const store = new MemoryStore();
+    const server = new FakeServer();
+    const posted: PostedBatch[] = [];
+    const t = makeTelemetry({ queueStore: store, online: true, posted, server });
+    await t.init();
+    for (let i = 0; i < 85; i++) await t.record({ type: 'update_check' });
+    expect(t.poolSize).toBe(15);
+    await t.flush(); // batch of 50 sent; request = 85 -> grant 85
+    expect(t.poolSize).toBe(100);
+    expect(t.poolDropped).toBe(0);
+    const requests = posted.map((b) => b.pool_request ?? 0).filter((n) => n > 0);
+    expect(requests).toEqual([85]);
+  });
+
+  it('a rogue oversized grant is capped locally and the excess is counted, not kept', async () => {
+    const store = new MemoryStore();
+    const server = new FakeServer();
+    const t = makeTelemetry({
+      queueStore: store, online: true, posted: [], server,
+      verdictFor: (events) => ({
+        accepted: events.map((e) => e.client_event_id as string),
+        duplicates: [],
+        rejected: [],
+        event_id_pool: Array.from({ length: 200 }, (_, i) => uuid(700000 + i)),
+      }),
+    });
+    await t.init(); // pool 100 from bootstrap; init's heartbeat verdict grants 200 anyway -> capped
+    expect(t.poolSize).toBe(150);
+    expect(t.poolDropped).toBe(150);
   });
 });
 

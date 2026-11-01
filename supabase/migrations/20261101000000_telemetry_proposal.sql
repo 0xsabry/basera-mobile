@@ -157,7 +157,13 @@ create or replace function public.telemetry_ingest(
   p_channel text,
   p_current_update_id text,
   p_is_embedded_launch boolean,
-  p_events jsonb
+  p_events jsonb,
+  -- Event-id pool economics: ids are granted ONLY against an
+  -- explicit, sized client request (the client asks when its local
+  -- pool runs low). The grant is clamped to [0, 100] here no matter
+  -- what was requested; a heartbeat that asks for nothing gets
+  -- nothing, so repeated heartbeats cannot grow the client's pool.
+  p_pool_request integer default 0
 )
 returns jsonb
 language plpgsql
@@ -166,6 +172,7 @@ set search_path = ''
 as $$
 declare
   v_inst public.app_installations%rowtype;
+  v_pool_grant integer := least(greatest(coalesce(p_pool_request, 0), 0), 100);
   v_found boolean := false;
   v_recent bigint;
   v_accepted jsonb := '[]'::jsonb;
@@ -351,15 +358,15 @@ begin
       select coalesce(pg_catalog.jsonb_agg(g), '[]'::jsonb)
       from (
         select pg_catalog.gen_random_uuid()::text as g
-        from pg_catalog.generate_series(1, 50)
+        from pg_catalog.generate_series(1, v_pool_grant)
       ) pool
     )
   );
 end;
 $$;
-revoke execute on function public.telemetry_ingest(uuid, text, text, text, text, integer, text, text, text, boolean, jsonb)
+revoke execute on function public.telemetry_ingest(uuid, text, text, text, text, integer, text, text, text, boolean, jsonb, integer)
   from public, anon, authenticated;
-grant execute on function public.telemetry_ingest(uuid, text, text, text, text, integer, text, text, text, boolean, jsonb)
+grant execute on function public.telemetry_ingest(uuid, text, text, text, text, integer, text, text, text, boolean, jsonb, integer)
   to service_role;
 
 -- =====================================================================

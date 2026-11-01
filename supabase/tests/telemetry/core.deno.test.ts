@@ -247,3 +247,23 @@ Deno.test('the verdict passes the event-id pool top-up through to the client', a
   assert(Array.isArray(body.event_id_pool) && (body.event_id_pool as string[]).length === 2, 'pool passed through');
   assertEquals((body.event_id_pool as string[])[0], pool[0], 'pool contents intact');
 });
+
+Deno.test('pool_request: sized values pass through, malformed values are refused pre-RPC', async () => {
+  const sized = spies(OK_VERDICT);
+  const okRes = await handleIngestRequest(req({ installation: { platform: 'android' }, events: [], pool_request: 30 }), sized.rpcs);
+  assertEquals(okRes.status, 200, 'sized request accepted');
+  assertEquals(sized.ingestCalls[0].p_pool_request, 30, 'request forwarded to the RPC');
+
+  for (const bad of [1.5, -1, 'x', 1001]) {
+    const s = spies(OK_VERDICT);
+    const res = await handleIngestRequest(req({ installation: { platform: 'android' }, events: [], pool_request: bad }), s.rpcs);
+    assertEquals(res.status, 400, `pool_request ${JSON.stringify(bad)} refused`);
+    assertEquals(((await res.json()) as { error?: string }).error, 'invalid_pool_request', 'error code');
+    assertEquals(s.ingestCalls.length, 0, 'RPC untouched on a malformed pool request');
+  }
+
+  const absent = spies(OK_VERDICT);
+  const absentRes = await handleIngestRequest(req({ installation: { platform: 'android' }, events: [] }), absent.rpcs);
+  assertEquals(absentRes.status, 200, 'absent pool_request accepted');
+  assertEquals(absent.ingestCalls[0].p_pool_request, 0, 'absent means ask for nothing');
+});
