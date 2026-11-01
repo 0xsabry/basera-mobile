@@ -110,6 +110,20 @@ export type RestartResult =
   | { applied: true }
   | { applied: false; reason: 'unavailable' | 'no-update' | 'busy' | 'in-progress' | 'failed' };
 
+/**
+ * Telemetry seam (installations & OTA adoption tracking): the service
+ * reports lifecycle points to an optional sink. The sink is set by the
+ * telemetry module at app start; when unset (unit tests, builds
+ * without telemetry) the service behaves exactly as before. Events are
+ * observational only — the sink can never influence the update flow,
+ * and sink exceptions are swallowed here.
+ */
+export type UpdateTelemetryEvent =
+  | { type: 'update_check' }
+  | { type: 'update_available'; updateId: string | null }
+  | { type: 'update_downloaded'; updateId: string | null }
+  | { type: 'update_failed'; updateId: string | null; reason: string };
+
 function loadNativeModule(): UpdatesNativeModule | null {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -131,6 +145,20 @@ export class UpdateService {
   private pendingUpdateId: string | null = null;
   private error: string | null = null;
   private listeners = new Set<() => void>();
+  private telemetrySink: ((e: UpdateTelemetryEvent) => void) | null = null;
+
+  /** Register the telemetry sink (installations & OTA adoption). */
+  setTelemetrySink(sink: ((e: UpdateTelemetryEvent) => void) | null): void {
+    this.telemetrySink = sink;
+  }
+
+  private emitTelemetry(e: UpdateTelemetryEvent): void {
+    try {
+      this.telemetrySink?.(e);
+    } catch {
+      // Telemetry is observational; it must never break the update flow.
+    }
+  }
 
   constructor(native?: UpdatesNativeModule | null, busyGuard: () => boolean = isAccessibilityBusy) {
     this.native = native === undefined ? loadNativeModule() : native;
@@ -209,12 +237,17 @@ export class UpdateService {
     try {
       const check = await this.native.checkForUpdateAsync();
       this.lastCheckAt = new Date().toISOString();
+      this.emitTelemetry({ type: 'update_check' });
       if (!check.isAvailable && !check.isRollBackToEmbedded) {
         this.setPhase(this.pendingUpdateId ? 'ready' : 'idle');
         return this.getStatus();
       }
       // An update is available, OR the server sent a rollback-to-
       // embedded directive: both are staged through fetchUpdateAsync.
+      this.emitTelemetry({
+        type: 'update_available',
+        updateId: check.isRollBackToEmbedded ? 'rollback-to-embedded' : (check.manifest?.id ?? null),
+      });
       this.setPhase('downloading');
       const fetched = await this.native.fetchUpdateAsync();
       if (fetched.isRollBackToEmbedded) {
@@ -222,15 +255,23 @@ export class UpdateService {
         // active through the guarded restart / next cold start.
         this.pendingUpdateId = 'rollback-to-embedded';
         this.setPhase('ready');
+        this.emitTelemetry({ type: 'update_downloaded', updateId: 'rollback-to-embedded' });
       } else if (fetched.isNew) {
         this.pendingUpdateId = fetched.manifest?.id ?? check.manifest?.id ?? 'downloaded';
         this.setPhase('ready');
+        this.emitTelemetry({ type: 'update_downloaded', updateId: this.pendingUpdateId });
       } else {
+        this.emitTelemetry({
+          type: 'update_failed',
+          updateId: check.manifest?.id ?? null,
+          reason: 'fetch-returned-no-update',
+        });
         this.setPhase('idle');
       }
       return this.getStatus();
     } catch (e) {
       this.error = e instanceof Error ? e.message : 'update check failed';
+      this.emitTelemetry({ type: 'update_failed', updateId: null, reason: this.error });
       this.setPhase('error');
       return this.getStatus();
     }

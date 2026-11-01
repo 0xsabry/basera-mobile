@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BASERA — لوحة متابعة التثبيتات والتحديثات</title>
+<style>
+  :root { --deep:#26372D; --primary:#657A4D; --sage:#C7D5B8; --ivory:#F5F3EA; --card:#2E4234; --line:#41543F; }
+  * { box-sizing: border-box; font-family: system-ui, "Segoe UI", Tahoma, sans-serif; }
+  body { margin:0; background:var(--deep); color:var(--ivory); }
+  header { padding:16px 20px; background:var(--card); border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+  h1 { font-size:18px; margin:0; } h2 { font-size:15px; margin:22px 0 10px; color:var(--sage); }
+  main { padding:16px 20px 40px; max-width:1100px; margin:0 auto; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .card .num { font-size:26px; font-weight:700; } .card .lbl { color:var(--sage); font-size:13px; margin-top:4px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  th, td { padding:9px 10px; border-bottom:1px solid var(--line); font-size:13px; text-align:right; }
+  th { color:var(--sage); font-weight:600; }
+  input, select, button { padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--deep); color:var(--ivory); font-size:14px; }
+  button { background:var(--primary); border:none; cursor:pointer; font-weight:700; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .muted { color:var(--sage); font-size:12px; } .err { color:#E8A598; }
+  #login { max-width:380px; margin:60px auto; } #login .card { display:flex; flex-direction:column; gap:10px; }
+  code { direction:ltr; unicode-bidi:embed; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>بصيرة — التثبيتات وتبنّي التحديثات</h1>
+  <div class="row">
+    <span id="who" class="muted"></span>
+    <button id="logout" style="display:none">خروج</button>
+  </div>
+</header>
+
+<main>
+  <section id="login">
+    <div class="card">
+      <strong>دخول المالك</strong>
+      <input id="email" type="email" placeholder="البريد الإلكتروني" autocomplete="username" />
+      <input id="password" type="password" placeholder="كلمة المرور" autocomplete="current-password" />
+      <button id="signin">دخول</button>
+      <span id="loginErr" class="err"></span>
+      <span class="muted">البيانات لا تظهر إلا لحساب المالك المسجل في قاعدة البيانات — تسجيل الدخول وحده لا يكفي.</span>
+    </div>
+  </section>
+
+  <section id="dash" style="display:none">
+    <h2>إحصائيات عامة</h2>
+    <div class="cards" id="cards"></div>
+
+    <h2>توزيع الإصدارات</h2>
+    <table><thead><tr><th>الإصدار</th><th>الكود</th><th>التثبيتات</th></tr></thead><tbody id="versions"></tbody></table>
+
+    <h2>تبنّي تحديثات OTA</h2>
+    <table><thead><tr><th>Update ID</th><th>اكتشفه</th><th>نزّله</th><th>طبّقه فعليًا</th><th>فشل</th><th>نسبة التبنّي</th></tr></thead><tbody id="adoption"></tbody></table>
+
+    <h2>الأجهزة</h2>
+    <div class="row" style="margin-bottom:10px">
+      <select id="fVersion"><option value="">كل الإصدارات</option></select>
+      <select id="fStatus">
+        <option value="">كل الحالات</option>
+        <option value="update_applied">طبّق تحديثًا</option>
+        <option value="update_downloaded">نزّل ولم يطبّق بعد</option>
+        <option value="update_available">وجد تحديثًا</option>
+        <option value="update_check">فحص فقط</option>
+        <option value="update_failed">فشل</option>
+      </select>
+      <button id="applyFilters">تصفية</button>
+      <span class="muted" id="devCount"></span>
+    </div>
+    <table><thead><tr>
+      <th>التثبيت</th><th>الإصدار</th><th>Runtime</th><th>القناة</th><th>آخر ظهور</th><th>التحديث الجاري</th><th>آخر حدث</th>
+    </tr></thead><tbody id="devices"></tbody></table>
+  </section>
+</main>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+// Public client configuration (publishable key — safe to ship; all
+// device data is enforced server-side by owner-gated RPC functions).
+const SUPABASE_URL = 'https://vbvvwyeccsegfwprwrga.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_Jt84WL6Ra7Ww_XV34Bk8eA_NwDYSecI';
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const $ = (id) => document.getElementById(id);
+const short = (id) => (id ? id.slice(0, 8) + '…' : '—');
+const fmt = (ts) => (ts ? new Date(ts).toLocaleString('ar-EG') : '—');
+
+async function load() {
+  const [{ data: ov, error: e1 }, { data: ad, error: e2 }] = await Promise.all([
+    sb.rpc('dashboard_overview'),
+    sb.rpc('dashboard_adoption'),
+  ]);
+  if (e1 || e2) {
+    $('who').textContent = 'هذا الحساب غير مخوّل لعرض بيانات اللوحة.';
+    $('dash').style.display = 'none';
+    return;
+  }
+  $('cards').innerHTML = [
+    [ov.total_installations, 'إجمالي التثبيتات الفعلية'],
+    [ov.active_24h, 'نشط آخر 24 ساعة'],
+    [ov.active_7d, 'نشط آخر 7 أيام'],
+    [ov.dormant_7d, 'لم يفتح منذ أكثر من 7 أيام'],
+    [short(ov.latest_update_id), 'أحدث Update ID'],
+  ].map(([n, l]) => `<div class="card"><div class="num">${n ?? '—'}</div><div class="lbl">${l}</div></div>`).join('');
+  $('versions').innerHTML = (ov.by_version || []).map(v =>
+    `<tr><td>${v.app_version ?? '—'}</td><td>${v.version_code ?? '—'}</td><td>${v.installations}</td></tr>`).join('');
+  const fv = $('fVersion');
+  fv.innerHTML = '<option value="">كل الإصدارات</option>' +
+    (ov.by_version || []).map(v => `<option value="${v.app_version}">${v.app_version}</option>`).join('');
+  $('adoption').innerHTML = (ad || []).map(r =>
+    `<tr><td><code>${short(r.update_id)}</code></td><td>${r.discovered}</td><td>${r.downloaded}</td><td>${r.applied}</td><td>${r.failed}</td><td>${r.adoption_pct}%</td></tr>`).join('');
+  await loadDevices();
+}
+
+async function loadDevices() {
+  const { data, error } = await sb.rpc('dashboard_installations', {
+    p_version: $('fVersion').value || null,
+    p_status: $('fStatus').value || null,
+  });
+  if (error) { $('devices').innerHTML = ''; return; }
+  $('devCount').textContent = `${data.length} جهاز`;
+  $('devices').innerHTML = data.map(d => `<tr>
+    <td><code>${short(d.installation_id)}</code></td>
+    <td>${d.app_version ?? '—'} (${d.version_code ?? '—'})</td>
+    <td>${d.runtime_version ?? '—'}</td>
+    <td>${d.channel ?? '—'}</td>
+    <td>${fmt(d.last_seen_at)}</td>
+    <td><code>${d.is_embedded_launch ? 'مدمج (APK)' : short(d.current_update_id)}</code></td>
+    <td>${d.last_event_type ?? '—'}<br><span class="muted">${fmt(d.last_event_at)}</span></td>
+  </tr>`).join('');
+}
+
+$('signin').onclick = async () => {
+  $('loginErr').textContent = '';
+  const { data, error } = await sb.auth.signInWithPassword({
+    email: $('email').value.trim(), password: $('password').value,
+  });
+  if (error) { $('loginErr').textContent = 'بيانات الدخول غير صحيحة.'; return; }
+  $('who').textContent = data.user.email;
+  $('login').style.display = 'none';
+  $('logout').style.display = '';
+  $('dash').style.display = '';
+  await load();
+};
+$('logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+$('applyFilters').onclick = loadDevices;
+
+const { data: { session } } = await sb.auth.getSession();
+if (session) {
+  $('who').textContent = session.user.email;
+  $('login').style.display = 'none';
+  $('logout').style.display = '';
+  $('dash').style.display = '';
+  await load();
+}
+</script>
+</body>
+</html>

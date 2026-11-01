@@ -4,6 +4,7 @@ import { useColorScheme } from 'react-native';
 import { ThemedStatusBar } from '../components/ThemedStatusBar';
 import { SettingsProvider, useSettings } from '../state/SettingsContext';
 import { updateService } from '../update/UpdateService';
+import { initTelemetry } from '../telemetry';
 import { getLocationSharingService } from '../guardian/LocationSharingService';
 import '../guardian/backgroundTask';
 import { configureHazardRuntime } from '../hazards/HazardService';
@@ -32,6 +33,13 @@ function RootStack() {
   // the service subscription. Before the 1.1.5 round the only check
   // was a manual button; before this round a download still waited
   // for a further restart or a manual apply.
+  // Telemetry wiring comes first (effects run in declaration order)
+  // so the launch update flow's own check/download events are captured
+  // by the sink; init is failure-silent and never blocks the UI.
+  useEffect(() => {
+    initTelemetry();
+  }, []);
+
   useEffect(() => {
     void updateService.checkAndApplyOnLaunch();
   }, []);
