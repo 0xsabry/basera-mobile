@@ -1,29 +1,50 @@
 -- =====================================================================
--- PROPOSAL — NOT APPLIED TO PRODUCTION. DO NOT RUN without the owner's
--- explicit approval (owner rule: no production migration before review).
+-- PROPOSAL v2 — NOT APPLIED TO PRODUCTION. DO NOT RUN without the
+-- owner's explicit approval after review (owner rule: no production
+-- migration before it is shown to him and approved).
 --
 -- BASERA installations & OTA adoption telemetry.
 -- Project: vbvvwyeccsegfwprwrga (the existing project — no new project).
+-- This migration is ADDITIVE ONLY: it creates new tables/functions and
+-- touches nothing that already exists in production.
 --
 -- What this creates:
---   * app_installations  — one anonymous row per app install.
---   * app_update_events  — append-only OTA lifecycle events.
---   * dashboard_owners   — allowlist of auth user ids allowed to read
---                          the owner dashboard data.
---   * is_dashboard_owner() + three dashboard RPC functions; the RPCs
---     are the ONLY read path and they refuse non-owners.
+--   * public.app_installations  — one anonymous row per app install.
+--   * public.app_update_events  — append-only OTA lifecycle events.
+--   * public.dashboard_owners   — allowlist of auth user ids allowed
+--                                 to read the owner dashboard data.
+--   * public.is_dashboard_owner() + three dashboard RPC functions.
+--     The RPCs are the ONLY read path and each one refuses callers
+--     whose auth.uid() is not in dashboard_owners.
 --
--- Security:
---   * RLS enabled on all tables with NO client policies: anon and
---     authenticated roles can read/write NOTHING directly.
+-- Security (owner phase-2 controls):
+--   * Every SECURITY DEFINER function uses SET search_path = '' and
+--     fully schema-qualified object names.
+--   * EXECUTE is revoked from PUBLIC and anon on every function;
+--     the three dashboard RPCs are granted to authenticated ONLY
+--     (and they still refuse non-owners internally). The helper
+--     is_dashboard_owner() is granted to no client role.
+--   * RLS enabled on all tables with NO client policies, and all
+--     privileges revoked from anon/authenticated: direct table reads
+--     from any client are impossible.
 --   * Writes happen only through the telemetry-ingest Edge Function
---     (service role inside the function; the key never ships in the app).
---   * No personal data: no user ids, no location, no device hardware
+--     (service role inside the function; the key never ships in the
+--     app). No service-role key exists in the app.
+--   * No personal data: no user ids, no location, no hardware
 --     identifiers. Installations are anonymous random UUIDs.
 --
--- After applying: register the owner by inserting their Supabase Auth
--- user id (Dashboard > Authentication > Users) into dashboard_owners:
---   insert into public.dashboard_owners (user_id) values ('<OWNER_AUTH_UID>');
+-- Owner registration (after applying, run once with the owner's
+-- CONFIRMED Supabase Auth user id — Dashboard > Authentication > Users):
+--   insert into public.dashboard_owners (user_id)
+--   values ('<OWNER_AUTH_UID>');
+--
+-- Measurement trust limits (documented, not hidden): counts are
+-- trustworthy for honest, unmodified clients. A device owner running
+-- a modified/rooted build could forge events for their OWN
+-- installation id (it is bound to their secret) or register extra
+-- fake installations; the system is not — and does not claim to be —
+-- tamper-proof against the owner of a modified device. Adoption
+-- ratios between funnel stages are the robust signal.
 -- =====================================================================
 
 create table if not exists public.app_installations (
@@ -76,49 +97,67 @@ alter table public.dashboard_owners enable row level security;
 revoke all on public.app_installations, public.app_update_events, public.dashboard_owners
   from anon, authenticated;
 
+-- ---------------------------------------------------------------------
+-- Owner gate helper. SECURITY DEFINER, empty search_path, qualified
+-- names. Granted to NO client role — only the dashboard RPCs below
+-- (same owner) call it.
+-- ---------------------------------------------------------------------
 create or replace function public.is_dashboard_owner()
 returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
-  select exists (select 1 from public.dashboard_owners o where o.user_id = auth.uid());
+  select exists (
+    select 1 from public.dashboard_owners o where o.user_id = auth.uid()
+  );
 $$;
+revoke execute on function public.is_dashboard_owner() from public, anon, authenticated;
 
+-- ---------------------------------------------------------------------
+-- Dashboard RPC: overview counters + version distribution.
+-- ---------------------------------------------------------------------
 create or replace function public.dashboard_overview()
 returns json
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
 begin
   if not public.is_dashboard_owner() then
     raise exception 'not authorized';
   end if;
   return json_build_object(
-    'total_installations', (select count(*) from app_installations),
-    'active_24h', (select count(*) from app_installations where last_seen_at > now() - interval '24 hours'),
-    'active_7d', (select count(*) from app_installations where last_seen_at > now() - interval '7 days'),
-    'dormant_7d', (select count(*) from app_installations where last_seen_at <= now() - interval '7 days'),
+    'total_installations', (select count(*) from public.app_installations),
+    'active_24h', (select count(*) from public.app_installations where last_seen_at > now() - interval '24 hours'),
+    'active_7d', (select count(*) from public.app_installations where last_seen_at > now() - interval '7 days'),
+    'dormant_7d', (select count(*) from public.app_installations where last_seen_at <= now() - interval '7 days'),
     'by_version', (
       select coalesce(json_agg(row_to_json(v) order by v.version_code desc nulls last), '[]'::json)
       from (
         select app_version, version_code, count(*)::int as installations
-        from app_installations
+        from public.app_installations
         group by app_version, version_code
       ) v
     ),
     'latest_update_id', (
-      select update_id from app_update_events
-      where update_id is not null and event_type in ('update_available', 'update_downloaded', 'update_applied')
-      order by received_at desc limit 1
+      select e.update_id from public.app_update_events e
+      where e.update_id is not null
+        and e.event_type in ('update_available', 'update_downloaded', 'update_applied')
+      order by e.received_at desc limit 1
     )
   );
 end;
 $$;
+revoke execute on function public.dashboard_overview() from public, anon;
+grant execute on function public.dashboard_overview() to authenticated;
 
+-- ---------------------------------------------------------------------
+-- Dashboard RPC: per-update adoption funnel (distinct installations
+-- per stage). adoption_pct = applied / discovered.
+-- ---------------------------------------------------------------------
 create or replace function public.dashboard_adoption()
 returns table (
   update_id text,
@@ -131,7 +170,7 @@ returns table (
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
 begin
   if not public.is_dashboard_owner() then
@@ -140,23 +179,29 @@ begin
   return query
   with per_update as (
     select
-      e.update_id,
+      e.update_id as uid,
       count(distinct e.installation_id) filter (where e.event_type = 'update_available') as discovered,
       count(distinct e.installation_id) filter (where e.event_type = 'update_downloaded') as downloaded,
       count(distinct e.installation_id) filter (where e.event_type = 'update_applied') as applied,
       count(distinct e.installation_id) filter (where e.event_type = 'update_failed') as failed
-    from app_update_events e
+    from public.app_update_events e
     where e.update_id is not null
     group by e.update_id
   )
   select
-    p.update_id, p.discovered, p.downloaded, p.applied, p.failed,
+    p.uid, p.discovered, p.downloaded, p.applied, p.failed,
     case when p.discovered > 0 then round(100.0 * p.applied / p.discovered, 1) else 0 end as adoption_pct
   from per_update p
   order by p.applied desc, p.discovered desc;
 end;
 $$;
+revoke execute on function public.dashboard_adoption() from public, anon;
+grant execute on function public.dashboard_adoption() to authenticated;
 
+-- ---------------------------------------------------------------------
+-- Dashboard RPC: device list with filters (version / running update /
+-- last event type), most recently seen first.
+-- ---------------------------------------------------------------------
 create or replace function public.dashboard_installations(
   p_version text default null,
   p_update_id text default null,
@@ -178,7 +223,7 @@ returns table (
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
 begin
   if not public.is_dashboard_owner() then
@@ -189,10 +234,10 @@ begin
     i.id, i.app_version, i.version_code, i.runtime_version, i.channel,
     i.last_seen_at, i.current_update_id, i.is_embedded_launch,
     le.event_type, le.received_at
-  from app_installations i
+  from public.app_installations i
   left join lateral (
     select e.event_type, e.received_at
-    from app_update_events e
+    from public.app_update_events e
     where e.installation_id = i.id
     order by e.received_at desc
     limit 1
@@ -204,7 +249,5 @@ begin
   limit least(coalesce(p_limit, 200), 500);
 end;
 $$;
-
-grant execute on function public.dashboard_overview() to authenticated;
-grant execute on function public.dashboard_adoption() to authenticated;
+revoke execute on function public.dashboard_installations(text, text, text, integer) from public, anon;
 grant execute on function public.dashboard_installations(text, text, text, integer) to authenticated;

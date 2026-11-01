@@ -74,6 +74,23 @@ Events persist in a capped local queue (200). Flush is attempted at
 launch, after each update event, and on init; a failed flush leaves
 the queue intact for the next attempt.
 
+### Measurement trust limits (honest bounds)
+- Counts are trustworthy for honest, unmodified clients.
+- Installations are anonymous and self-registered by design, so a
+  person running a modified/rooted build can register extra fake
+  installations or forge events for their OWN installation id (it is
+  bound to their installation secret). The server bounds this with a
+  request-size cap, batch cap, strict field validation and a
+  per-installation hourly event budget, but the system does NOT claim
+  to be tamper-proof against the owner of a modified device.
+- Uninstall + reinstall creates a NEW installation (standard industry
+  semantics): "installations" means reported active installs, not
+  people. Adoption ratios between funnel stages (discovered →
+  downloaded → applied) are the robust signal for update health.
+- `last_seen_at` means "the app last contacted the telemetry
+  endpoint", stamped server-side; client timestamps are sanity-checked
+  and never used for ordering.
+
 ## Rollout (each step gated by the owner)
 
 1. **Approve the migration** `supabase/migrations/20261101000000_telemetry_proposal.sql`
@@ -82,8 +99,12 @@ the queue intact for the next attempt.
 2. Register the owner: insert the owner's Supabase Auth user id into
    `dashboard_owners` (one SQL line, in the migration header).
 3. Deploy the `telemetry-ingest` Edge Function (dashboard or CLI).
-4. Serve `telemetry-dashboard/index.html` (an Edge Function returning
-   the file, or any static host) — the dashboard link.
+4. Host `telemetry-dashboard/index.html` on Cloudflare Pages (owner
+   decision: the dashboard is NOT served from a Supabase Edge Function
+   on the default domain). One-time setup needs the owner's Cloudflare
+   login in the browser; the result is a stable `*.pages.dev` link.
+   The page ships only the publishable key; every data read stays
+   behind Supabase Auth + the owner-gated RPCs.
 5. Publish the client via the manual preview OTA workflow
    (owner-approved publish, acceptance gate as usual).
 6. One-device test on the owner's phone, then verify the dashboard.
