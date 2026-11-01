@@ -182,6 +182,11 @@ export function mapIngestResult(result: unknown): { status: number; body: Record
       accepted: Array.isArray(r.accepted) ? r.accepted : [],
       duplicates: Array.isArray(r.duplicates) ? r.duplicates : [],
       rejected: Array.isArray(r.rejected) ? r.rejected : [],
+      // The id-pool top-up MUST reach the client: without it the
+      // pool drains after the bootstrap grant and no further event
+      // can ever be assigned an id. (Caught by the real-gateway
+      // smoke test; the fake-RPC tests now pin this passthrough.)
+      event_id_pool: Array.isArray(r.event_id_pool) ? r.event_id_pool : [],
     },
   };
 }

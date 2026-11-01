@@ -237,3 +237,13 @@ Deno.test('GET is refused', async () => {
   const res = await handleIngestRequest(new Request('https://example.test/', { method: 'GET' }), rpcs);
   assertEquals(res.status, 405, 'status');
 });
+
+Deno.test('the verdict passes the event-id pool top-up through to the client', async () => {
+  const pool = ['11111111-2222-4333-8444-555555555555', '22222222-3333-4444-8555-666666666666'];
+  const { rpcs } = spies({ data: { accepted: [], duplicates: [], rejected: [], event_id_pool: pool }, error: null });
+  const res = await handleIngestRequest(req({ events: [] }), rpcs);
+  assertEquals(res.status, 200, 'status');
+  const body = await bodyJson(res);
+  assert(Array.isArray(body.event_id_pool) && (body.event_id_pool as string[]).length === 2, 'pool passed through');
+  assertEquals((body.event_id_pool as string[])[0], pool[0], 'pool contents intact');
+});
