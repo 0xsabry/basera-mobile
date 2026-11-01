@@ -1,7 +1,12 @@
 -- =====================================================================
--- PROPOSAL v7 — NOT APPLIED TO PRODUCTION. DO NOT RUN without the
--- owner's explicit approval after final review (owner rule: no
--- production migration before it is shown to him and approved).
+-- v7 — APPLIED TO PRODUCTION 2026-11-01 ~22:41 EET under the owner's
+-- limited backend-deployment approval, executed via the dashboard SQL
+-- editor (no Supabase CLI/token exists in the agent environment).
+-- NOTE: dashboard-applied SQL writes NO row into
+-- supabase_migrations.schema_migrations — the history table still
+-- lists only the three guardian migrations. Whether to insert a
+-- bookkeeping row is the owner's pending decision; do not add one
+-- silently. Rollback: supabase/rollbacks/20261101000000_telemetry_rollback.sql
 --
 -- BASERA installations & OTA adoption telemetry.
 -- Project: vbvvwyeccsegfwprwrga (the existing project — no new project).
