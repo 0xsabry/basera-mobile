@@ -1,39 +1,96 @@
-# BASERA Feature Status — honest labels only
+# BASERA feature status
 
-Labels: **Implemented and tested** · **Implemented but not fully tested** ·
-**Simulated** · **Planned for future hardware**
+Last consolidated from source review: 2026-11-06  
+Branch reviewed: v1.1  
+Commit reviewed: 9ba1d78995d2c20ef2e1b5928b36435c105e736e
 
-| Feature | Status | Evidence / note |
+## Status vocabulary
+
+- **Implemented** — implementation is present in the inspected source.
+- **Automated-tested** — relevant logic is covered by a recorded automated test run.
+- **Host-verified** — executed on a development computer using a model/runtime harness.
+- **Device verification pending** — native feature still requires a recorded physical Android test.
+- **Backend verified** — exact deployed behaviour was checked against the live Supabase project on the date stated by the evidence.
+- **Planned / unavailable** — interface or plan exists, but working capability is not present.
+
+These labels are intentionally separate. A unit test is not a device test, and a code path is not proof of a deployed backend feature.
+
+## Mobile app
+
+| Feature | Implementation | Evidence / current caveat |
 |---|---|---|
-| App startup + navigation (expo-router: 5 bottom tabs — Home/Assistance/History/Family/Settings — + stack sub-screens detect/read/voice/places/alerts/updates/guardian-auth/onboarding) | Implemented and tested | tsc clean, jest green, `expo export --platform android` succeeds (see TESTING.md). Tab bar: ≥64 dp targets, AR/EN labels, theme tints, safe-area insets; stack screens push above the tabs |
-| Onboarding with language pick + glasses honesty note | Implemented and tested | Code + export; first-run redirect logic covered by settings tests |
-| Home dashboard (greeting, one voice-assistant button, 4 large actions, real status, last result with repeat, Family card with REAL sharing state, latest unacknowledged high alert, Places shortcut) | Implemented and tested | Code + export; sharing/alert states read from the real services on focus — no placeholder statuses |
-| Gallery image input | Implemented but not fully tested | Real expo-image-picker integration; needs a device to verify the picker UX end-to-end |
-| Sample image input (4 bundled samples) | Implemented and tested | Samples run through the real model host-side (verify_model.py); on-device path uses the same CapturedImage contract |
-| Phone camera input (TEST only, labeled as such) | Implemented but not fully tested | Real expo-image-picker camera integration; device check pending |
-| Object detection — YOLO11n on-device (TFLite) | Implemented but not fully tested (needs device/dev build) | Model is REAL (official Ultralytics ONNX → TFLite, hash-verified); post-processing PROVEN against the real model output in jest. 2026-10-30 stabilization: the device failure root cause (Hermes has no global `Buffer`, `atob` unreliable — Node-based jest masked it) is FIXED with a pure-TS base64 decoder + direct Uint8Array JPEG decode, with a regression test that deletes both globals. Native inference itself can only run in the app build on a device — no device was available to the agent |
-| Bounding-box overlay | Implemented but not fully tested | Drawn from the same normalized boxes the jest suite verifies; visual check needs a device |
-| Description builder (AR + EN, counts, positions, priority ordering) | Implemented and tested | Unit-tested in both languages |
-| Obstacle awareness (position + proximity category) | Implemented and tested | Unit-tested. Heuristic category ONLY — never a distance; see ObstacleAwareness.ts docstring |
-| OCR — ML Kit Latin (explicit Latin script) | Implemented but not fully tested (needs device/dev build) | Real ML Kit binding; called explicitly with `TextRecognitionScript.LATIN`. ML Kit has NO Arabic model (proven from the installed library, 2026-10-30) — the earlier "Arabic + Latin" label here was wrong and is corrected. Language-detection logic unit-tested; native OCR run needs a device |
-| OCR — Arabic via PP-OCR (on-device TFLite) | Implemented, host-verified; device check pending | PP-OCRv3 det + Arabic PP-OCRv3 mobile rec (fixed-shape TFLite). Host gate on the bundled Arabic sample: 0.730 char overlap of the known text (≥0.70 required); jest reproduces recorded model outputs for box extraction + CTC decode. Small mobile model — confuses some dotted letters; never invents text. See docs/MODELS.md |
-| Text-to-Speech (AR + EN, rate, repeat, stop) | Implemented but not fully tested | expo-speech integration; audible verification needs a device. Repeat fixed 2026-10-30: announcements (welcome/status) no longer overwrite the repeat target — unit-tested |
-| Voice commands — parser (AR + EN) | Implemented and tested | Original commands preserved (regression suite passes unchanged) + NEW intents: SOS, I'm-okay acknowledge, save/find/near/list/delete place, add note, repeat place description — with argument extraction and spoken pending flows (ask name / ask note / confirm delete). 'obstacle-check' stays honestly registered as planned (continuous scanning) |
-| Voice commands — microphone recognition | Implemented but not fully tested (needs device/dev build) | expo-speech-recognition 58.0.1 native module (migrated 2026-10-30 from the archived voice library that broke Gradle); EAS dev build FINISHED + artifact-verified. Stabilization: typed error kinds localized (no raw English in Arabic mode), 'end'/'nomatch' session completion, stop-listening button, unmount/blur cleanup — adapter unit-tested; device check pending |
-| History (save/list/reopen/delete/clear, on-device only) | Implemented and tested | Store logic unit-tested incl. cap + corruption handling |
-| Settings — rebuilt groups A–G | Implemented and tested | Account & Family (real auth state), Language & Appearance (incl. text scale 1/1.15/1.3 through shared typography, reduced motion gating press feedback), Voice & Accessibility (speech on/off gate — off suppresses ALL TTS incl. alerts, device voice picker ar/en, haptics gate), Privacy & Permissions (statuses read from the real OS modules with why-text + recovery), Places (radius + opt-in sync), Updates summary, About (model licences). NO 'follow device language' option: it needs a native localization module — future native option, deliberately omitted rather than faked |
-| Arabic RTL layout flipping | Implemented but not fully tested | I18nManager.forceRTL applied on language change; full visual flip verification needs a device (native RTL switch requires app reload) |
-| OTA updates (expo-updates, preview/production channels) | Implemented but not fully tested (needs the 1.1.0 APK) | V1.1 Phase 0 (branch v1.1): expo-updates wired (runtimeVersion = manual string '1.1.0' (the bare EAS workflow rejects runtimeVersion policies — deterministic submit error, verified), updates.url set, fallbackToCacheTimeout 0), UpdateService unit-tested (download never reloads; reload blocked while speech/recognition/processing busy; unavailable in builds without the native module). The 1.0.0 MVP APK has NO expo-updates module and can NEVER receive OTA — proof pending the 1.1.0 build + a live publish smoke test (parent-run). Release notes come from in-bundle src/update/releaseNotes.ts, not the eas --message text |
-| Guardian pairing + consent (Supabase Auth + RLS) | Implemented but not fully tested (needs owner's Supabase project) | V1.1 Phase 1: migrations 0001-0004 (RLS denial matrix, hashed 15-min single-use pairing codes, redeem creates PENDING only, owner approve RPC mandatory, purge on sharing-off / last-guardian revoke, 24 h retention cleanup). Client contract unit-tested with a fake Supabase client; static SQL contract test (44 assertions) green. LIVE RLS execution (supabase/tests/rls_tests.sql) requires the owner's project — NOT yet run |
-| Foreground GPS sharing (phone location) | Implemented but not fully tested (needs owner's Supabase project + device) | Foreground watch (Balanced, ~30 s/~25 m, batched uploads ≥3 points/60 s), stops on app background. Toggle-off stops collection instantly on-device and records a PERSISTED server-deletion obligation (PendingDeletion) retried on launch/foreground/mount until the server confirms — the UI distinguishes 'off here' from 'server copies deleted (confirmed)'. Confirmed uploads stamp the real 'last update' time. It is the PHONE's location, not the glasses' |
-| Guardian PWA (map, freshness, FCM Web Push) | Implemented but not fully tested (needs deployment) | Installable PWA in guardian-pwa/: Supabase sign-in, code redeem, Leaflet/OSM latest-location map + 24 h history, freshness from updated_at, revoke-my-access, FCM Web Push endpoints registered separately (web-fcm) from Android (android-expo). No live deployment yet |
-| Hazard alerts — SCAN-BASED risk engine | Implemented in code, NOT device-tested | RiskEngine (pure, 14 tests): per-class thresholds over COCO, bbox proximity/direction, 2-of-3 persistence, 20 s class+direction cooldown, person-never-high rule, escalation after 3 unacknowledged highs/5 min. Runs on frames the USER captures in Detect — medium: announcement + vibration; high: alert channel (separate repeat target) + strong vibration + banner + event in AlertHistoryStore + guardian notify attempt via hazard_events + notify-guardian when configured (outcome recorded honestly: sent/failed/unavailable). SOS (Family/Assistance/voice) always stores locally and states plainly when guardians were NOT notified. This is NOT continuous protection and 'no alert' never means 'safe' — the alerts screen lists what the camera can never detect (stairs, holes, fire/smoke, glass doors, weapons…) |
-| Background GPS sharing (Phase 2) | Implemented in code, NOT device-tested | expo-location 58.0.20 + expo-task-manager (APIs verified from the installed packages): TaskManager task uploads via the Guardian service or queues offline (AsyncStorage, cap 500 FIFO, flushed by the foreground service), Balanced/60 s/50 m + deferred batching, Android foreground-service notification. Separate explained opt-in on the Family screen; disabling sharing stops it too. MANIFEST VERDICT: the built 1.1.0 APK already declares LocationTaskService + BACKGROUND_LOCATION + FOREGROUND_SERVICE_LOCATION and the notification is a runtime parameter → JS-only on runtime 1.1.0, no new APK expected. Family shows a derived sharing state (off/foreground-only/background-active/permission-denied/gps-unavailable/offline-queueing/sync-pending) from real signal reads |
-| Smart Place Memory (ذاكرة الأماكن) | Implemented and tested (local); sync implemented, live-untested | Local-first AsyncStorage store: save with the current GPS fix (accuracy shown, honest permission/GPS errors), categories, notes (voice notes = transcribed text only, NO audio stored), entrance/obstacle notes, favorites, visited marks, per-place proximity toggles. Voice: save (named or ask-name), find, near (haversine; rounded distance ONLY when GPS accuracy ≤ 50 m, else qualitative near/far; no fix → says so), list, note, delete with spoken confirmation. Proximity: foreground announcements (30 min per-place cooldown) + background-recorded pending events surfaced on next open — background never speaks. Cloud sync is opt-in (Settings) via migration 0004 — owner-only RLS, guardians have NO access (static assertions + live denial case in rls_tests.sql, live run pending owner's project) |
-| Continuous monitoring mode | NOT implemented (deliberate) | The installed expo-camera (58) exposes no frame-processor API — only still capture. A repeated-capture loop would be battery-hostile and still not continuous, so it is omitted rather than faked; hazard checks run on user-captured frames |
-| Smart glasses camera input | Planned for future hardware | Interface + typed NotAvailable implementation only. NO fake frames, NO fake Bluetooth/Wi-Fi |
-| Distance measurement | Planned for future hardware | Impossible honestly without a depth sensor; app never claims meters |
-| Continuous obstacle scanning ("is the path clear?") | Planned | Registered in the voice command registry as planned; the app says so when asked |
+| App startup and navigation | Expo Router; five tabs plus feature routes | TypeScript/Jest/export results exist in dated TESTING.md snapshots; re-run against current HEAD before quoting counts |
+| Arabic and English UI | Full string tables and language setting | Language logic has automated coverage; full visual RTL review requires device validation |
+| Accessibility controls | Large targets, accessibility labels/hints, speech gate, text scaling, themes, contrast and haptics settings | Relevant state and component logic has automated coverage; TalkBack walkthrough should be separately recorded |
+| Gallery input | expo-image-picker integration | Implemented; end-to-end picker flow needs device verification |
+| Bundled sample input | SampleImageSource and four sample assets | Model/logic host verification documented; do not treat as a live camera test |
+| Phone camera test input | PhoneCameraTestSource | Explicitly a test input; device end-to-end verification required |
+| Smart glasses camera | SmartGlassesCameraSource typed placeholder | Planned/unavailable; no working glasses, Bluetooth, Wi-Fi, or camera feed |
+| Object detection | YOLO11n TFLite through react-native-fast-tflite; TypeScript preprocessing and post-processing | Model provenance and host evidence in MODELS.md and TESTING.md; native inference requires physical-device confirmation |
+| Bounding boxes and descriptions | Detection overlay and Arabic/English DescriptionBuilder | Pure logic tests exist; visual overlay requires device review |
+| Arabic OCR | PP-OCRv3 detection TFLite + Arabic recognition TFLite + CTC decoding | Host-verified against bundled sample in MODELS.md; imperfect character accuracy; on-device latency/quality needs device test |
+| Latin OCR | Google ML Kit explicit Latin script | Native implementation exists; real device run required |
+| Text-to-speech | expo-speech, rate/repeat/stop and voice preference handling | Unit tests cover service logic; audible voice quality depends on installed device voices and requires phone testing |
+| Egyptian voice selection | Automatic exact ar-EG preference where installed; no false claim that ar-SA/ar-XA is Egyptian | Selection logic exists; actual voice depends on device voice catalog |
+| KemeTone Egyptian voice | Not integrated into the BASERA repository/app | External probe/research only; do not list it as a current app feature |
+| Microphone speech recognition | expo-speech-recognition platform adapter | Parser/adapter logic has automated coverage; microphone availability and ar-EG recognition need phone test |
+| Arabic/English command parsing | VoiceCommandService parses supported intents | Unit-tested parser; command parsing tests do not prove microphone recognition |
+| Local history | AsyncStorage history with list/reopen/delete/clear behaviour | Automated storage tests documented |
+| Smart Place Memory | Local places, categories, notes, favorites, visited markers, voice-transcribed text notes, proximity helpers | Local logic has automated tests; distance phrasing depends on GPS accuracy; optional cloud sync references saved_places, which is not confirmed in the deployed backend contract |
+| Settings | Language, theme, text scale, voice, haptics, privacy, permissions, places, updates, About | Source and unit tests exist; device permission and TalkBack behaviour need device verification |
 
-Nothing in this app is "Simulated": features either run for real or say
-plainly that they are unavailable / planned.
+## Safety and assistance
+
+| Feature | Implementation | Evidence / current caveat |
+|---|---|---|
+| Hazard risk engine | Scan-based thresholds, direction/proximity categories, persistence and cooldown rules | Pure engine tests documented; not a continuous safety system |
+| Hazard event history | Local on-device alert store | Implemented; camera hazard events have no deployed server table under the current Supabase contract |
+| Hazard notifications to guardians | No deployed remote destination for camera hazard events | Do not claim camera hazard events are sent to guardians |
+| SOS | Local SOS record/message; remote sos_alerts insert when signed in and wearer SOS consent allows | Deployed contract and code describe the consent gate; successful row acceptance is not proof of push delivery |
+| Obstacle proximity | Heuristic categories based on image boxes | Never describe as a measured distance or depth estimation |
+| Continuous monitoring | Not implemented | No repeated/continuous camera stream; scan is based on user-captured frames |
+| Blind spots | App explains hazards that its current camera/model cannot reliably detect | Do not imply that no alert means the path is safe |
+
+## Family / Guardian backend
+
+| Feature | Implementation | Evidence / current caveat |
+|---|---|---|
+| Supabase authentication | Supabase Auth with persistent session through SecureStore adapter | Integration contract was live-verified on 2026-10-31; confirm current live config before a new backend claim |
+| Invite creation and acceptance | create-guardian-invite and accept-guardian-invite | Deployed Edge Function contract documented; a successful acceptance creates an active link immediately |
+| Owner approval step | Not part of deployed contract | Do not describe the link as pending owner approval |
+| Per-link consent | location_sharing_enabled and sos_sharing_enabled on guardian_links; both start false; wearer controls them | Described in live verified integration contract |
+| Foreground location sharing | expo-location phone GPS watcher with consent and persisted deletion retry logic | Implemented in code; device/GPS/background behaviour needs physical-device verification |
+| Background location sharing | Separate explained opt-in using expo-location and expo-task-manager | Implemented in code and manifest-referenced in prior evidence; physical-device execution still needs verification |
+| Remote location data | guardian_locations latest row per wearer | Deployed contract is latest-only, not a location history table |
+| SOS data | sos_alerts, read under per-link SOS consent | Deployed contract documented; push delivery is not guaranteed |
+| Push token registration | Expo token registration in user_push_tokens | Registration code exists; delivery has not been proven |
+| Guardian PWA | Sign-in, invite acceptance, latest location, SOS view, map | Current code uses deployed tables; verify deployment/host before saying public site is available |
+| Guardian PWA 24-hour history | Not implemented against deployed contract | No server history track; PWA code explicitly treats location as latest-only |
+| Browser Web Push | Not connected to deployed backend | UI indicates browser notifications are not wired to server delivery |
+
+## Telemetry and updates
+
+| Feature | Implementation | Evidence / current caveat |
+|---|---|---|
+| Telemetry client | Per-installation identity, queued events, update-applied detection, verdict-aware ingest logic | Source and detailed historical tests in docs/TELEMETRY.md |
+| telemetry-ingest | Edge Function source in repository | Latest owner-reported state says production function is active with JWT verification; reconfirm before depending on it |
+| Telemetry schema | Proposal migration in repository | Latest owner-reported state says migration 20261101000000 was applied via SQL Editor; migration-history repair was not confirmed complete. Do not rerun or push it |
+| Telemetry dashboard source | Static dashboard HTML and tests | Source exists; dashboard owner registration and hosting are not complete in the latest recorded state. Do not claim the owner dashboard is ready |
+| OTA framework | expo-updates, runtime 1.1.0, preview/production channels separated | See RELEASE.md. Published is not the same as received/applied |
+| Production OTA | Owner-controlled only | No automatic publish. Never publish production without explicit owner request |
+
+## Current native/app release metadata
+
+- Android package: me.auramarketing.basera
+- Android Gradle versionName: 1.1.8
+- Android Gradle versionCode: 10
+- Runtime version: 1.1.0
+- EAS project ID is configured in app.json.
+
+A metadata discrepancy exists: app.json android.versionCode is 9 while android/app/build.gradle reports 10. It was left untouched during docs-only cleanup. Resolve it deliberately before the next prebuild/native APK operation; the release guard must pass.
+
+## Testing evidence
+
+TESTING.md is a chronological engineering log. Its historical full test snapshot on 2026-10-30 reported 21 suites / 233 tests passing, but that number is not a verified count for the reviewed 2026-11-01 HEAD or any later checkout. Re-run the current commands and record new output before claiming current pass counts.
+
+For model provenance and accuracy caveats see MODELS.md. For live Guardian database behaviour see SUPABASE_INTEGRATION.md. For production safety rules see supabase/README.md.
