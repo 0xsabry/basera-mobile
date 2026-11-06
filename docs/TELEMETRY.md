@@ -4,6 +4,9 @@ Owner-facing system to answer two questions truthfully: how many real
 installs run BASERA, and which devices actually APPLIED each OTA update
 (downloaded is not applied).
 
+
+> **Current deployment-status note (owner-reported; last recorded 2026-11-05, not independently re-queried during this documentation pass).** The telemetry-ingest Edge Function was reported Active with JWT verification enabled. The telemetry migration 20261101000000 was reported applied through the Supabase SQL Editor; the Supabase CLI migration-history repair was still outstanding / not confirmed complete. The telemetry dashboard source exists in this repository, but the latest recorded state had zero rows in dashboard_owners and no confirmed public dashboard hosting. Therefore: do not describe the dashboard as operational, do not rerun the migration, do not run migration repair or db push without explicit owner approval, and do not assume deployment evidence in the historical sections below reflects the current production state. Verify each item through the owner-approved Supabase project before relying on it.
+
 ## Feasibility verdict (checked 2026-11-01)
 
 **Fully implementable as a JavaScript-only OTA update. No new APK, no
