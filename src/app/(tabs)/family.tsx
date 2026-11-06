@@ -278,6 +278,22 @@ export default function GuardianScreen() {
     return () => clearInterval(timer);
   }, [code]);
 
+  // Sharing failures used to collapse into one generic message, so
+  // a network drop, an expired session and a server rejection were
+  // indistinguishable — for a blind user that reads as "sharing is
+  // broken" with no next step. Classify the failure honestly.
+  const sharingError = (e: unknown): string => {
+    const kind = e instanceof GuardianInviteError ? e.kind : null;
+    const msg = e instanceof Error ? e.message : '';
+    if (kind === 'network' || /failed to fetch|network|fetch failed|timeout|socket/i.test(msg)) {
+      return t(lang, 'guardianErrorNetwork');
+    }
+    if (kind === 'unauthenticated' || /jwt|session|not signed|unauthor/i.test(msg)) {
+      return t(lang, 'guardianErrorSession');
+    }
+    return t(lang, 'errorGeneric');
+  };
+
   const toggleSharing = async (on: boolean) => {
     if (busy) return;
     setBusy(true);
@@ -310,8 +326,11 @@ export default function GuardianScreen() {
           void speechService.speakAnnouncement(t(lang, 'guardianSharingOff'), lang);
         }
       }
-    } catch {
-      setMessage(t(lang, 'errorGeneric'));
+    } catch (e) {
+      // A failed enable must not leave GPS collection running behind
+      // an OFF switch (collection starts before the consent write).
+      void sharingRef.current?.stopWatching().catch(() => undefined);
+      setMessage(sharingError(e));
     } finally {
       setBusy(false);
     }
@@ -327,8 +346,8 @@ export default function GuardianScreen() {
       // no-op and the switch honestly stays off.
       const consent = await service.getConsent().catch(() => null);
       if (consent) setSosOn(consent.sosSharingEnabled);
-    } catch {
-      setMessage(t(lang, 'errorGeneric'));
+    } catch (e) {
+      setMessage(sharingError(e));
     } finally {
       setBusy(false);
     }
@@ -343,7 +362,13 @@ export default function GuardianScreen() {
         await service.setLinkConsent(link.id, { locationSharingEnabled: true });
         if (!settings.guardianSharingEnabled) {
           await update({ guardianSharingEnabled: true });
-          void sharingRef.current?.start();
+          // Await the start: a denied location permission used to
+          // fail silently here — consent ON, nothing collecting,
+          // and the wearer believing sharing works.
+          const started = await sharingRef.current?.start();
+          if (started === 'permission-denied') {
+            setMessage(t(lang, 'guardianPermissionDenied'));
+          }
         }
       } else {
         const othersOn = guardians.some((g) => g.id !== link.id && g.locationSharingEnabled);
@@ -357,8 +382,8 @@ export default function GuardianScreen() {
         }
       }
       await refresh();
-    } catch {
-      setMessage(t(lang, 'errorGeneric'));
+    } catch (e) {
+      setMessage(sharingError(e));
     } finally {
       setBusy(false);
     }
@@ -370,8 +395,8 @@ export default function GuardianScreen() {
     try {
       await service.setLinkConsent(link.id, { sosSharingEnabled: on });
       await refresh();
-    } catch {
-      setMessage(t(lang, 'errorGeneric'));
+    } catch (e) {
+      setMessage(sharingError(e));
     } finally {
       setBusy(false);
     }

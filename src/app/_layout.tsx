@@ -8,6 +8,7 @@ import { initTelemetry } from '../telemetry';
 import { getLocationSharingService } from '../guardian/LocationSharingService';
 import '../guardian/backgroundTask';
 import { configureHazardRuntime } from '../hazards/HazardService';
+import { startLatencyWarmUps } from '../ai/warmUp';
 import { t } from '../i18n/strings';
 
 function RootStack() {
@@ -20,6 +21,14 @@ function RootStack() {
   // server confirms. No-op when nothing is pending.
   useEffect(() => {
     void getLocationSharingService().initDeletion();
+  }, []);
+
+  // Latency warm-ups (fire-and-forget, never block first render):
+  // resolve the device voice catalog so the first Arabic narration
+  // does not pay voice enumeration, and start loading the YOLO
+  // model so the first detection does not pay the interpreter load.
+  useEffect(() => {
+    startLatencyWarmUps();
   }, []);
 
   // Launch update flow (owner order: updates must need ZERO user
