@@ -64,10 +64,16 @@ every one of them.
 
 ## Rollback
 
-- Current update group on preview: `057a8909-1c95-411d-9501-d65e9799755b`
+- Current update group on preview: `89ca0bf0-e6eb-45f1-93c9-253d658efdd7`
+  (2026-11-06 Family screen fix + guardian reliability branch content,
+  commit aa1dcd2, Android update 01a1b253-7b7b-763b-b1e8-f4c2ae128f5d;
+  protocol-verified: bundle + 31 assets, 32/32 hashes, new SOS
+  no-guardian message + shortened explainers present in the served
+  bundle, no smoke config; device application NOT yet verified).
+  Rollback target: `057a8909-1c95-411d-9501-d65e9799755b`
   (2026-11-02 Egyptian Arabic default voice, commit 840e61e; protocol-
   verified: bundle + 31 assets, 32/32 hashes, Egyptian sample + auto
-  voice selection present in the served bundle). Rollback target:
+  voice selection present in the served bundle). Before it:
   `8684fe46-97fe-48f2-9c5c-9e0d778afec8` (2026-11-02 pilot launch —
   telemetry client, commit e3c5c2c). Before it:
   `23926c22-b702-4211-9f62-a3cb941bd2c7` (2026-11-01 test update,
