@@ -454,3 +454,13 @@ with their commands.
 Device verification remains outstanding for the published Family/voice
 changes (OTA group 89ca0bf0…) — see
 docs/IMPLEMENTATION_AND_DEPLOYMENT_STATUS.md.
+
+## Expired-invite timed probe (2026-11-06, completed 22:00 EET)
+
+Production, public API only, owner test accounts. A guardian invite was
+created through the deployed create function (HTTP 200, server
+`expires_at` 2026-11-06T19:57:36Z). After waiting past the 15-minute
+TTL (~18 minutes), acceptance through the deployed accept function
+returned **400 `invalid_or_expired_invite`** and **no guardian link
+was created**. Conclusion: the deployed accept function enforces code
+expiry. The probe created no link and required no cleanup.
