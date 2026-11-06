@@ -217,11 +217,19 @@ and all failures share one code).
   Settings, raise Authentication → Rate Limits for email sending,
   and confirm the Site URL + redirect allow-list match the app's
   destinations. Until then, real email delivery is rate-limited and
-  cannot be considered reliable. Mailbox-side delivery evidence for
-  this run is additionally blocked because the agent's Gmail
-  connection was disconnected; one test account created 2026-11-06
-  shows `confirmed_at` 15 s after signup (the confirmation action did
-  not come from the test harness).
+  cannot be considered reliable.
+  Delivery evidence (2026-11-06, later the same day): with the
+  owner's Gmail reconnected, a fresh signup to an alias of the
+  connected mailbox received its confirmation email within seconds —
+  from the DEFAULT sender `noreply@mail.app.supabase.io` (direct
+  evidence no custom SMTP is configured). Unverified sign-in is
+  correctly refused (`400 email_not_confirmed`), so confirmations
+  are enforced. But a password-recovery request minutes after that
+  one successful email returned `429 over_email_send_rate_limit`
+  again — the quota is effectively a trickle. The confirmation
+  link's token is redaction-protected in the agent's mail view, so
+  the link-follow and its redirect destination were not verified by
+  the agent (the owner can click it in his own inbox).
 - SOS alert rows can never be deleted by clients (append-only by
   design); purging test alerts needs a Dashboard/SQL action by the
   owner.

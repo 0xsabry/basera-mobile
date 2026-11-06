@@ -29,6 +29,14 @@ deleted)**. Codes proved single-use: re-accept returns
 invalid_or_expired_invite (docs corrected). Test data created by the
 run (link, location row) was deleted afterwards; one SOS row remains
 by design (append-only), labelled "E2E TEST 2026-11-06".
+Addendum (same day, after the owner's Gmail was reconnected): a
+fresh signup to an alias of the connected mailbox received its
+confirmation email within seconds (default sender — no custom
+SMTP); unverified sign-in refused with `email_not_confirmed`
+(confirmations enforced); a recovery request minutes later hit
+`429 over_email_send_rate_limit` again. Link-follow/redirect
+destination NOT verified by the agent (token redaction-protected
+in mail view).
 Repo gates on this branch: Jest 665/665 (45 suites — includes the
 repaired rlsStatic suite, which now reads the archived-design
 migrations from supabase/archive-local-design/), tsc clean, lint
