@@ -1,3 +1,5 @@
+> **Historical evidence warning — read before quoting results.** This file is a chronological test log from several repository snapshots. The opening environment/table and later dated sections describe different historical runs; the final 2026-10-30 full snapshot recorded 21 suites / 233 tests. That count is **not certified for the current HEAD** (reviewed documentation branch is based on v1.1 commit 9ba1d789, dated 2026-11-01). Re-run the current scripts and capture fresh output before reporting a current pass count. Supabase deployment status in older sections is also historical; the current Guardian contract is in docs/SUPABASE_INTEGRATION.md, and telemetry status is summarized at the top of docs/TELEMETRY.md. Host/model tests are not Android device tests.
+
 # BASERA — Testing & Verification Report
 
 Environment: Node 24.22.1, npm 10.9.4, Python 3.12 venv at
