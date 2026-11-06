@@ -119,3 +119,6 @@
 ## Sample images
 
 See `assets/samples/README.md` for provenance of every bundled image.
+
+> **Integration boundary:** KemeTone Egyptian TTS experiments/probes are not part of this repository's shipped app implementation as of the reviewed v1.1 HEAD. The app's current TTS path is expo-speech using the device's installed voices. Do not attribute a KemeTone model, offline KemeTone inference, or KemeTone audio output to BASERA until its model and native integration are actually merged and device-verified.
+
