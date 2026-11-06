@@ -186,25 +186,39 @@ export default function GuardianScreen() {
     const u = await service.getCurrentUser();
     setUser(u);
     if (u) {
-      const [mine, guarding, consent] = await Promise.all([
-        service.listMyGuardians().catch(() => []),
-        service.listPeopleIGuard().catch(() => []),
-        service
-          .getConsent()
-          .catch(() => ({ locationSharingEnabled: false, sosSharingEnabled: false })),
+      // Load each remote state independently and NEVER substitute a
+      // fallback for a failed read: a network failure must not render
+      // as "no guardians", and a failed consent read must not be
+      // treated as consent-off (which would silently turn the user's
+      // local sharing intent down). Failed loads keep the previous
+      // state and surface an error instead.
+      const [mineR, guardingR, consentR] = await Promise.allSettled([
+        service.listMyGuardians(),
+        service.listPeopleIGuard(),
+        service.getConsent(),
       ]);
-      setGuardians(mine);
-      setPeopleIGuard(guarding);
-      setSosOn(consent.sosSharingEnabled);
-      // Server consent is the truth for the master switch: if every
-      // link's location consent is off (e.g. changed from another
-      // device), the local intent follows it down; if a link grants
-      // it, local intent follows up so collection can resume.
-      if (consent.locationSharingEnabled !== settings.guardianSharingEnabled) {
-        await update({
-          guardianSharingEnabled: consent.locationSharingEnabled,
-          ...(consent.locationSharingEnabled ? {} : { backgroundSharingEnabled: false }),
-        });
+      if (mineR.status === 'fulfilled') setGuardians(mineR.value);
+      if (guardingR.status === 'fulfilled') setPeopleIGuard(guardingR.value);
+      if (consentR.status === 'fulfilled') {
+        const consent = consentR.value;
+        setSosOn(consent.sosSharingEnabled);
+        // Server consent is the truth for the master switch: if every
+        // link's location consent is off (e.g. changed from another
+        // device), the local intent follows it down; if a link grants
+        // it, local intent follows up so collection can resume.
+        if (consent.locationSharingEnabled !== settings.guardianSharingEnabled) {
+          await update({
+            guardianSharingEnabled: consent.locationSharingEnabled,
+            ...(consent.locationSharingEnabled ? {} : { backgroundSharingEnabled: false }),
+          });
+        }
+      }
+      if (
+        mineR.status === 'rejected' ||
+        guardingR.status === 'rejected' ||
+        consentR.status === 'rejected'
+      ) {
+        setMessage(t(lang, 'errorGeneric'));
       }
       // Push-token registration (registration only — delivery is not
       // claimed; never prompts, skips silently without permission).

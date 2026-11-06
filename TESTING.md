@@ -7,6 +7,33 @@ Environment: Node 24.22.1, npm 10.9.4, Python 3.12 venv at
 2.21.0, onnx2tf 2.6.9, opencv-headless). No Android emulator or physical
 device was available in this environment.
 
+## Guardian/Auth live reliability run (2026-11-06, branch fix/guardian-reliability)
+
+Live production checks through the public API only (owner test
+accounts; no production schema/config changes). Auth API behaviour:
+12 checks — duplicate-signup obfuscation, weak-password 422,
+invalid-email 400, invalid-credentials 400, tampered-token rejection,
+session refresh, logout invalidating the refresh token all PASS.
+**Email sending FAILED by quota: signup and recover returned
+`429 over_email_send_rate_limit` after a few test emails (built-in
+provider, no custom SMTP).** Mailbox delivery itself NOT TESTED —
+the agent's Gmail connection was disconnected; one created account
+shows confirmed_at 15 s after signup (not clicked by the harness).
+Guardian: 18 checks — invite create/accept, consent defaults
+(false/false), used/tampered/self-accept rejection, location and SOS
+visibility gated per consent flag, guardian cannot change consent,
+unrelated-account negatives all PASS; **bearer acceptance by an
+unrelated account holding a fresh code FAILED the identity
+requirement (expected — codes are bearer by design; test link
+deleted)**. Codes proved single-use: re-accept returns
+invalid_or_expired_invite (docs corrected). Test data created by the
+run (link, location row) was deleted afterwards; one SOS row remains
+by design (append-only), labelled "E2E TEST 2026-11-06".
+Repo gates on this branch: Jest 665/665 (45 suites — includes the
+repaired rlsStatic suite, which now reads the archived-design
+migrations from supabase/archive-local-design/), tsc clean, lint
+0 errors, Guardian PWA freshness tests 13/13.
+
 ## Quality gates — actual results
 
 | Gate | Result |

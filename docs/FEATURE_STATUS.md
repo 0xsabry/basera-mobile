@@ -55,8 +55,8 @@ These labels are intentionally separate. A unit test is not a device test, and a
 
 | Feature | Implementation | Evidence / current caveat |
 |---|---|---|
-| Supabase authentication | Supabase Auth with persistent session through SecureStore adapter | Integration contract was live-verified on 2026-10-31; confirm current live config before a new backend claim |
-| Invite creation and acceptance | create-guardian-invite and accept-guardian-invite | Deployed Edge Function contract documented; a successful acceptance creates an active link immediately |
+| Supabase authentication | Supabase Auth with persistent session through SecureStore adapter | Re-verified live 2026-11-06: login/refresh/logout-invalidation, weak-password (422) and invalid-email (400) rejection, duplicate-signup obfuscation, tampered-token rejection all behave correctly. **Auth email sending is rate-limited (429 `over_email_send_rate_limit` on signup/recover after a few test emails — custom SMTP not configured; see docs/SUPABASE_INTEGRATION.md).** Mailbox delivery evidence blocked (agent Gmail disconnected) |
+| Invite creation and acceptance | create-guardian-invite and accept-guardian-invite | Re-verified live 2026-11-06: create (~15 min dashed-hex code), accept, used/tampered/self-accept rejection all correct. Codes are single-use (re-accept fails) and **bearer <redacted> — an unrelated account holding a fresh code paired successfully (cleaned up after); recipient binding is proposed in docs/GUARDIAN_SETUP.md and needs owner approval. No invitation email exists — codes are shared out-of-band |
 | Owner approval step | Not part of deployed contract | Do not describe the link as pending owner approval |
 | Per-link consent | location_sharing_enabled and sos_sharing_enabled on guardian_links; both start false; wearer controls them | Described in live verified integration contract |
 | Foreground location sharing | expo-location phone GPS watcher with consent and persisted deletion retry logic | Implemented in code; device/GPS/background behaviour needs physical-device verification |

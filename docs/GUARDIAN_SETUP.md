@@ -55,6 +55,42 @@ If the PWA is not already hosted:
 
 Do not configure Firebase browser push as if it were already supported by the deployed backend. Browser push requires an intentionally designed and deployed server endpoint; the current Guardian contract does not include one.
 
+## Auth email (SMTP) — required owner configuration
+
+Observed live 2026-11-06: auth emails are sent through the default
+Supabase provider and its sending quota is small — signup and
+password-recovery requests returned `429 over_email_send_rate_limit`
+after only a handful of test emails. For real users this means
+registration and recovery can fail at busy moments. Owner steps
+(dashboard only, no code change, no secrets in the repo):
+
+1. Pick an SMTP provider (any transactional mail service) and create
+   a sender identity on a domain you control; complete the provider's
+   SPF/DKIM (and DMARC) DNS verification for that domain.
+2. Supabase Dashboard → Authentication → Settings → SMTP Settings:
+   enable custom SMTP and enter host, port, username, password,
+   sender address, and sender name from the provider.
+3. Authentication → Rate Limits: raise the email-sending limit to
+   match the provider's allowance.
+4. Authentication → URL Configuration: confirm the Site URL and the
+   redirect allow-list contain the exact destinations the app and
+   the Guardian PWA use; test one confirmation and one recovery
+   email end-to-end afterwards and record the result in TESTING.md.
+
+## Invitation hardening — proposed (needs separate owner approval)
+
+Invite codes are bearer <redacted> whoever holds a code can accept it
+(re-verified live 2026-11-06 with an unrelated test account). The
+mitigations in place are per-link consent (starts off) and unlink.
+Binding an invite to the intended recipient's email — the
+accept-guardian-invite function rejecting acceptance when the
+signed-in user's email differs from the invited email — requires
+changing the deployed Edge Functions and the invite-creation
+payload, so it is a production change: do not deploy it without the
+owner's explicit approval, a documented payload change for both
+clients (app + PWA), and a rollback note (redeploy the previous
+function version).
+
 ## Owner approval gate
 
 Any production change to schema, RLS, Edge Functions, Auth settings, production data, hosting, APKs, or OTA updates requires the owner's explicit approval for that operation. Documentation review alone does not authorize a deployment.

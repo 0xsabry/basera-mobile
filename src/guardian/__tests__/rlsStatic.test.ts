@@ -1,19 +1,23 @@
 /**
  * Static RLS verification (runs HERE, no Postgres needed): parses the
- * migration SQL and asserts the authorization contract is actually
- * written down — RLS enabled on every table, the denial-matrix policies
- * exist by name, the enforcing RPCs exist, retention/expiry intervals
- * are present, and the anon role receives no grants.
+ * ARCHIVED local-design migration SQL and asserts the authorization
+ * contract is actually written down — RLS enabled on every table, the
+ * denial-matrix policies exist by name, the enforcing RPCs exist,
+ * retention/expiry intervals are present, and the anon role receives
+ * no grants.
  *
- * The LIVE execution of the same matrix lives in
- * supabase/tests/rls_tests.sql and requires the owner's Supabase project
- * (see docs/GUARDIAN_SETUP.md) — static checks complement, never
- * replace, that run.
+ * SCOPE: these files are the archived local design under
+ * supabase/archive-local-design/ (historical — DO NOT APPLY). They are
+ * NOT the deployed production contract; the deployed contract is
+ * documented in docs/SUPABASE_INTEGRATION.md and is verified live
+ * through the public API, not by this test.
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-const MIGRATIONS_DIR = join(__dirname, '..', '..', '..', 'supabase', 'migrations');
+const MIGRATIONS_DIR = join(
+  __dirname, '..', '..', '..', 'supabase', 'archive-local-design', 'migrations',
+);
 const schema = readFileSync(join(MIGRATIONS_DIR, '0001_schema.sql'), 'utf8');
 const rls = readFileSync(join(MIGRATIONS_DIR, '0002_rls_and_functions.sql'), 'utf8');
 const places = readFileSync(join(MIGRATIONS_DIR, '0004_saved_places.sql'), 'utf8');

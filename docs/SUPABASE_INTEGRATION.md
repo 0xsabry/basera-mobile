@@ -59,8 +59,12 @@ RLS), `display_name`, `preferred_language` (default `'ar'`),
   updates by the subject affect the row; the same update by the
   guardian silently affects 0 rows (RLS). Turning a master toggle in
   the app fans out to all of the wearer's links.
-- Accept is idempotent per pair: re-accepting for an already-paired
-  pair returns the same `link_id`.
+- Codes are single-use. Re-accepting an already-used code — even by
+  the same guardian for the already-paired pair — fails with
+  `invalid_or_expired_invite` (re-verified live 2026-11-06; an earlier
+  note here claimed accept returns the same `link_id` idempotently —
+  that does not match the deployed behaviour). The existing link
+  itself is unaffected and stays visible to both parties.
 - **Either party can delete the link** (unlink), verified in both
   directions; deletion ends all link-scoped access immediately.
 
@@ -201,6 +205,23 @@ NOT TESTABLE in the harness (the function offers no expiry control
 and all failures share one code).
 
 ## Remaining owner actions / known limits
+- **Auth email sending hits the built-in provider rate limit
+  (observed live 2026-11-06).** After a handful of confirmation /
+  resend / recovery emails during end-to-end testing, `POST
+  /auth/v1/signup` and `POST /auth/v1/recover` began returning
+  `429 over_email_send_rate_limit` — i.e. new registrations that need
+  a confirmation email are rejected while the quota is exhausted.
+  This is the signature of the default Supabase email provider (no
+  custom SMTP). **Owner action (dashboard, no code):** configure a
+  custom SMTP provider under Authentication → Settings → SMTP
+  Settings, raise Authentication → Rate Limits for email sending,
+  and confirm the Site URL + redirect allow-list match the app's
+  destinations. Until then, real email delivery is rate-limited and
+  cannot be considered reliable. Mailbox-side delivery evidence for
+  this run is additionally blocked because the agent's Gmail
+  connection was disconnected; one test account created 2026-11-06
+  shows `confirmed_at` 15 s after signup (the confirmation action did
+  not come from the test harness).
 - SOS alert rows can never be deleted by clients (append-only by
   design); purging test alerts needs a Dashboard/SQL action by the
   owner.
