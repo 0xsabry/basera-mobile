@@ -21,8 +21,13 @@ For full details, start with:
 - docs/PROJECT_OVERVIEW.md
 - docs/ARCHITECTURE.md
 - docs/FEATURE_STATUS.md
+- docs/PROJECT_FILE_MAP.md — every important module, its exports, and its tests
+- docs/FEATURE_IMPLEMENTATION_MAP.md — every feature, UI to backend
+- docs/IMPLEMENTATION_AND_DEPLOYMENT_STATUS.md — what is in source vs tested vs in production vs device-verified
 - docs/AI_INSPECTION_GUIDE.md
 - docs/TEAM_PRESENTATION_GUIDE.md
+- docs/TEAM_AI_HANDOFF.md — how the team prepares with an AI assistant
+- team/ — the 10 numbered presentation section packs
 - docs/README.md
 
 ## Repository setup

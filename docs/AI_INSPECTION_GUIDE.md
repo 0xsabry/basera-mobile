@@ -8,7 +8,7 @@ Before analysis:
 
 1. Identify the repository, current branch, and exact HEAD commit.
 2. Confirm the working tree/branch being inspected is the intended one. Do not silently switch branches.
-3. Read README.md, docs/PROJECT_OVERVIEW.md, docs/FEATURE_STATUS.md, docs/ARCHITECTURE.md, and docs/README.md.
+3. Read README.md, docs/PROJECT_OVERVIEW.md, docs/FEATURE_STATUS.md, docs/ARCHITECTURE.md, docs/PROJECT_FILE_MAP.md, docs/FEATURE_IMPLEMENTATION_MAP.md, docs/IMPLEMENTATION_AND_DEPLOYMENT_STATUS.md, and docs/README.md.
 4. For the feature being discussed, inspect its current implementation and tests. Do not rely only on documentation or commit messages.
 5. Read the applicable deployed contract before making backend claims:
    - Guardian backend: docs/SUPABASE_INTEGRATION.md and supabase/README.md.
