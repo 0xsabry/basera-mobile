@@ -428,3 +428,29 @@ pairing/GPS/PWA/push flows, background tracking on a real device,
 push delivery. Background location is implemented in code and
 manifest-verified JS-only on runtime 1.1.0 (see FEATURE_STATUS.md) —
 device execution still pending.
+
+## Repository-preparation final validation (2026-11-06, branch fix/guardian-reliability, HEAD 46d9768)
+
+Environment: sandbox Linux, Node 24.22.1, npm 10.9.4, Deno 2.5.4. No
+Android emulator or physical device in this environment; GitHub shows
+**no CI status checks** for this branch (the repository has no
+`.github/workflows/`), so all results below are local runs, recorded
+with their commands.
+
+| Check | Command | Result |
+|---|---|---|
+| TypeScript | `npx tsc --noEmit` | PASS (no errors) |
+| Lint | `npm run lint` | 0 errors, 1 pre-existing warning |
+| Jest | `npm test -- --runInBand` | **46 suites / 671 tests, all passed** |
+| Deno — invite hardening core | `deno test tests/invites/core.deno.test.ts` | 10 passed / 0 failed |
+| Deno — telemetry core | `deno test tests/telemetry/core.deno.test.ts` | 16 passed / 0 failed |
+| Guardian PWA | `npm run test:pwa` | freshness 18 checks + 13 realtime/config tests passed |
+| Release guard (OTA mode) | `node scripts/release-guard.mjs ota` | PASSED |
+| Android export | `npm run export:android` | Exported successfully |
+| Documentation sweep | path/link checker over docs/ + team/ + root docs | 0 broken relative links; all backticked source paths resolve (5 flags hand-verified as line-suffix/brace/future-step notations) |
+| Team pack validation | structure + content checker | 10 folders × 6 files; 12 expected questions per folder; 0 member names or student IDs anywhere under team/ |
+| Security scan | tracked-tree + branch-history pattern scan (values never printed) | No PATs, secret keys, private keys, tokens, test mailboxes, or env files; only public-by-design publishable keys in app.json / eas.json / guardian-pwa/config.js; 2 pattern flags hand-verified as false positives (UI label strings; env-var PEM header stripping in the never-deploy archive) |
+
+Device verification remains outstanding for the published Family/voice
+changes (OTA group 89ca0bf0…) — see
+docs/IMPLEMENTATION_AND_DEPLOYMENT_STATUS.md.
