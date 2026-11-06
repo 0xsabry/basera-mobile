@@ -206,6 +206,11 @@ const en = {
   guardianLinkLocation: 'Location sharing',
   guardianLinkSos: 'SOS alerts',
   guardianAcceptTitle: 'Accept an invite',
+  guardianInviteEmailLabel: 'البريد الإلكتروني لفرد العائلة',
+  guardianInviteEmailInvalid: 'أدخل بريدًا إلكترونيًا صحيحًا للشخص الذي تريد دعوته.',
+  guardianInviteBoundNote: 'هذا الرمز مرتبط بالبريد التالي ولن يعمل مع أي حساب آخر:',
+  guardianAuthRateLimited: 'تم إرسال رسائل بريد كثيرة مؤخرًا. انتظر قليلًا ثم حاول مرة أخرى.',
+  guardianEmailNotConfirmed: 'لم يتم تأكيد البريد الإلكتروني بعد. افتح رابط التأكيد في بريدك ثم سجل الدخول.',
   guardianAcceptExpl:
     'Enter the invite code a person gave you to become their guardian. The link is created immediately; you see their location only while they enable sharing for you.',
   guardianInviteCodeLabel: 'Invite code',
@@ -615,6 +620,11 @@ const ar: Record<StringKey, string> = {
   guardianLinkLocation: 'مشاركة الموقع',
   guardianLinkSos: 'تنبيهات الطوارئ',
   guardianAcceptTitle: 'قبول دعوة',
+  guardianInviteEmailLabel: "Family member's email",
+  guardianInviteEmailInvalid: 'Enter a valid email address for the person you want to invite.',
+  guardianInviteBoundNote: 'This code is bound to the following email and will not work with any other account:',
+  guardianAuthRateLimited: 'Too many emails were sent recently. Wait a little and try again.',
+  guardianEmailNotConfirmed: 'Your email is not confirmed yet. Open the confirmation link in your inbox, then sign in.',
   guardianAcceptExpl:
     'أدخل كود الدعوة الذي أعطاه لك شخص لتصبح وصيًا عليه. يُنشأ الربط فورًا، ولا ترى موقعه إلا أثناء تفعيله المشاركة لك.',
   guardianInviteCodeLabel: 'كود الدعوة',

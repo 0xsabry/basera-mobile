@@ -90,6 +90,8 @@ export default function GuardianScreen() {
   const [user, setUser] = useState<GuardianUser | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [code, setCode] = useState<PairingCode | null>(null);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteEmailError, setInviteEmailError] = useState('');
   const [guardians, setGuardians] = useState<GuardianLink[]>([]);
   const [peopleIGuard, setPeopleIGuard] = useState<GuardianLink[]>([]);
   const [sosOn, setSosOn] = useState(false);
@@ -377,10 +379,16 @@ export default function GuardianScreen() {
 
   const createCode = async () => {
     if (busy) return;
+    const email = inviteEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setInviteEmailError(t(lang, 'guardianInviteEmailInvalid'));
+      return;
+    }
+    setInviteEmailError('');
     setBusy(true);
     setMessage('');
     try {
-      const c = await service.createPairingCode();
+      const c = await service.createPairingCode(email);
       setCode(c);
       if (settings.announcements) {
         void speechService.speakAnnouncement(`${t(lang, 'guardianYourCode')}: ${c.code}`, lang);
@@ -391,7 +399,9 @@ export default function GuardianScreen() {
       setMessage(
         e instanceof GuardianInviteError && e.kind === 'rate-limited'
           ? t(lang, 'guardianInviteErrorRateLimited')
-          : t(lang, 'errorGeneric'),
+          : e instanceof GuardianInviteError && e.kind === 'invalid-invited-email'
+            ? t(lang, 'guardianInviteEmailInvalid')
+            : t(lang, 'errorGeneric'),
       );
     } finally {
       setBusy(false);
@@ -729,7 +739,33 @@ export default function GuardianScreen() {
           <SectionHeader title={t(lang, 'guardianPairingTitle')} glyph={GLYPHS.family} />
           <Card>
             <Text style={body()}>{t(lang, 'guardianPairingExpl')}</Text>
-            <AccessibleButton label={t(lang, 'guardianCreateCode')} onPress={() => void createCode()} disabled={busy} />
+            <TextInput
+              accessibilityLabel={t(lang, 'guardianInviteEmailLabel')}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              placeholder={t(lang, 'guardianInviteEmailLabel')}
+              placeholderTextColor={colors.textSecondary}
+              value={inviteEmail}
+              onChangeText={(v) => {
+                setInviteEmail(v);
+                setInviteEmailError('');
+              }}
+              style={[
+                styles.input,
+                { color: colors.text, borderColor: colors.border, backgroundColor: colors.surfaceAlt, fontSize: type.body },
+              ]}
+            />
+            {!!inviteEmailError && (
+              <Text accessibilityLiveRegion="assertive" style={[body(), { color: colors.danger }]}>
+                {inviteEmailError}
+              </Text>
+            )}
+            <AccessibleButton
+              label={t(lang, 'guardianCreateCode')}
+              onPress={() => void createCode()}
+              disabled={busy || !inviteEmail.trim()}
+            />
             {code && (
               <View style={styles.codeBox}>
                 <Text style={body()}>{t(lang, 'guardianYourCode')}</Text>
@@ -743,6 +779,12 @@ export default function GuardianScreen() {
                   <QrCodeView value={code.code} accessibilityLabel={`${t(lang, 'guardianYourCode')}: ${code.code}`} />
                 </View>
                 <Text style={bodySecondary()}>{t(lang, 'guardianCodeExpires')}</Text>
+                {code.boundToEmail && (
+                  <>
+                    <Text style={bodySecondary()}>{t(lang, 'guardianInviteBoundNote')}</Text>
+                    <Text style={body()}>{code.invitedEmail}</Text>
+                  </>
+                )}
                 {code.expiresAt && !codeExpired && (
                   <Text style={bodySecondary()}>
                     {t(lang, 'guardianInviteExpiresAt')}:{' '}

@@ -58,30 +58,101 @@ Do not configure Firebase browser push as if it were already supported by the de
 ## Auth email (SMTP) — required owner configuration
 
 Observed live 2026-11-06: auth emails are sent through the default
-Supabase provider and its sending quota is small — signup and
-password-recovery requests returned `429 over_email_send_rate_limit`
-after only a handful of test emails. For real users this means
-registration and recovery can fail at busy moments. Owner steps
-(dashboard only, no code change, no secrets in the repo):
+Supabase provider (sender `noreply@mail.app.supabase.io` — read from
+a real delivered email) and its sending quota is a trickle: signup
+and password-recovery requests returned
+`429 over_email_send_rate_limit` after a handful of test emails, and
+again minutes after a single successful send. For real users this
+means registration and recovery fail unpredictably. **Until the
+steps below are done and re-tested, email delivery must be
+described as unreliable.** Dashboard only; no code change; never
+paste provider credentials anywhere except the dashboard fields.
 
-1. Pick an SMTP provider (any transactional mail service) and create
-   a sender identity on a domain you control; complete the provider's
-   SPF/DKIM (and DMARC) DNS verification for that domain.
-2. Supabase Dashboard → Authentication → Settings → SMTP Settings:
-   enable custom SMTP and enter host, port, username, password,
-   sender address, and sender name from the provider.
-3. Authentication → Rate Limits: raise the email-sending limit to
-   match the provider's allowance.
-4. Authentication → URL Configuration: confirm the Site URL and the
-   redirect allow-list contain the exact destinations the app and
-   the Guardian PWA use; test one confirmation and one recovery
-   email end-to-end afterwards and record the result in TESTING.md.
+### Step 1 — pick a provider and verify a sending domain
 
-## Invitation hardening — proposed (needs separate owner approval)
+Any transactional provider works (e.g. Brevo, Resend, Amazon SES,
+Postmark). Create the account, add a domain you control (for
+example a subdomain such as `mail.auramarketing.me`), and publish
+exactly the DNS records the provider generates for it —
+typically:
+
+- **SPF** — one TXT record on the sending domain, of the form
+  `v=spf1 include:<provider-include> ~all` (provider supplies the
+  include value; merge with any existing SPF, never two records).
+- **DKIM** — the provider's TXT or CNAME record(s) carrying its
+  public key (SES gives three CNAMEs; most others one TXT/CNAME).
+- **DMARC** — TXT on `_dmarc.<domain>`, e.g.
+  `v=DMARC1; p=none; rua=mailto:you@your-domain` (start with
+  `p=none` for monitoring).
+- Some providers also ask for a **return-path / bounce CNAME**.
+
+Wait until the provider's dashboard shows the domain **Verified**
+before continuing — Supabase will happily save SMTP settings that
+then fail SPF/DKIM at the receiving side.
+
+### Step 2 — enter the SMTP settings in Supabase
+
+Dashboard → **Authentication → Emails → SMTP Settings** (older UI:
+Authentication → Settings → SMTP): turn on **Enable Custom SMTP**
+and fill, from the provider: Sender email (on the verified
+domain), Sender name (e.g. `BASERA`), Host, Port (usually 587),
+Username, Password. Save.
+
+### Step 3 — raise the sending rate limit
+
+Dashboard → **Authentication → Rate Limits**: raise
+**"Rate limit for sending emails"** to a value your provider plan
+allows (e.g. 100/hour to start). With the built-in provider this
+limit is effectively capped by Supabase; with custom SMTP your
+setting governs.
+
+### Step 4 — URL configuration (where email links land)
+
+The app currently requests **no custom redirect**, so confirmation
+and recovery links land on the project's **Site URL** after
+verification. Dashboard → **Authentication → URL Configuration**:
+
+- **Site URL**: set it to a real page you control that tells the
+  user "email confirmed — return to the BASERA app and sign in"
+  (today there is no such page; the Supabase default is a dead
+  end). Any static page on your domain is fine.
+- **Redirect URLs** allow-list: keep the Site URL, add the Guardian
+  PWA origin once it is hosted, and add `basera://auth/confirm` —
+  reserved for the future in-app deep-link handler (the app does
+  not process auth deep links yet; do not present the deep link as
+  working until it does).
+
+### Step 5 — templates (optional, recommended)
+
+Dashboard → **Authentication → Emails → Templates**: review
+*Confirm sign up* and *Reset password*. One template set serves
+both app languages; keep the subject/body bilingual (Arabic line
+first, then English) rather than choosing one language.
+
+### Step 6 — prove it (required before claiming it works)
+
+1. Sign up a brand-new test address on a real mailbox you read.
+   The confirmation email must arrive **from your domain's
+   sender** (not `noreply@mail.app.supabase.io`).
+2. Click the link → it lands on your Site URL page → return to the
+   app → sign-in succeeds.
+3. Request a password reset → the recovery email arrives from the
+   same sender.
+4. Send several auth emails in a row — no
+   `over_email_send_rate_limit`. Record the results in TESTING.md.
+
+## Invitation hardening — IMPLEMENTED on this branch, deployment needs owner approval
 
 Invite codes are bearer <redacted> whoever holds a code can accept it
 (re-verified live 2026-11-06 with an unrelated test account). The
 mitigations in place are per-link consent (starts off) and unlink.
+The hardened replacement — codes bound to the intended recipient's
+verified email, hash-only storage, atomic single-use claim — is
+implemented and unit-tested on this branch (Deno 10/10); the full
+production change package (exact change, preflight, deploy steps,
+smoke, rollback) is in `docs/INVITE_HARDENING_DEPLOY.md`. Production
+still runs the bearer-code functions until the owner authorizes
+that package. The original design note follows.
 Binding an invite to the intended recipient's email — the
 accept-guardian-invite function rejecting acceptance when the
 signed-in user's email differs from the invited email — requires

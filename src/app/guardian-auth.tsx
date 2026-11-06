@@ -60,10 +60,18 @@ export default function GuardianAuthScreen() {
       }
       router.back();
     } catch (e) {
-      // Honest errors: raw server message in English mode; localized in Arabic.
-      setError(
-        lang === 'en' && e instanceof GuardianServiceError ? e.message : t(lang, 'guardianAuthError'),
-      );
+      // Specific, honest states first: email rate limiting and an
+      // unconfirmed address are the two failures a user can act on.
+      const raw = e instanceof Error ? e.message : '';
+      if (/over_email_send_rate_limit|rate.?limit/i.test(raw)) {
+        setError(t(lang, 'guardianAuthRateLimited'));
+      } else if (/email_not_confirmed|email not confirmed/i.test(raw)) {
+        setError(t(lang, 'guardianEmailNotConfirmed'));
+      } else
+        // Honest errors: raw server message in English mode; localized in Arabic.
+        setError(
+          lang === 'en' && e instanceof GuardianServiceError ? e.message : t(lang, 'guardianAuthError'),
+        );
     } finally {
       setBusy(false);
     }

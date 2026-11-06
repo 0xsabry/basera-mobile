@@ -29,6 +29,19 @@ deleted)**. Codes proved single-use: re-accept returns
 invalid_or_expired_invite (docs corrected). Test data created by the
 run (link, location row) was deleted afterwards; one SOS row remains
 by design (append-only), labelled "E2E TEST 2026-11-06".
+Defense-readiness run (2026-11-06 evening, branch
+`fix/guardian-reliability`): hardened invite functions implemented
+with Deno core tests 10/10 (recipient binding, wrong-account
+rejection, expired/reused/tampered uniformity, concurrent-accept
+race, already-paired idempotency); `deno check` clean on both
+function entrypoints; app Family tab now collects the recipient
+email and maps the new error kinds; auth screen maps rate-limit
+and unconfirmed-email failures to specific AR/EN messages; a
+latent kind-dropping bug in GuardianService.toServiceError (the
+rate-limited kind never reached the UI) was fixed. Live add-ons:
+consent revocation sequences PASS for location (0→1→0) and SOS
+(0→≥1→0) with the deployed column names; repo gates Jest 668/668,
+tsc clean, lint 0 errors, PWA freshness 13/13.
 Addendum (same day, after the owner's Gmail was reconnected): a
 fresh signup to an alias of the connected mailbox received its
 confirmation email within seconds (default sender — no custom

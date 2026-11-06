@@ -135,6 +135,24 @@ an active session.
   UI shows one combined "invalid or expired" message and never
   pretends to know which.
 
+### Hardened replacement (branch-only, NOT deployed)
+
+This branch carries an email-bound replacement for both functions
+(`supabase/functions/{create,accept}-guardian-invite/`, additive
+migration `20261107000000_guardian_invites_hardening.sql`, Deno
+tests 10/10 in `supabase/tests/invites/`). Invites name the
+recipient's email; acceptance requires the caller's VERIFIED email
+to match; codes are stored as SHA-256 hashes and claimed
+atomically (single-use under concurrency); all failures keep the
+combined public error. Deployment is a separate owner-approved
+package: `docs/INVITE_HARDENING_DEPLOY.md`. The app on this branch
+already sends `invited_email` (the deployed create tolerates the
+extra field — verified live 2026-11-06) and only claims binding
+when the response confirms `bound_to_email: true`.
+Consent revocation was re-verified end-to-end 2026-11-06 with the
+correct `latitude`/`longitude` columns: guardian location rows
+0 (off) → 1 (on) → 0 (after revoke); SOS rows 0 → ≥1 → 0.
+
 ### Bearer-code semantics (observed live — read this)
 An invite code is a **bearer capability**: verified twice — the
 unrelated third account ("stranger") accepted a real code and paired
