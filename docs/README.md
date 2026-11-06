@@ -10,6 +10,10 @@ This folder contains the project guide, current technical contracts, evidence, r
 4. [AI inspection guide](AI_INSPECTION_GUIDE.md) — rules for an AI agent or teammate inspecting this repository.
 5. [Team presentation guide](TEAM_PRESENTATION_GUIDE.md) — suggested presentation structure and a 10-person speaking split.
 6. [Testing record](../TESTING.md) — dated historical test evidence. Re-run the commands for the current commit before quoting a result.
+7. [Project file map](PROJECT_FILE_MAP.md) — every important module: exact path, exports, dependencies, tests.
+8. [Feature implementation map](FEATURE_IMPLEMENTATION_MAP.md) — every feature from UI to backend, with status and limitations.
+9. [Implementation and deployment status](IMPLEMENTATION_AND_DEPLOYMENT_STATUS.md) — source vs tested vs production vs device-verified, per feature.
+10. [Team AI handoff](TEAM_AI_HANDOFF.md) and the [`team/`](../team/) section packs — how each presenter prepares from the real code.
 
 ## Current technical references
 

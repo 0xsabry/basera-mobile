@@ -69,29 +69,46 @@ export function buildTensorFromJpegBase64(base64: string, letterbox: LetterboxIn
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const MODEL_ASSET: number = require('../../assets/models/yolo11n.tflite');
 
+// The loaded model is shared by every detector instance (module
+// level), so a startup prewarm benefits the detect screen's own
+// instance. A failed load clears the promise so the next detect
+// retries, exactly as the previous per-instance behaviour did.
+let sharedModelPromise: Promise<any> | null = null;
+
+function loadSharedModel(): Promise<any> {
+  if (!sharedModelPromise) {
+    sharedModelPromise = (async () => {
+      try {
+        // Required lazily so jest / web never load the native module.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const tflite = require('react-native-fast-tflite');
+        const model = await tflite.loadTensorflowModel(MODEL_ASSET);
+        return model;
+      } catch (e) {
+        sharedModelPromise = null;
+        throw new DetectorUnavailableError(
+          'On-device YOLO interpreter is unavailable in this build. Object detection needs the BASERA development build (native TFLite module); it does not run in Expo Go or web. ' +
+            `(${e instanceof Error ? e.message : String(e)})`,
+        );
+      }
+    })();
+  }
+  return sharedModelPromise;
+}
+
+/** Latency: start loading the YOLO model in the background (app
+ *  startup) so the first user-triggered detection does not pay the
+ *  full interpreter load. Failures are swallowed here; detect()
+ *  surfaces them properly when the user actually detects. */
+export function prewarmYoloModel(): void {
+  void loadSharedModel().catch(() => undefined);
+}
+
 export class YoloDetector implements ObjectDetector {
   readonly id = 'yolo11n-tflite';
-  private modelPromise: Promise<any> | null = null;
 
   private async loadModel(): Promise<any> {
-    if (!this.modelPromise) {
-      this.modelPromise = (async () => {
-        try {
-          // Required lazily so jest / web never load the native module.
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const tflite = require('react-native-fast-tflite');
-          const model = await tflite.loadTensorflowModel(MODEL_ASSET);
-          return model;
-        } catch (e) {
-          this.modelPromise = null;
-          throw new DetectorUnavailableError(
-            'On-device YOLO interpreter is unavailable in this build. Object detection needs the BASERA development build (native TFLite module); it does not run in Expo Go or web. ' +
-              `(${e instanceof Error ? e.message : String(e)})`,
-          );
-        }
-      })();
-    }
-    return this.modelPromise;
+    return loadSharedModel();
   }
 
   async detect(image: CapturedImage): Promise<Detection[]> {

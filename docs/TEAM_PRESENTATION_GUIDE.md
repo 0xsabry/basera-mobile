@@ -2,6 +2,25 @@
 
 This guide helps a team explain the application accurately and divide the presentation across 10 speakers. Adjust the split to match the work each person actually contributed; do not assign someone a contribution they did not make.
 
+**The finalized division is the 10 numbered sections in [`team/`](../team/)** — each section folder contains its own overview, source map, code walkthrough, timed script, demo guide, and expected questions. This guide remains the shared reference for explanations and likely questions.
+
+## Team members
+
+| Student ID | Full Name |
+|---|---|
+| 2300788 | Shihab Eldin Mohamed Mahmoud |
+| 2302181 | Radwa Khaled Kamal |
+| 2300774 | Haidy Ahmed Mohamed |
+| 2300611 | Shaza Eltahawy Abdelnaeem |
+| 2201123 | Kenzy Ali Mohamed |
+| 2300125 | Mohammed Ashraf Mohammed |
+| 2300772 | Alameer Fahd Mohamed |
+| 2201381 | Mohamed Sabry Hamdan |
+| 2301535 | Omnia Medhat Khalifa |
+| 2300825 | Eman Abdelbaset Abdelfatah |
+
+Sections are identified by number and topic only; no topic is assigned to a named person in the repository materials.
+
 ## Suggested presentation structure
 
 A clear presentation can use 12–14 slides and a short controlled demonstration:
@@ -23,18 +42,18 @@ A clear presentation can use 12–14 slides and a short controlled demonstration
 
 ## 10-person speaker split
 
-| Speaker | Topic | Points to explain | Useful source files |
+| Section | Topic | Duration | Preparation pack |
 |---|---|---|---|
-| 1 | Problem, idea, and objectives | The user problem, why the app exists, Arabic and English support, and the project's actual scope | README.md; docs/PROJECT_OVERVIEW.md |
-| 2 | User experience and accessibility | Five tabs, onboarding, Arabic RTL, large touch targets, TalkBack labels, themes, text scaling, and speech controls | src/app/(tabs); src/components; src/state/SettingsContext.tsx; src/i18n/strings.ts |
-| 3 | App architecture and Expo | Expo SDK, React Native, TypeScript, expo-router, service interfaces, native dependencies, development build versus Expo Go | package.json; app.json; docs/ARCHITECTURE.md |
-| 4 | Image input and object detection | Gallery/sample/test-camera input, preprocessing, YOLO11n TFLite, decoded detections and bounding boxes | src/input; src/ai/ObjectDetector.ts; src/ai/imagePreprocess.ts; src/ai/yoloPostprocess.ts; docs/MODELS.md |
-| 5 | Text recognition / OCR | Why Arabic and Latin use different engines, PP-OCR detection/recognition stages, ML Kit Latin script, accuracy limitations | src/ai/ArabicOcrEngine.ts; src/ai/TextRecognizer.ts; docs/MODELS.md |
-| 6 | Speech and voice control | TTS with installed device voices, microphone recognition through Android service, command parser and supported commands | src/ai/SpeechService.ts; src/ai/VoiceCommandService.ts; src/ai/voiceCatalog.ts |
-| 7 | Hazard awareness and SOS | Scan-based risk engine, persistence/cooldown, local hazard records, separate SOS consent/backend behaviour, safety limitations | src/hazards; src/app/alerts.tsx; docs/SUPABASE_INTEGRATION.md |
-| 8 | Supabase and Guardian PWA | Authentication, PostgreSQL tables, RLS, Edge Functions, immediate pairing, per-link consent, latest-location map | src/guardian; supabase/functions/README.md; docs/SUPABASE_INTEGRATION.md; guardian-pwa |
-| 9 | History, places, settings, and privacy | On-device history, Smart Place Memory, GPS accuracy, opt-in sync caveat, permission controls and local preferences | src/data; src/places; src/app/(tabs)/settings.tsx; docs/FEATURE_STATUS.md |
-| 10 | Testing, releases, limits, and conclusion | Test evidence and dates, model licences, OTA versus APK, hardware limits, smart glasses future integration, summary | TESTING.md; docs/MODELS.md; docs/RELEASE.md; docs/GLASSES_INTEGRATION.md |
+| 01 | Introduction & Overview | 2 minutes | [team/01-introduction-overview](../team/01-introduction-overview/) |
+| 02 | UI/UX | 2 minutes | [team/02-ui-ux](../team/02-ui-ux/) |
+| 03 | Expo & Mobile Development | 2 minutes | [team/03-expo-mobile-development](../team/03-expo-mobile-development/) |
+| 04 | YOLO & TFLite | 3 minutes | [team/04-yolo-tflite](../team/04-yolo-tflite/) |
+| 05 | OCR | 2 minutes | [team/05-ocr](../team/05-ocr/) |
+| 06 | Voice System | 2 minutes | [team/06-voice-system](../team/06-voice-system/) |
+| 07 | Risk Detection | 2 minutes | [team/07-risk-detection](../team/07-risk-detection/) |
+| 08 | Places & GPS | 2 minutes | [team/08-places-gps](../team/08-places-gps/) |
+| 09 | History & Settings | 2 minutes | [team/09-history-settings](../team/09-history-settings/) |
+| 10 | Guardian & Supabase | 3 minutes | [team/10-guardian-supabase](../team/10-guardian-supabase/) |
 
 ## Technical explanations for likely questions
 

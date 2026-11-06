@@ -50,6 +50,12 @@ export interface SpeechService {
    */
   noteAvailableVoices(voices: VoiceLike[]): void;
   /**
+   * Latency: start voice discovery NOW (app startup) so the first
+   * real utterance does not pay the device voice enumeration cost.
+   * Fire-and-forget; discovery failures are not cached.
+   */
+  warmUp(): void;
+  /**
    * Bug 4: speak a short sample with the GIVEN voice (null = system
    * default) so the Settings picker can audition a voice before/instead
    * of selecting it. Resolves true only when the utterance completes
@@ -90,6 +96,11 @@ export class ExpoSpeechService implements SpeechService {
    *  release the accessibility-busy guard even when the TTS engine
    *  never fires onStopped (web / interrupted engines). */
   private activeClearBusy: (() => void) | null = null;
+  /** Our own view of whether an utterance is currently playing.
+   *  utter() only pays the Speech.stop() round-trip when this is
+   *  true — when idle, stop() is pure latency before every
+   *  narration. Cleared by clearBusy (engine callbacks) and stop(). */
+  private speechActive = false;
 
   get lastText(): string | null {
     return this._lastText;
@@ -118,6 +129,10 @@ export class ExpoSpeechService implements SpeechService {
 
   noteAvailableVoices(voices: VoiceLike[]): void {
     this.availableVoices = voices ?? [];
+  }
+
+  warmUp(): void {
+    void this.discoverVoices();
   }
 
   /** Lazily discover the device voices for 'auto' resolution. Never
@@ -193,7 +208,10 @@ export class ExpoSpeechService implements SpeechService {
     // Track the most recent speech language (NOT the repeat target) so the
     // "nothing to repeat" message is spoken in the user's current language.
     this._lastLang = lang;
-    await Speech.stop();
+    // Interruption semantics preserved: when an utterance IS playing
+    // we still stop it first (hazard alerts cut in). When idle, the
+    // stop() round-trip is skipped — it delayed every narration.
+    if (this.speechActive) await Speech.stop();
     // OTA safety: while speech is playing, an update reload is forbidden
     // (see state/accessibilityBusy + update/UpdateService).
     setAccessibilityBusy('speech', true);
@@ -201,6 +219,7 @@ export class ExpoSpeechService implements SpeechService {
     const clearBusy = () => {
       if (cleared) return;
       cleared = true;
+      this.speechActive = false;
       if (this.activeClearBusy === clearBusy) this.activeClearBusy = null;
       setAccessibilityBusy('speech', false);
     };
@@ -225,11 +244,28 @@ export class ExpoSpeechService implements SpeechService {
     if (opts?.hasVoiceOverride) {
       effectiveVoice = opts.voiceOverride ?? null;
     } else if (this.voicePreference.kind === 'auto' && lang === 'ar') {
-      effectiveVoice = resolveVoiceIdentifier(this.voicePreference, await this.discoverVoices(), lang);
+      if (this.availableVoices) {
+        effectiveVoice = resolveVoiceIdentifier(this.voicePreference, this.availableVoices, lang);
+      } else {
+        // Bounded wait for voice enumeration: discovery usually
+        // answers in milliseconds (and app startup warms it), so the
+        // Egyptian voice still applies to the first utterance. But a
+        // slow engine must not hold narration hostage for seconds —
+        // after the bound we speak with the ar-EG language fallback
+        // while discovery finishes in the background for next time.
+        const voices = await Promise.race([
+          this.discoverVoices(),
+          new Promise<null>((res) => setTimeout(() => res(null), 300)),
+        ]);
+        effectiveVoice = voices
+          ? resolveVoiceIdentifier(this.voicePreference, voices, lang)
+          : null;
+      }
     } else {
       effectiveVoice = resolveVoiceIdentifier(this.voicePreference, [], lang);
     }
     try {
+      this.speechActive = true;
       Speech.speak(text, {
         language: lang === 'ar' ? 'ar-EG' : 'en-US',
         rate: this.rate,
@@ -286,6 +322,7 @@ export class ExpoSpeechService implements SpeechService {
   }
 
   async stop(): Promise<void> {
+    this.speechActive = false;
     try {
       await Speech.stop();
     } finally {

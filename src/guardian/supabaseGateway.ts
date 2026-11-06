@@ -181,6 +181,13 @@ export interface Invite {
   code: string;
   /** ISO timestamp from the function payload, when it provides one. */
   expiresAt: string | null;
+  /** Recipient the invite is bound to — returned ONLY by the hardened
+   *  create-guardian-invite; null with the deployed function. */
+  invitedEmail: string | null;
+  /** True only when the backend confirmed the code is bound to the
+   *  invited email (hardened function). The UI may claim binding
+   *  only when this is true. */
+  boundToEmail: boolean;
 }
 
 function findString(obj: unknown, keys: string[], depth = 0): string | null {
@@ -210,11 +217,17 @@ export function parseInvitePayload(data: unknown): Invite {
     'expires',
     'valid_until',
   ]);
-  return { code, expiresAt };
+  const invitedEmail = findString(data, ['invited_email', 'invitedEmail']);
+  const boundToEmail =
+    !!data &&
+    typeof data === 'object' &&
+    (data as Record<string, unknown>).bound_to_email === true;
+  return { code, expiresAt, invitedEmail, boundToEmail };
 }
 
 export type InviteErrorKind =
   | 'invalid-or-expired'
+  | 'invalid-invited-email'
   | 'rate-limited'
   | 'expired'
   | 'already-used'
@@ -231,6 +244,7 @@ export type InviteErrorKind =
 export function classifyInviteErrorMessage(message: string): InviteErrorKind {
   const m = message.toLowerCase();
   if (m.includes('invalid_or_expired')) return 'invalid-or-expired';
+  if (m.includes('invalid_invited_email')) return 'invalid-invited-email';
   // Deployed create-guardian-invite rate-limits per wearer
   // ({"error":"invite_rate_limited"} — verified live 2026-10-31).
   if (/rate.?limit|too many/.test(m)) return 'rate-limited';
@@ -273,9 +287,18 @@ async function extractFunctionError(error: unknown): Promise<GatewayError> {
   return new GatewayError(message, classifyInviteErrorMessage(message));
 }
 
-/** Wearer: create an invite. The function returns the code + expiry. */
-export async function createInvite(client: GatewayClient): Promise<Invite> {
-  const { data, error } = await client.functions.invoke(DEPLOYED.functions.createInvite);
+/** Wearer: create an invite for a specific recipient email. The
+ *  hardened function binds the code to this email; the currently
+ *  deployed function accepts and ignores the field (verified live
+ *  2026-11-06) and returns no binding confirmation, which
+ *  parseInvitePayload reflects honestly as boundToEmail=false. */
+export async function createInvite(
+  client: GatewayClient,
+  invitedEmail: string,
+): Promise<Invite> {
+  const { data, error } = await client.functions.invoke(DEPLOYED.functions.createInvite, {
+    body: { invited_email: invitedEmail },
+  });
   if (error) throw await extractFunctionError(error);
   return parseInvitePayload(data);
 }

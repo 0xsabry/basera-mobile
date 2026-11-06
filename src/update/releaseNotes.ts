@@ -23,6 +23,16 @@ export interface ReleaseNote {
 /** Newest first. */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-11-06',
+    runtimeVersion: '1.1.0',
+    titleEn: 'Family screen — clearer and shorter',
+    titleAr: 'شاشة العائلة — أوضح وأقصر',
+    bodyEn:
+      'Shorter Family explanations and compact status labels. Feedback messages now appear at the top of the screen, and the SOS sharing switch explains itself when no guardian is linked yet.',
+    bodyAr:
+      'شروحات أقصر في شاشة العائلة وعلامات حالة مختصرة. تظهر رسائل التنبيه الآن في أعلى الشاشة، ويشرح زر مشاركة تنبيهات الطوارئ سبب عدم التفعيل عند عدم ارتباط أي وصي بعد.',
+  },
+  {
     date: '2026-11-02',
     runtimeVersion: '1.1.0',
     titleEn: 'BASERA 1.1.8 — Pilot launch and update statistics',

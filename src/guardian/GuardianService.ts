@@ -93,6 +93,11 @@ export interface PairingCode {
   code: string;
   /** From the Edge Function payload; null when it provides none. */
   expiresAt: string | null;
+  /** Recipient email the invite was created for. */
+  invitedEmail: string;
+  /** True only when the backend confirmed email binding (hardened
+   *  create-guardian-invite). False with the deployed function. */
+  boundToEmail: boolean;
 }
 
 export interface LocationPointInput {
@@ -124,8 +129,9 @@ export interface GuardianService {
     preferredLanguage?: string,
   ): Promise<SignUpResult>;
   signOut(): Promise<void>;
-  /** Wearer: create an invite via the Edge Function. */
-  createPairingCode(): Promise<PairingCode>;
+  /** Wearer: create an invite via the Edge Function, addressed to
+   *  the intended family member's email. */
+  createPairingCode(invitedEmail: string): Promise<PairingCode>;
   /** Guardian: accept an invite code — success means the link is
    *  PAIRED immediately (consent flags still start FALSE). */
   redeemPairingCode(code: string): Promise<{ linkId: string | null; status: 'active' }>;
@@ -176,6 +182,8 @@ function toServiceError(e: unknown): GuardianServiceError {
   if (e instanceof gw.GatewayError) {
     if (
       e.kind === 'invalid-or-expired' ||
+      e.kind === 'invalid-invited-email' ||
+      e.kind === 'rate-limited' ||
       e.kind === 'expired' ||
       e.kind === 'already-used' ||
       e.kind === 'self-pairing' ||
@@ -264,11 +272,23 @@ export class SupabaseGuardianService implements GuardianService {
     return user.id;
   }
 
-  async createPairingCode(): Promise<PairingCode> {
+  async createPairingCode(invitedEmail: string): Promise<PairingCode> {
     await this.requireUserId();
+    const email = invitedEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+      throw new GuardianInviteError(
+        'invalid-invited-email',
+        'invalid_invited_email',
+      );
+    }
     try {
-      const invite = await gw.createInvite(this.client);
-      return { code: invite.code, expiresAt: invite.expiresAt };
+      const invite = await gw.createInvite(this.client, email);
+      return {
+        code: invite.code,
+        expiresAt: invite.expiresAt,
+        invitedEmail: invite.invitedEmail ?? email,
+        boundToEmail: invite.boundToEmail,
+      };
     } catch (e) {
       throw toServiceError(e);
     }
@@ -528,7 +548,7 @@ export class NotConfiguredGuardianService implements GuardianService {
   async signOut(): Promise<void> {
     throw new GuardianNotConfiguredError();
   }
-  async createPairingCode(): Promise<PairingCode> {
+  async createPairingCode(_invitedEmail: string): Promise<PairingCode> {
     throw new GuardianNotConfiguredError();
   }
   async redeemPairingCode(

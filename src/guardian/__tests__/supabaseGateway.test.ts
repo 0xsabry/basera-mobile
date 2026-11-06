@@ -232,7 +232,7 @@ describe('invite payload parsing + error classification', () => {
         invite_code: 'A5F2-99D2-23CB-A24B-36A5-4D73-4468-E1A4',
         expires_at: '2026-10-31T11:05:41Z',
       }),
-    ).toEqual({ code: 'A5F2-99D2-23CB-A24B-36A5-4D73-4468-E1A4', expiresAt: '2026-10-31T11:05:41Z' });
+    ).toEqual({ code: 'A5F2-99D2-23CB-A24B-36A5-4D73-4468-E1A4', expiresAt: '2026-10-31T11:05:41Z', invitedEmail: null, boundToEmail: false });
     expect(() => parseInvitePayload({ ok: true })).toThrow(GatewayError);
   });
 
@@ -253,11 +253,39 @@ describe('pairing via Edge Functions', () => {
       data: { invite_code: 'AAAA-BBBB', expires_at: '2026-10-31T11:05:41Z' },
       error: null,
     });
-    await expect(createInvite(f.client)).resolves.toEqual({
+    await expect(createInvite(f.client, 'guardian@example.com')).resolves.toEqual({
       code: 'AAAA-BBBB',
       expiresAt: '2026-10-31T11:05:41Z',
+      invitedEmail: null,
+      boundToEmail: false,
     });
     expect(f.invokeCalls[0].name).toBe('create-guardian-invite');
+    expect(f.invokeCalls[0].body).toEqual({ invited_email: 'guardian@example.com' });
+  });
+
+  it('createInvite surfaces the hardened binding confirmation', async () => {
+    const f = fakeGatewayClient();
+    f.invokeResponses.set('create-guardian-invite', {
+      data: {
+        invite_code: 'CCCC-DDDD',
+        expires_at: '2026-11-07T10:15:00Z',
+        invited_email: 'guardian@example.com',
+        bound_to_email: true,
+      },
+      error: null,
+    });
+    await expect(createInvite(f.client, 'guardian@example.com')).resolves.toEqual({
+      code: 'CCCC-DDDD',
+      expiresAt: '2026-11-07T10:15:00Z',
+      invitedEmail: 'guardian@example.com',
+      boundToEmail: true,
+    });
+  });
+
+  it('classifies the hardened invalid-invited-email error', () => {
+    expect(classifyInviteErrorMessage('invalid_invited_email')).toBe(
+      'invalid-invited-email',
+    );
   });
 
   it('acceptInvite posts { invite_code } and maps { link_id, status: paired }', async () => {

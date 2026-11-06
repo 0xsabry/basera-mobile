@@ -214,11 +214,23 @@ describe('SupabaseGuardianService — discovered deployed contract', () => {
       error: null,
     });
     const svc = new SupabaseGuardianService(client as never);
-    await expect(svc.createPairingCode()).resolves.toEqual({
+    await expect(svc.createPairingCode('guardian@example.com')).resolves.toEqual({
       code: 'A5F2-99D2',
       expiresAt: '2026-10-31T11:05:41Z',
+      invitedEmail: 'guardian@example.com',
+      boundToEmail: false,
     });
     expect(invokeCalls[0].name).toBe('create-guardian-invite');
+    expect(invokeCalls[0].body).toEqual({ invited_email: 'guardian@example.com' });
+  });
+
+  it('createPairingCode rejects a malformed invited email before calling', async () => {
+    const { client, invokeCalls } = fakeClient();
+    const svc = new SupabaseGuardianService(client as never);
+    await expect(svc.createPairingCode('not-an-email')).rejects.toMatchObject({
+      kind: 'invalid-invited-email',
+    });
+    expect(invokeCalls).toHaveLength(0);
   });
 
   it('redeemPairingCode returns the paired link id', async () => {
@@ -352,7 +364,7 @@ describe('NotConfiguredGuardianService', () => {
       locationSharingEnabled: false,
       sosSharingEnabled: false,
     });
-    await expect(svc.createPairingCode()).rejects.toBeInstanceOf(GuardianNotConfiguredError);
+    await expect(svc.createPairingCode('g@example.com')).rejects.toBeInstanceOf(GuardianNotConfiguredError);
     await expect(svc.setSharingEnabled(true)).rejects.toBeInstanceOf(GuardianNotConfiguredError);
   });
 });

@@ -7,6 +7,54 @@ Environment: Node 24.22.1, npm 10.9.4, Python 3.12 venv at
 2.21.0, onnx2tf 2.6.9, opencv-headless). No Android emulator or physical
 device was available in this environment.
 
+## Guardian/Auth live reliability run (2026-11-06, branch fix/guardian-reliability)
+
+Live production checks through the public API only (owner test
+accounts; no production schema/config changes). Auth API behaviour:
+12 checks — duplicate-signup obfuscation, weak-password 422,
+invalid-email 400, invalid-credentials 400, tampered-token rejection,
+session refresh, logout invalidating the refresh token all PASS.
+**Email sending FAILED by quota: signup and recover returned
+`429 over_email_send_rate_limit` after a few test emails (built-in
+provider, no custom SMTP).** Mailbox delivery itself NOT TESTED —
+the agent's Gmail connection was disconnected; one created account
+shows confirmed_at 15 s after signup (not clicked by the harness).
+Guardian: 18 checks — invite create/accept, consent defaults
+(false/false), used/tampered/self-accept rejection, location and SOS
+visibility gated per consent flag, guardian cannot change consent,
+unrelated-account negatives all PASS; **bearer acceptance by an
+unrelated account holding a fresh code FAILED the identity
+requirement (expected — codes are bearer by design; test link
+deleted)**. Codes proved single-use: re-accept returns
+invalid_or_expired_invite (docs corrected). Test data created by the
+run (link, location row) was deleted afterwards; one SOS row remains
+by design (append-only), labelled "E2E TEST 2026-11-06".
+Defense-readiness run (2026-11-06 evening, branch
+`fix/guardian-reliability`): hardened invite functions implemented
+with Deno core tests 10/10 (recipient binding, wrong-account
+rejection, expired/reused/tampered uniformity, concurrent-accept
+race, already-paired idempotency); `deno check` clean on both
+function entrypoints; app Family tab now collects the recipient
+email and maps the new error kinds; auth screen maps rate-limit
+and unconfirmed-email failures to specific AR/EN messages; a
+latent kind-dropping bug in GuardianService.toServiceError (the
+rate-limited kind never reached the UI) was fixed. Live add-ons:
+consent revocation sequences PASS for location (0→1→0) and SOS
+(0→≥1→0) with the deployed column names; repo gates Jest 668/668,
+tsc clean, lint 0 errors, PWA freshness 13/13.
+Addendum (same day, after the owner's Gmail was reconnected): a
+fresh signup to an alias of the connected mailbox received its
+confirmation email within seconds (default sender — no custom
+SMTP); unverified sign-in refused with `email_not_confirmed`
+(confirmations enforced); a recovery request minutes later hit
+`429 over_email_send_rate_limit` again. Link-follow/redirect
+destination NOT verified by the agent (token redaction-protected
+in mail view).
+Repo gates on this branch: Jest 665/665 (45 suites — includes the
+repaired rlsStatic suite, which now reads the archived-design
+migrations from supabase/archive-local-design/), tsc clean, lint
+0 errors, Guardian PWA freshness tests 13/13.
+
 ## Quality gates — actual results
 
 | Gate | Result |
@@ -380,3 +428,29 @@ pairing/GPS/PWA/push flows, background tracking on a real device,
 push delivery. Background location is implemented in code and
 manifest-verified JS-only on runtime 1.1.0 (see FEATURE_STATUS.md) —
 device execution still pending.
+
+## Repository-preparation final validation (2026-11-06, branch fix/guardian-reliability, HEAD 46d9768)
+
+Environment: sandbox Linux, Node 24.22.1, npm 10.9.4, Deno 2.5.4. No
+Android emulator or physical device in this environment; GitHub shows
+**no CI status checks** for this branch (the repository has no
+`.github/workflows/`), so all results below are local runs, recorded
+with their commands.
+
+| Check | Command | Result |
+|---|---|---|
+| TypeScript | `npx tsc --noEmit` | PASS (no errors) |
+| Lint | `npm run lint` | 0 errors, 1 pre-existing warning |
+| Jest | `npm test -- --runInBand` | **46 suites / 671 tests, all passed** |
+| Deno — invite hardening core | `deno test tests/invites/core.deno.test.ts` | 10 passed / 0 failed |
+| Deno — telemetry core | `deno test tests/telemetry/core.deno.test.ts` | 16 passed / 0 failed |
+| Guardian PWA | `npm run test:pwa` | freshness 18 checks + 13 realtime/config tests passed |
+| Release guard (OTA mode) | `node scripts/release-guard.mjs ota` | PASSED |
+| Android export | `npm run export:android` | Exported successfully |
+| Documentation sweep | path/link checker over docs/ + team/ + root docs | 0 broken relative links; all backticked source paths resolve (5 flags hand-verified as line-suffix/brace/future-step notations) |
+| Team pack validation | structure + content checker | 10 folders × 6 files; 12 expected questions per folder; 0 member names or student IDs anywhere under team/ |
+| Security scan | tracked-tree + branch-history pattern scan (values never printed) | No PATs, secret keys, private keys, tokens, test mailboxes, or env files; only public-by-design publishable keys in app.json / eas.json / guardian-pwa/config.js; 2 pattern flags hand-verified as false positives (UI label strings; env-var PEM header stripping in the never-deploy archive) |
+
+Device verification remains outstanding for the published Family/voice
+changes (OTA group 89ca0bf0…) — see
+docs/IMPLEMENTATION_AND_DEPLOYMENT_STATUS.md.

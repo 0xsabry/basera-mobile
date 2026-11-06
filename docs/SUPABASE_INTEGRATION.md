@@ -59,8 +59,12 @@ RLS), `display_name`, `preferred_language` (default `'ar'`),
   updates by the subject affect the row; the same update by the
   guardian silently affects 0 rows (RLS). Turning a master toggle in
   the app fans out to all of the wearer's links.
-- Accept is idempotent per pair: re-accepting for an already-paired
-  pair returns the same `link_id`.
+- Codes are single-use. Re-accepting an already-used code — even by
+  the same guardian for the already-paired pair — fails with
+  `invalid_or_expired_invite` (re-verified live 2026-11-06; an earlier
+  note here claimed accept returns the same `link_id` idempotently —
+  that does not match the deployed behaviour). The existing link
+  itself is unaffected and stays visible to both parties.
 - **Either party can delete the link** (unlink), verified in both
   directions; deletion ends all link-scoped access immediately.
 
@@ -130,6 +134,24 @@ an active session.
   already-used, and self-pairing are indistinguishable by design; the
   UI shows one combined "invalid or expired" message and never
   pretends to know which.
+
+### Hardened replacement (branch-only, NOT deployed)
+
+This branch carries an email-bound replacement for both functions
+(`supabase/functions/{create,accept}-guardian-invite/`, additive
+migration `20261107000000_guardian_invites_hardening.sql`, Deno
+tests 10/10 in `supabase/tests/invites/`). Invites name the
+recipient's email; acceptance requires the caller's VERIFIED email
+to match; codes are stored as SHA-256 hashes and claimed
+atomically (single-use under concurrency); all failures keep the
+combined public error. Deployment is a separate owner-approved
+package: `docs/INVITE_HARDENING_DEPLOY.md`. The app on this branch
+already sends `invited_email` (the deployed create tolerates the
+extra field — verified live 2026-11-06) and only claims binding
+when the response confirms `bound_to_email: true`.
+Consent revocation was re-verified end-to-end 2026-11-06 with the
+correct `latitude`/`longitude` columns: guardian location rows
+0 (off) → 1 (on) → 0 (after revoke); SOS rows 0 → ≥1 → 0.
 
 ### Bearer-code semantics (observed live — read this)
 An invite code is a **bearer capability**: verified twice — the
@@ -201,6 +223,31 @@ NOT TESTABLE in the harness (the function offers no expiry control
 and all failures share one code).
 
 ## Remaining owner actions / known limits
+- **Auth email sending hits the built-in provider rate limit
+  (observed live 2026-11-06).** After a handful of confirmation /
+  resend / recovery emails during end-to-end testing, `POST
+  /auth/v1/signup` and `POST /auth/v1/recover` began returning
+  `429 over_email_send_rate_limit` — i.e. new registrations that need
+  a confirmation email are rejected while the quota is exhausted.
+  This is the signature of the default Supabase email provider (no
+  custom SMTP). **Owner action (dashboard, no code):** configure a
+  custom SMTP provider under Authentication → Settings → SMTP
+  Settings, raise Authentication → Rate Limits for email sending,
+  and confirm the Site URL + redirect allow-list match the app's
+  destinations. Until then, real email delivery is rate-limited and
+  cannot be considered reliable.
+  Delivery evidence (2026-11-06, later the same day): with the
+  owner's Gmail reconnected, a fresh signup to an alias of the
+  connected mailbox received its confirmation email within seconds —
+  from the DEFAULT sender `noreply@mail.app.supabase.io` (direct
+  evidence no custom SMTP is configured). Unverified sign-in is
+  correctly refused (`400 email_not_confirmed`), so confirmations
+  are enforced. But a password-recovery request minutes after that
+  one successful email returned `429 over_email_send_rate_limit`
+  again — the quota is effectively a trickle. The confirmation
+  link's token is redaction-protected in the agent's mail view, so
+  the link-follow and its redirect destination were not verified by
+  the agent (the owner can click it in his own inbox).
 - SOS alert rows can never be deleted by clients (append-only by
   design); purging test alerts needs a Dashboard/SQL action by the
   owner.

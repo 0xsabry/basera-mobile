@@ -68,6 +68,16 @@ const SHARING_STATE_KEY: Record<SharingState, StringKey> = {
   'sync-pending': 'sharingStateSyncPending',
 };
 
+const SHARING_STATE_PILL_KEY: Record<SharingState, StringKey> = {
+  off: 'statusPillOff',
+  'foreground-only': 'statusPillOn',
+  'background-active': 'statusPillOn',
+  'permission-denied': 'statusPillIssue',
+  'gps-unavailable': 'statusPillIssue',
+  'offline-queueing': 'statusPillOn',
+  'sync-pending': 'statusPillOn',
+};
+
 const SHARING_STATE_TONE: Record<SharingState, Tone> = {
   off: 'neutral',
   'foreground-only': 'success',
@@ -90,6 +100,8 @@ export default function GuardianScreen() {
   const [user, setUser] = useState<GuardianUser | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [code, setCode] = useState<PairingCode | null>(null);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteEmailError, setInviteEmailError] = useState('');
   const [guardians, setGuardians] = useState<GuardianLink[]>([]);
   const [peopleIGuard, setPeopleIGuard] = useState<GuardianLink[]>([]);
   const [sosOn, setSosOn] = useState(false);
@@ -186,25 +198,39 @@ export default function GuardianScreen() {
     const u = await service.getCurrentUser();
     setUser(u);
     if (u) {
-      const [mine, guarding, consent] = await Promise.all([
-        service.listMyGuardians().catch(() => []),
-        service.listPeopleIGuard().catch(() => []),
-        service
-          .getConsent()
-          .catch(() => ({ locationSharingEnabled: false, sosSharingEnabled: false })),
+      // Load each remote state independently and NEVER substitute a
+      // fallback for a failed read: a network failure must not render
+      // as "no guardians", and a failed consent read must not be
+      // treated as consent-off (which would silently turn the user's
+      // local sharing intent down). Failed loads keep the previous
+      // state and surface an error instead.
+      const [mineR, guardingR, consentR] = await Promise.allSettled([
+        service.listMyGuardians(),
+        service.listPeopleIGuard(),
+        service.getConsent(),
       ]);
-      setGuardians(mine);
-      setPeopleIGuard(guarding);
-      setSosOn(consent.sosSharingEnabled);
-      // Server consent is the truth for the master switch: if every
-      // link's location consent is off (e.g. changed from another
-      // device), the local intent follows it down; if a link grants
-      // it, local intent follows up so collection can resume.
-      if (consent.locationSharingEnabled !== settings.guardianSharingEnabled) {
-        await update({
-          guardianSharingEnabled: consent.locationSharingEnabled,
-          ...(consent.locationSharingEnabled ? {} : { backgroundSharingEnabled: false }),
-        });
+      if (mineR.status === 'fulfilled') setGuardians(mineR.value);
+      if (guardingR.status === 'fulfilled') setPeopleIGuard(guardingR.value);
+      if (consentR.status === 'fulfilled') {
+        const consent = consentR.value;
+        setSosOn(consent.sosSharingEnabled);
+        // Server consent is the truth for the master switch: if every
+        // link's location consent is off (e.g. changed from another
+        // device), the local intent follows it down; if a link grants
+        // it, local intent follows up so collection can resume.
+        if (consent.locationSharingEnabled !== settings.guardianSharingEnabled) {
+          await update({
+            guardianSharingEnabled: consent.locationSharingEnabled,
+            ...(consent.locationSharingEnabled ? {} : { backgroundSharingEnabled: false }),
+          });
+        }
+      }
+      if (
+        mineR.status === 'rejected' ||
+        guardingR.status === 'rejected' ||
+        consentR.status === 'rejected'
+      ) {
+        setMessage(t(lang, 'errorGeneric'));
       }
       // Push-token registration (registration only — delivery is not
       // claimed; never prompts, skips silently without permission).
@@ -262,6 +288,22 @@ export default function GuardianScreen() {
     return () => clearInterval(timer);
   }, [code]);
 
+  // Sharing failures used to collapse into one generic message, so
+  // a network drop, an expired session and a server rejection were
+  // indistinguishable — for a blind user that reads as "sharing is
+  // broken" with no next step. Classify the failure honestly.
+  const sharingError = (e: unknown): string => {
+    const kind = e instanceof GuardianInviteError ? e.kind : null;
+    const msg = e instanceof Error ? e.message : '';
+    if (kind === 'network' || /failed to fetch|network|fetch failed|timeout|socket/i.test(msg)) {
+      return t(lang, 'guardianErrorNetwork');
+    }
+    if (kind === 'unauthenticated' || /jwt|session|not signed|unauthor/i.test(msg)) {
+      return t(lang, 'guardianErrorSession');
+    }
+    return t(lang, 'errorGeneric');
+  };
+
   const toggleSharing = async (on: boolean) => {
     if (busy) return;
     setBusy(true);
@@ -294,8 +336,11 @@ export default function GuardianScreen() {
           void speechService.speakAnnouncement(t(lang, 'guardianSharingOff'), lang);
         }
       }
-    } catch {
-      setMessage(t(lang, 'errorGeneric'));
+    } catch (e) {
+      // A failed enable must not leave GPS collection running behind
+      // an OFF switch (collection starts before the consent write).
+      void sharingRef.current?.stopWatching().catch(() => undefined);
+      setMessage(sharingError(e));
     } finally {
       setBusy(false);
     }
@@ -303,6 +348,12 @@ export default function GuardianScreen() {
 
   const toggleSos = async (on: boolean) => {
     if (busy) return;
+    if (on && guardians.length === 0) {
+      // The consent fan-out runs per guardian link; with none linked
+      // the switch used to flip and silently stay off. Say why.
+      setMessage(t(lang, 'guardianSosNeedsGuardian'));
+      return;
+    }
     setBusy(true);
     setMessage('');
     try {
@@ -311,8 +362,8 @@ export default function GuardianScreen() {
       // no-op and the switch honestly stays off.
       const consent = await service.getConsent().catch(() => null);
       if (consent) setSosOn(consent.sosSharingEnabled);
-    } catch {
-      setMessage(t(lang, 'errorGeneric'));
+    } catch (e) {
+      setMessage(sharingError(e));
     } finally {
       setBusy(false);
     }
@@ -327,7 +378,13 @@ export default function GuardianScreen() {
         await service.setLinkConsent(link.id, { locationSharingEnabled: true });
         if (!settings.guardianSharingEnabled) {
           await update({ guardianSharingEnabled: true });
-          void sharingRef.current?.start();
+          // Await the start: a denied location permission used to
+          // fail silently here — consent ON, nothing collecting,
+          // and the wearer believing sharing works.
+          const started = await sharingRef.current?.start();
+          if (started === 'permission-denied') {
+            setMessage(t(lang, 'guardianPermissionDenied'));
+          }
         }
       } else {
         const othersOn = guardians.some((g) => g.id !== link.id && g.locationSharingEnabled);
@@ -341,8 +398,8 @@ export default function GuardianScreen() {
         }
       }
       await refresh();
-    } catch {
-      setMessage(t(lang, 'errorGeneric'));
+    } catch (e) {
+      setMessage(sharingError(e));
     } finally {
       setBusy(false);
     }
@@ -354,8 +411,8 @@ export default function GuardianScreen() {
     try {
       await service.setLinkConsent(link.id, { sosSharingEnabled: on });
       await refresh();
-    } catch {
-      setMessage(t(lang, 'errorGeneric'));
+    } catch (e) {
+      setMessage(sharingError(e));
     } finally {
       setBusy(false);
     }
@@ -363,10 +420,16 @@ export default function GuardianScreen() {
 
   const createCode = async () => {
     if (busy) return;
+    const email = inviteEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setInviteEmailError(t(lang, 'guardianInviteEmailInvalid'));
+      return;
+    }
+    setInviteEmailError('');
     setBusy(true);
     setMessage('');
     try {
-      const c = await service.createPairingCode();
+      const c = await service.createPairingCode(email);
       setCode(c);
       if (settings.announcements) {
         void speechService.speakAnnouncement(`${t(lang, 'guardianYourCode')}: ${c.code}`, lang);
@@ -377,7 +440,9 @@ export default function GuardianScreen() {
       setMessage(
         e instanceof GuardianInviteError && e.kind === 'rate-limited'
           ? t(lang, 'guardianInviteErrorRateLimited')
-          : t(lang, 'errorGeneric'),
+          : e instanceof GuardianInviteError && e.kind === 'invalid-invited-email'
+            ? t(lang, 'guardianInviteEmailInvalid')
+            : t(lang, 'errorGeneric'),
       );
     } finally {
       setBusy(false);
@@ -536,6 +601,11 @@ export default function GuardianScreen() {
     <Screen>
       <SectionHeader title={t(lang, 'guardian')} glyph={GLYPHS.family} />
       <Text style={bodySecondary()}>{t(lang, 'guardianLocationNote')}</Text>
+      {!!message && (
+        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger, fontSize: type.body }]}>
+          {message}
+        </Text>
+      )}
       <MyLocationCard />
 
       {loaded && !user && (
@@ -554,7 +624,7 @@ export default function GuardianScreen() {
               <Text accessibilityLiveRegion="polite" style={[body(), styles.flex1]}>
                 {t(lang, SHARING_STATE_KEY[sharingState])}
               </Text>
-              <StatusPill tone={SHARING_STATE_TONE[sharingState]} label={t(lang, SHARING_STATE_KEY[sharingState])} />
+              <StatusPill tone={SHARING_STATE_TONE[sharingState]} label={t(lang, SHARING_STATE_PILL_KEY[sharingState])} />
             </View>
             <Text style={body()}>
               {t(lang, 'lastUpdateLabel')}:{' '}
@@ -633,7 +703,7 @@ export default function GuardianScreen() {
               </Text>
               <StatusPill
                 tone={settings.guardianSharingEnabled ? 'success' : 'neutral'}
-                label={settings.guardianSharingEnabled ? t(lang, 'guardianSharingOn') : t(lang, 'guardianLocalOff')}
+                label={settings.guardianSharingEnabled ? t(lang, 'statusPillOn') : t(lang, 'statusPillOff')}
               />
             </View>
             {/* Server truth — 'confirmed' renders only after the purge
@@ -668,7 +738,7 @@ export default function GuardianScreen() {
               </Text>
               <StatusPill
                 tone={bgStarted ? 'success' : 'neutral'}
-                label={bgStarted ? t(lang, 'bgTrackingActive') : t(lang, 'bgTrackingInactive')}
+                label={bgStarted ? t(lang, 'statusPillOn') : t(lang, 'statusPillOff')}
               />
             </View>
             {!!bgMessage && (
@@ -715,7 +785,33 @@ export default function GuardianScreen() {
           <SectionHeader title={t(lang, 'guardianPairingTitle')} glyph={GLYPHS.family} />
           <Card>
             <Text style={body()}>{t(lang, 'guardianPairingExpl')}</Text>
-            <AccessibleButton label={t(lang, 'guardianCreateCode')} onPress={() => void createCode()} disabled={busy} />
+            <TextInput
+              accessibilityLabel={t(lang, 'guardianInviteEmailLabel')}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              placeholder={t(lang, 'guardianInviteEmailLabel')}
+              placeholderTextColor={colors.textSecondary}
+              value={inviteEmail}
+              onChangeText={(v) => {
+                setInviteEmail(v);
+                setInviteEmailError('');
+              }}
+              style={[
+                styles.input,
+                { color: colors.text, borderColor: colors.border, backgroundColor: colors.surfaceAlt, fontSize: type.body },
+              ]}
+            />
+            {!!inviteEmailError && (
+              <Text accessibilityLiveRegion="assertive" style={[body(), { color: colors.danger }]}>
+                {inviteEmailError}
+              </Text>
+            )}
+            <AccessibleButton
+              label={t(lang, 'guardianCreateCode')}
+              onPress={() => void createCode()}
+              disabled={busy || !inviteEmail.trim()}
+            />
             {code && (
               <View style={styles.codeBox}>
                 <Text style={body()}>{t(lang, 'guardianYourCode')}</Text>
@@ -729,6 +825,12 @@ export default function GuardianScreen() {
                   <QrCodeView value={code.code} accessibilityLabel={`${t(lang, 'guardianYourCode')}: ${code.code}`} />
                 </View>
                 <Text style={bodySecondary()}>{t(lang, 'guardianCodeExpires')}</Text>
+                {code.boundToEmail && (
+                  <>
+                    <Text style={bodySecondary()}>{t(lang, 'guardianInviteBoundNote')}</Text>
+                    <Text style={body()}>{code.invitedEmail}</Text>
+                  </>
+                )}
                 {code.expiresAt && !codeExpired && (
                   <Text style={bodySecondary()}>
                     {t(lang, 'guardianInviteExpiresAt')}:{' '}
@@ -840,11 +942,6 @@ export default function GuardianScreen() {
         </>
       )}
 
-      {!!message && (
-        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger, fontSize: type.body }]}>
-          {message}
-        </Text>
-      )}
     </Screen>
   );
 }

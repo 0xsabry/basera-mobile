@@ -8,8 +8,10 @@ You are inspecting or modifying BASERA, an Android-first Arabic/English accessib
 2. docs/PROJECT_OVERVIEW.md
 3. docs/FEATURE_STATUS.md
 4. docs/ARCHITECTURE.md
-5. docs/AI_INSPECTION_GUIDE.md
-6. docs/README.md
+5. docs/PROJECT_FILE_MAP.md and docs/FEATURE_IMPLEMENTATION_MAP.md (locate the real implementation before explaining or changing it)
+6. docs/IMPLEMENTATION_AND_DEPLOYMENT_STATUS.md (candidate vs deployed vs device-verified — never blur)
+7. docs/AI_INSPECTION_GUIDE.md
+8. docs/README.md
 
 Then inspect the source files and tests related to the task. For backend work, read docs/SUPABASE_INTEGRATION.md, supabase/README.md, and supabase/functions/README.md first. For releases, read docs/RELEASE.md and scripts/release-guard.mjs.
 
