@@ -68,6 +68,16 @@ const SHARING_STATE_KEY: Record<SharingState, StringKey> = {
   'sync-pending': 'sharingStateSyncPending',
 };
 
+const SHARING_STATE_PILL_KEY: Record<SharingState, StringKey> = {
+  off: 'statusPillOff',
+  'foreground-only': 'statusPillOn',
+  'background-active': 'statusPillOn',
+  'permission-denied': 'statusPillIssue',
+  'gps-unavailable': 'statusPillIssue',
+  'offline-queueing': 'statusPillOn',
+  'sync-pending': 'statusPillOn',
+};
+
 const SHARING_STATE_TONE: Record<SharingState, Tone> = {
   off: 'neutral',
   'foreground-only': 'success',
@@ -338,6 +348,12 @@ export default function GuardianScreen() {
 
   const toggleSos = async (on: boolean) => {
     if (busy) return;
+    if (on && guardians.length === 0) {
+      // The consent fan-out runs per guardian link; with none linked
+      // the switch used to flip and silently stay off. Say why.
+      setMessage(t(lang, 'guardianSosNeedsGuardian'));
+      return;
+    }
     setBusy(true);
     setMessage('');
     try {
@@ -585,6 +601,11 @@ export default function GuardianScreen() {
     <Screen>
       <SectionHeader title={t(lang, 'guardian')} glyph={GLYPHS.family} />
       <Text style={bodySecondary()}>{t(lang, 'guardianLocationNote')}</Text>
+      {!!message && (
+        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger, fontSize: type.body }]}>
+          {message}
+        </Text>
+      )}
       <MyLocationCard />
 
       {loaded && !user && (
@@ -603,7 +624,7 @@ export default function GuardianScreen() {
               <Text accessibilityLiveRegion="polite" style={[body(), styles.flex1]}>
                 {t(lang, SHARING_STATE_KEY[sharingState])}
               </Text>
-              <StatusPill tone={SHARING_STATE_TONE[sharingState]} label={t(lang, SHARING_STATE_KEY[sharingState])} />
+              <StatusPill tone={SHARING_STATE_TONE[sharingState]} label={t(lang, SHARING_STATE_PILL_KEY[sharingState])} />
             </View>
             <Text style={body()}>
               {t(lang, 'lastUpdateLabel')}:{' '}
@@ -682,7 +703,7 @@ export default function GuardianScreen() {
               </Text>
               <StatusPill
                 tone={settings.guardianSharingEnabled ? 'success' : 'neutral'}
-                label={settings.guardianSharingEnabled ? t(lang, 'guardianSharingOn') : t(lang, 'guardianLocalOff')}
+                label={settings.guardianSharingEnabled ? t(lang, 'statusPillOn') : t(lang, 'statusPillOff')}
               />
             </View>
             {/* Server truth — 'confirmed' renders only after the purge
@@ -717,7 +738,7 @@ export default function GuardianScreen() {
               </Text>
               <StatusPill
                 tone={bgStarted ? 'success' : 'neutral'}
-                label={bgStarted ? t(lang, 'bgTrackingActive') : t(lang, 'bgTrackingInactive')}
+                label={bgStarted ? t(lang, 'statusPillOn') : t(lang, 'statusPillOff')}
               />
             </View>
             {!!bgMessage && (
@@ -921,11 +942,6 @@ export default function GuardianScreen() {
         </>
       )}
 
-      {!!message && (
-        <Text accessibilityLiveRegion="assertive" style={[styles.body, { color: colors.danger, fontSize: type.body }]}>
-          {message}
-        </Text>
-      )}
     </Screen>
   );
 }
