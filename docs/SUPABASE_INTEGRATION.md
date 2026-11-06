@@ -222,6 +222,14 @@ bearer-code OBSERVED note above). Expired-invite rejection is marked
 NOT TESTABLE in the harness (the function offers no expiry control
 and all failures share one code).
 
+**Timed-probe addendum (2026-11-06, live):** expiry is now verified
+independently of the harness. A code was created through the deployed
+function (server-reported `expires_at` 2026-11-06T19:57:36Z) and an
+accept was attempted ~18 minutes after creation — past the 15-minute
+TTL. Result: **400 `{"error":"invalid_or_expired_invite"}`, no link
+created**. The deployed accept function enforces expiry; the uniform
+error reveals nothing about which failure occurred.
+
 ## Remaining owner actions / known limits
 - **Auth email sending hits the built-in provider rate limit
   (observed live 2026-11-06).** After a handful of confirmation /
